@@ -8,10 +8,20 @@ public final class Puzzle {
     public final boolean[][] solution;
     public final byte[][] marks; // 0 unknown, 1 filled, 2 crossed
     public final String name;
+    private final int[][] cachedRowClues;
+    private final int[][] cachedColClues;
 
     public Puzzle(boolean[][] solution, String name) {
         this.size = solution.length; this.solution = solution; this.name = name;
         this.marks = new byte[size][size];
+        cachedRowClues = new int[size][];
+        cachedColClues = new int[size][];
+        for (int i = 0; i < size; i++) {
+            cachedRowClues[i] = clues(solution[i]);
+            boolean[] column = new boolean[size];
+            for (int y = 0; y < size; y++) column[y] = solution[y][i];
+            cachedColClues[i] = clues(column);
+        }
     }
     public static int[] clues(boolean[] line) {
         List<Integer> result = new ArrayList<>(); int run = 0;
@@ -24,11 +34,8 @@ public final class Puzzle {
         for (int i=0;i<out.length;i++) out[i]=result.get(i);
         return out;
     }
-    public int[] rowClues(int row) { return clues(solution[row]); }
-    public int[] colClues(int col) {
-        boolean[] line = new boolean[size]; for(int i=0;i<size;i++) line[i]=solution[i][col];
-        return clues(line);
-    }
+    public int[] rowClues(int row) { return cachedRowClues[row]; }
+    public int[] colClues(int col) { return cachedColClues[col]; }
     public boolean rowSatisfied(int row){boolean[] line=new boolean[size];for(int x=0;x<size;x++)line[x]=marks[row][x]==1;return java.util.Arrays.equals(clues(line),rowClues(row));}
     public boolean colSatisfied(int col){boolean[] line=new boolean[size];for(int y=0;y<size;y++)line[y]=marks[y][col]==1;return java.util.Arrays.equals(clues(line),colClues(col));}
     public boolean rowSolved(int row){for(int x=0;x<size;x++)if((marks[row][x]==1)!=solution[row][x])return false;return true;}
