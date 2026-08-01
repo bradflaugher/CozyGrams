@@ -1,0 +1,21 @@
+name: Android CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew test lint assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cozygrams-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
