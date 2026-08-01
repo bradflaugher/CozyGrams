@@ -7,9 +7,10 @@ A cozy, endless nonogram game made for the couch. Play solo or connect two contr
 - D-pad or left stick: move (the cursor wraps around)
 - Xbox **A**: fill a square
 - Xbox **B** or **X**: mark a square with an X
+- Xbox **Y**: reveal one helpful filled square (when hints are enabled)
 - Menu/Start: show help
 
-Each physical controller is assigned to Player 1 or Player 2 when it first sends input. Android TV remotes also work with the D-pad, center, and Back buttons.
+Each physical controller is assigned to Rose or Sky when it first sends input. Android TV remotes also work with the D-pad, center, and Back buttons.
 
 ## Game features
 
@@ -17,6 +18,9 @@ Each physical controller is assigned to Player 1 or Player 2 when it first sends
 - Local couch co-op with two independent cursors
 - Automatic progress saving
 - Direct 5×5, 10×10, 15×15, or 20×20 board-size selection
+- A 16-puzzle handcrafted Story Book journey alongside endless play
+- Original synthesized move, fill, cross, hint, error, selection, and victory sounds
+- Optional Y-button hints and gentle mistake checking
 - Original, runtime-synthesized melody, bells, bass, and ambient pads
 - Rotating illustrated storybook living-room and moonlit-garden themes, plus a title screen, pause/help screen, and music setting
 - Cozy messages and picture titles after every win

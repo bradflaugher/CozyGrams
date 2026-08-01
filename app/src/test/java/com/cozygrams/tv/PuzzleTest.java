@@ -22,4 +22,5 @@ public class PuzzleTest {
         p.marks[0][1]=1;p.marks[1][0]=1;
         assertTrue(p.complete());
     }
+    @Test public void completedLinesAutoCrossUnknownCells(){Puzzle p=new Puzzle(new boolean[][]{{true,false},{false,true}},"auto");p.marks[0][0]=1;assertTrue(p.rowSolved(0));assertTrue(p.colSolved(0));assertEquals(2,p.autoCrossCompletedLines(0,0));assertEquals(2,p.marks[0][1]);assertEquals(2,p.marks[1][0]);}
 }

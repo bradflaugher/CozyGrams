@@ -29,6 +29,11 @@ public final class Puzzle {
         boolean[] line = new boolean[size]; for(int i=0;i<size;i++) line[i]=solution[i][col];
         return clues(line);
     }
+    public boolean rowSatisfied(int row){boolean[] line=new boolean[size];for(int x=0;x<size;x++)line[x]=marks[row][x]==1;return java.util.Arrays.equals(clues(line),rowClues(row));}
+    public boolean colSatisfied(int col){boolean[] line=new boolean[size];for(int y=0;y<size;y++)line[y]=marks[y][col]==1;return java.util.Arrays.equals(clues(line),colClues(col));}
+    public boolean rowSolved(int row){for(int x=0;x<size;x++)if((marks[row][x]==1)!=solution[row][x])return false;return true;}
+    public boolean colSolved(int col){for(int y=0;y<size;y++)if((marks[y][col]==1)!=solution[y][col])return false;return true;}
+    public int autoCrossCompletedLines(int x,int y){int changed=0;if(rowSolved(y))for(int xx=0;xx<size;xx++)if(marks[y][xx]==0){marks[y][xx]=2;changed++;}if(colSolved(x))for(int yy=0;yy<size;yy++)if(marks[yy][x]==0){marks[yy][x]=2;changed++;}return changed;}
     public boolean complete() {
         // Validate the visible clue solution, not a hidden bitmap identity. This
         // correctly accepts any alternate solution if a generated board has one.
