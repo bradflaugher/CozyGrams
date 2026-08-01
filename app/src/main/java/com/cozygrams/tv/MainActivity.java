@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
 
+@SuppressWarnings("deprecation")
 public final class MainActivity extends Activity {
     private CozyGameView game;
     @Override public void onCreate(Bundle state) {

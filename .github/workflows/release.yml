@@ -26,5 +26,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk CozyGrams-latest.apk
+          sha256sum CozyGrams-latest.apk > CozyGrams-latest.apk.sha256
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then RELEASE_TAG="$GITHUB_REF_NAME"; else RELEASE_TAG="v1.0.${GITHUB_RUN_NUMBER}"; fi
-          gh release create "$RELEASE_TAG" CozyGrams-latest.apk --target "$GITHUB_SHA" --latest --generate-notes --title "CozyGrams $RELEASE_TAG"
+          gh release create "$RELEASE_TAG" CozyGrams-latest.apk CozyGrams-latest.apk.sha256 --target "$GITHUB_SHA" --latest --generate-notes --title "CozyGrams $RELEASE_TAG"

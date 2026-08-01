@@ -15,7 +15,18 @@ jobs:
           cache: gradle
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew test lint assembleDebug --stacktrace
+      - name: Verify APK package and TV manifest
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging app/build/outputs/apk/debug/app-debug.apk | grep "leanback-launcher"
       - uses: actions/upload-artifact@v4
         with:
           name: cozygrams-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
