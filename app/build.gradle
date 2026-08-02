@@ -8,8 +8,8 @@ android {
         applicationId 'com.cozygrams.tv'
         minSdk 23
         targetSdk 35
-        versionCode 3
-        versionName '1.2.0'
+        versionCode 4
+        versionName '2.0.0'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
 
@@ -26,6 +26,7 @@ android {
             // Stable project signing makes every GitHub APK an in-place upgrade.
             signingConfig signingConfigs.release
             minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

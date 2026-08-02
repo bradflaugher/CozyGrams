@@ -1,8 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#FF789A</item>
+    <!--
+      A dark theme so the window that appears before the first frame is drawn is the
+      same deep plum as the game itself. A light theme flashes white, which is genuinely
+      unpleasant on a large panel in a dim living room.
+    -->
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#FF7A9E</item>
+        <item name="android:colorBackground">#1B1430</item>
+        <item name="android:windowBackground">@drawable/launch_backdrop</item>
         <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentTransitions">false</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:navigationBarColor">#00000000</item>
+        <item name="android:statusBarColor">#00000000</item>
     </style>
 </resources>

@@ -4,101 +4,174 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
 
-/** A tiny original music box score synthesized at runtime to keep the APK lean. */
+/**
+ * Plays {@link CozyScore} — "Rain on the Window" — straight out of the CPU, so the APK carries no
+ * audio at all. This class owns only the plumbing: one streaming {@code AudioTrack}, one daemon
+ * render thread, and a soft limiter that holds the music bus under
+ * {@link CozySynth#MUSIC_CEILING}. Everything musical lives in {@link CozyScore}.
+ *
+ * <p>If the device cannot give us an {@code AudioTrack} (some emulators, some set-top boxes with
+ * no audio route) the failure is swallowed once and music quietly stays off for the session
+ * rather than taking the game down with it.
+ */
 final class CozyMusic {
-    private static final int SAMPLE_RATE = 22050;
-    private static final double[] MELODY = {
-            329.63, 392.00, 523.25, 493.88, 440.00, 392.00, 329.63, 293.66,
-            261.63, 329.63, 392.00, 440.00, 392.00, 329.63, 293.66, 261.63,
-            329.63, 440.00, 523.25, 659.25, 587.33, 523.25, 440.00, 392.00,
-            293.66, 392.00, 493.88, 587.33, 523.25, 440.00, 392.00, 329.63
-    };
-    private static final double[] BASS = {
-            130.81, 130.81, 110.00, 110.00, 87.31, 87.31, 98.00, 98.00,
-            130.81, 130.81, 146.83, 146.83, 110.00, 110.00, 98.00, 98.00
-    };
+
+    private static final int BLOCK = 1024;
+
+    private final CozyScore score = new CozyScore(CozySynth.SAMPLE_RATE, 0xC0DEBA5EL);
 
     private AudioTrack track;
     private Thread thread;
     private volatile boolean playing;
     private boolean enabled = true;
+    private boolean audioBroken;
 
     synchronized void setEnabled(boolean value) {
         enabled = value;
-        if (value) start(); else stop();
+        if (value) {
+            start();
+        } else {
+            stop();
+        }
     }
 
     synchronized void start() {
-        if (playing || !enabled) return;
-        int minimum = AudioTrack.getMinBufferSize(SAMPLE_RATE,
-                AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        track = new AudioTrack.Builder()
-                .setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_GAME)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build())
-                .setAudioFormat(new AudioFormat.Builder()
-                        .setSampleRate(SAMPLE_RATE)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build())
-                .setBufferSizeInBytes(Math.max(minimum, 4096))
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build();
+        if (thread != null && !thread.isAlive()) {
+            thread = null;
+            track = null;
+            playing = false;
+        }
+        if (playing || !enabled || audioBroken || thread != null) {
+            return;
+        }
+        AudioTrack built = build();
+        if (built == null) {
+            audioBroken = true;
+            return;
+        }
+        track = built;
         playing = true;
-        track.play();
-        thread = new Thread(this::musicLoop, "cozy-music");
+        thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                render(built);
+            }
+        }, "cozy-music");
         thread.setDaemon(true);
         thread.start();
     }
 
-    private void musicLoop() {
-        int beat = 0;
-        short[] buffer = new short[SAMPLE_RATE / 2];
-        while (playing) {
-            synthesizeBeat(buffer, beat++);
-            AudioTrack current = track;
-            if (current != null && current.write(buffer, 0, buffer.length) < 0) break;
+    private AudioTrack build() {
+        try {
+            int minimum = AudioTrack.getMinBufferSize(CozySynth.SAMPLE_RATE,
+                    AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            if (minimum <= 0) {
+                minimum = BLOCK * 2 * 4;
+            }
+            AudioTrack built = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_GAME)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setSampleRate(CozySynth.SAMPLE_RATE)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build())
+                    .setBufferSizeInBytes(Math.max(minimum, BLOCK * 2 * 4))
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build();
+            if (built.getState() != AudioTrack.STATE_INITIALIZED) {
+                built.release();
+                return null;
+            }
+            return built;
+        } catch (Throwable unavailable) {
+            return null;
         }
     }
 
-    private void synthesizeBeat(short[] buffer, int beat) {
-        double note = MELODY[beat % MELODY.length];
-        double bass = BASS[(beat / 2) % BASS.length];
-        double harmony = note * (beat % 8 < 4 ? 1.25 : 1.20);
-        for (int i = 0; i < buffer.length; i++) {
-            double position = i / (double) buffer.length;
-            double time = (double) i / SAMPLE_RATE;
-            double bellEnvelope = Math.sin(Math.PI * position) * Math.exp(-position * 1.4);
-            double bell = Math.sin(2 * Math.PI * note * time)
-                    + .20 * Math.sin(4 * Math.PI * note * time)
-                    + .06 * Math.sin(6 * Math.PI * note * time);
-            double softHarmony = Math.sin(2 * Math.PI * harmony * time) * .12;
-            double padEnvelope = .72 + .28 * Math.sin(Math.PI * position);
-            double pad = Math.sin(2 * Math.PI * bass * time)
-                    + .26 * Math.sin(3 * Math.PI * bass * time);
-            buffer[i] = (short) (920 * bellEnvelope * (bell + softHarmony)
-                    + 490 * padEnvelope * pad);
+    /** The render thread owns the track from here on, including releasing it. */
+    private void render(AudioTrack owned) {
+        float[] mix = new float[BLOCK];
+        short[] pcm = new short[BLOCK];
+        try {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+        } catch (Throwable ignored) {
+            // Priority is a nicety; a TV that refuses it still gets music.
+        }
+        try {
+            owned.play();
+            while (true) {
+                boolean last = !playing;
+                score.render(mix, 0, BLOCK);
+                for (int i = 0; i < BLOCK; i++) {
+                    double value = CozySynth.limit(mix[i], CozySynth.MUSIC_CEILING);
+                    if (last) {
+                        // One final block ramped to silence, so stopping never clicks.
+                        value *= (BLOCK - 1 - i) / (double) BLOCK;
+                    }
+                    pcm[i] = (short) (value * 32767);
+                }
+                if (owned.write(pcm, 0, BLOCK) < 0 || last) {
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {
+            // A track pulled out from under us on stop() is expected; just unwind.
+        } finally {
+            try {
+                owned.pause();
+                owned.flush();
+                owned.stop();
+            } catch (Throwable ignored) {
+                // Best effort.
+            }
+            owned.release();
         }
     }
 
+    /** Lifts the score for a few seconds when a puzzle is finished, then lets it settle back. */
+    synchronized void celebrate() {
+        score.celebrate();
+    }
+
+    /**
+     * Optional: 0 keeps the arrangement at its sparsest, 1 brings the felt piano and the rain
+     * forward. Nothing calls it yet — the caller can wire it to puzzle progress whenever it likes.
+     */
+    void setIntensity(float value) {
+        score.setIntensity(value);
+    }
+
+    /** Safe to call repeatedly, from any thread, and from {@code onDetachedFromWindow}. */
     synchronized void stop() {
         playing = false;
+        Thread old = thread;
+        thread = null;
         AudioTrack oldTrack = track;
         track = null;
-        if (oldTrack != null) {
-            oldTrack.pause();
-            oldTrack.flush();
+        if (old == null || old == Thread.currentThread()) {
+            return;
         }
-        Thread oldThread = thread;
-        thread = null;
-        if (oldThread != null && oldThread != Thread.currentThread()) {
+        try {
+            old.join(350);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+        if (old.isAlive() && oldTrack != null) {
+            // A blocked write only unblocks if we pause the track underneath it.
             try {
-                oldThread.join(300);
+                oldTrack.pause();
+                oldTrack.flush();
+            } catch (Throwable ignored) {
+                // Best effort; the render thread still releases in its finally block.
+            }
+            try {
+                old.join(250);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
         }
-        if (oldTrack != null) oldTrack.release();
     }
 }

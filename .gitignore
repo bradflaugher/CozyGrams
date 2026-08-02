@@ -32,3 +32,11 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Preview screenshot harness (tools/preview)
+tools/preview/build/
+tools/preview/out/
+
+# v1.2.0 baseline screenshot harness (tools/legacy-preview)
+tools/legacy-preview/build/
+tools/legacy-preview/out/
