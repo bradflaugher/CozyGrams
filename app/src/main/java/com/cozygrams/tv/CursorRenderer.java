@@ -1,8 +1,8 @@
 package com.cozygrams.tv;
 
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 
 /**
  * The two player cursors, Rose and Sky.
@@ -29,10 +29,17 @@ import android.graphics.Paint;
  *   <li>A solid <b>player-colour border</b> stroked around that plate, between two dark
  *       keylines so it holds its edge whatever it is over. This says whose cursor it is —
  *       which is all an identity colour should ever have to do.</li>
+ *   <li>A <b>crosshair rail</b> along the four boundaries of the cursor's own row and
+ *       column, in the player's colour. {@code BoardRenderer} washes the row and the column
+ *       underneath the marks, which is the only order that leaves a tile its own colour and
+ *       therefore the order in which a filled tile paints the wash out completely. A cell
+ *       boundary carries no mark ink, so the rail is the part of the crosshair the picture
+ *       cannot erase. See {@link #drawRails}.</li>
  *   <li><b>Margin tabs</b> just outside the paper card, on the cursor's row and its column.
  *       Always {@link #TAB_WIDTH} design pixels wide, always against the dark backdrop,
  *       never on top of anything. Two of them cross at your square, and they are the cue
- *       that owes nothing at all to the size of the board.</li>
+ *       that owes nothing at all to the size of the board — which is why they are also
+ *       where the arrival feedback goes.</li>
  *   <li>A <b>named badge</b>, R or S, sitting just <em>outside</em> the corner facing away
  *       from the nearest board edge — outside, so the border stays an unbroken rectangle.
  *       It used to be drawn on top of the frame's top-left bracket, which turned a centred
@@ -44,22 +51,54 @@ import android.graphics.Paint;
  * "roughly where" when the question is always "which square". Reaching across the room is
  * the margin tabs' job, and they were already doing it.
  *
- * <p>None of these cues depends on movement: with {@link Comfort#calmMotion} on, every one
- * of them is exactly as loud standing still as it is in flight.
+ * <p>So is the breathing halo, and for a harder reason: it was three stroked rings at alpha
+ * 8, 12 and 16, which lifted a plum tile from (88,54,78) to at most (100,59,82) — 1.05:1,
+ * well under the threshold at which a wash is a thing anybody sees. It was also the only
+ * part of a cursor that was never still, so {@code Renderer.animating} repainted the whole
+ * 1920x1080 canvas sixty times a second all evening to animate it. Lifting the plate off
+ * the paper is now the plate's own drop shadow, which is a real one.
+ *
+ * <p>Every identity cue above is exactly as loud standing still as it is in flight. The one
+ * thing that moves is arrival — the landing squash and the tab flash timed by
+ * {@link Theme#CURSOR_LAND_MS} — and under {@link Comfort#calmMotion} that is pinned off
+ * too, leaving a cursor that is complete without a single animated pixel.
  */
 public final class CursorRenderer {
 
-    /** Period of the idle breathing pulse. */
-    private static final float BREATH_MS = 1900f;
-
-    /** A player who has touched nothing for this long lets their cursor settle down. */
-    private static final long RESTS_AFTER_MS = 6000;
-    /** How long that settling takes, so it is never a blink. */
+    /** How long the fade takes once a player has gone quiet, so it is never a blink. */
     private static final long REST_FADE_MS = 1400;
 
-    /** Margin tabs: fixed width, and never shorter than this however small a cell is. */
+    /** Margin tabs: fixed width, and never longer than the line they are naming. */
     private static final float TAB_WIDTH = 12f;
-    private static final float TAB_MIN_LENGTH = 30f;
+    private static final float TAB_MAX_LENGTH = 34f;
+    /** The contrast a tab's fill must reach against the backdrop it floats on. */
+    private static final double TAB_RATIO = 4.0;
+    /**
+     * How far a tab leads its cursor into the direction of travel, in design pixels — 12 px
+     * at 1080p. Flat rather than a fraction of a cell, for the same reason the tab's own
+     * length has a ceiling in design pixels: this is the one cue whose size owes nothing to
+     * the board, and an anticipation that shrank with the squares would be least visible on
+     * the board with the most travelling to do.
+     */
+    private static final float TAB_LEAN = 8f;
+
+    /** How much over-size the player-colour border arrives at before it settles. */
+    private static final float LAND_SQUASH = .06f;
+
+    /** Opacity of the crosshair rail. Saturated, because it is a line and lines are thin. */
+    private static final int RAIL_ALPHA = 210;
+
+    /**
+     * Cubic control distance for a quarter turn, as a fraction of the corner radius — the
+     * usual .5523 — and the two numbers that split one of those quarters in half: the
+     * control point sits {@code radius * tan(22.5°)} back along the edge, and the arc's own
+     * midpoint {@code radius * (1 - 1/√2)} in from the corner on both axes. A quadratic
+     * through that control bulges 0.3% of the radius past the circle, which is 0.07 px on
+     * the largest corner this file draws.
+     */
+    private static final float ARC_K = .5523f;
+    private static final float HALF_ARC_IN = .41421f;
+    private static final float HALF_ARC_MID = .29289f;
 
     /**
      * The band of clear screen the column tabs need immediately above the paper card.
@@ -71,19 +110,84 @@ public final class CursorRenderer {
      * moving bar scribbling across "ENDLESS #7 · 20 × 20" for the whole game.
      *
      * <p>Covers the widest the tab can be (bold cursors), the second lane a doubled-up
-     * tab uses, the gap to the card, and the shadow the pill casts.
+     * tab uses, and the gap to the card.
+     *
+     * <p>It used to reserve {@code Theme.scale(4)} for the pill's shadow as well. A shadow
+     * is cast <em>downward</em>, onto the paper card the tab is pointing at, so that reserve
+     * was buying clear backdrop above a shadow that never goes there — 6 px at 1080p taken
+     * off the top of every board in the game, on the one axis the grid is short of.
      */
     public static float marginBandHeight() {
         float width = Theme.scale(TAB_WIDTH) * 1.3f;
         float lane = width + Theme.scale(4);
-        return width + lane + Theme.scale(5) + Theme.scale(4);
+        return width + lane + Theme.scale(5);
+    }
+
+    /**
+     * Whether any cursor still has a frame left to draw.
+     *
+     * <p>{@code Renderer.animating} answers this with {@code !calmMotion} — always true for
+     * anyone who has not turned calm motion on — so the whole canvas, four hundred cells and
+     * four hundred clue glyphs are repainted sixty times a second, all evening, to drive a
+     * halo that measured 1.05:1 and no longer exists. Everything that still moves here runs
+     * off a clock that ends: the landing squash and the tab flash
+     * ({@link Theme#CURSOR_LAND_MS}), a player settling down ({@link #REST_FADE_MS} after
+     * {@link Theme#IDLE_HUSH_START_MS}), and the hearts, which beat only while the two
+     * cursors are together.
+     *
+     * <p>Under-reporting is much the worse mistake: a cue that is drawn but not driven
+     * freezes mid-phase, which reads as a fault rather than as calm. So this is deliberately
+     * generous in two places. A resting player keeps asking for frames for the whole 25 s
+     * before the fade starts, not only for the 1.4 s of the fade itself — nothing can wake
+     * the view up at the 25 s mark once it has stopped, so the alternative is a cursor that
+     * never dims. And "together" is measured at a cell and a half rather than at one, which
+     * covers the heart through the whole of the glide that brings it on.
+     *
+     * <p>The one thing it does <em>not</em> report is a landing under
+     * {@link Comfort#calmMotion}, because there is nothing to draw: the squash is pinned to
+     * 1 and the tabs' lean to 0. The glide itself is still covered, by
+     * {@link UiState#cursorsSettling}, which {@code Renderer.animating} asks first.
+     *
+     * <p><b>Not called yet.</b> {@code Renderer.animating} still ends its GAME branch with
+     * {@code return !Comfort.get().calmMotion}, so nothing idles until it changes over.
+     */
+    public static boolean needsFrames(UiState ui, long now) {
+        boolean lively = !Comfort.get().calmMotion;
+        int players = ui.joined[1] ? 2 : 1;
+        for (int player = 0; player < players; player++) {
+            if (settlingDown(ui, player, now)
+                    || (lively && ui.landing(player, now) < 1f)) {
+                return true;
+            }
+        }
+        return players == 2 && lively && together(ui);
+    }
+
+    /** Whether this player's cues are still on their way down to the resting state. */
+    private static boolean settlingDown(UiState ui, int player, long now) {
+        long last = ui.lastActive[player];
+        return last > 0 && now - last < Theme.IDLE_HUSH_START_MS + REST_FADE_MS;
+    }
+
+    /** Whether the two cursors are close enough for one of the hearts to be beating. */
+    private static boolean together(UiState ui) {
+        return Math.abs(ui.cursorDrawX[0] - ui.cursorDrawX[1]) <= 1.5f
+                && Math.abs(ui.cursorDrawY[0] - ui.cursorDrawY[1]) <= 1.5f;
     }
 
     private final Draw draw;
     /** Reused so a frame never allocates. Index is the player slot. */
     private final Cursor[] cursors = {new Cursor(), new Cursor()};
-    /** Scratch path for the margin tab pointers, reused for the same reason. */
-    private final android.graphics.Path nubPath = new android.graphics.Path();
+    /** Scratch path for the margin tab pointers and the shared border, reused likewise. */
+    private final Path scratchPath = new Path();
+    /**
+     * The last tab fill worked out for each player, and the identity colour it came from.
+     * {@link Theme#readableOn} walks a ratio search over real WCAG luminance — a couple of
+     * hundred {@code Math.pow} calls for an answer that only changes when a comfort option
+     * is toggled. Keying on the source colour is what makes the cache notice that.
+     */
+    private final int[] tabSource = new int[2];
+    private final int[] tabInk = new int[2];
 
     public CursorRenderer(Draw draw) {
         this.draw = draw;
@@ -98,6 +202,7 @@ public final class CursorRenderer {
         measure(rose, board, ui, 0, now);
         if (!both) {
             placeBadge(rose, null, board.size);
+            drawRails(canvas, board, rose, null, false, false);
             drawMargins(canvas, board, rose, false, false);
             drawCursor(canvas, board, rose);
             return;
@@ -106,27 +211,34 @@ public final class CursorRenderer {
         placeBadge(rose, sky, board.size);
         placeBadge(sky, rose, board.size);
 
-        // Sky's tabs step one lane further out when the two share a row or a column, so
-        // the pair reads as "we are on the same line" instead of hiding each other.
-        boolean sameRow = rose.row == sky.row;
-        boolean sameCol = rose.col == sky.col;
-        drawMargins(canvas, board, rose, false, false);
-        drawMargins(canvas, board, sky, sameRow, sameCol);
+        // Measured on the drawn positions, and with the same half-square tolerance
+        // BoardRenderer splits its crosshair bands on, so the rail and the band it sits
+        // either side of always agree about who is sharing a line with whom.
+        boolean sharedRow = BoardRenderer.sameLine(ui.cursorDrawY[0], ui.cursorDrawY[1]);
+        boolean sharedCol = BoardRenderer.sameLine(ui.cursorDrawX[0], ui.cursorDrawX[1]);
+        drawRails(canvas, board, rose, sky, sharedRow, sharedCol);
 
-        if (sameRow && sameCol) {
+        // Sky's tabs step one lane further out whenever the two would otherwise touch,
+        // rather than only when the cursors share a line: at 20x20 the pitch is 31.7 px, so
+        // two tabs on neighbouring columns fused into a single two-tone lozenge — the exact
+        // picture that elsewhere means "we are on the same square".
+        float touching = tabLength(board.cell) + Theme.scale(6);
+        boolean rowLane = Math.abs(rose.cy - sky.cy) < touching;
+        boolean colLane = Math.abs(rose.cx - sky.cx) < touching;
+        drawMargins(canvas, board, rose, false, false);
+        drawMargins(canvas, board, sky, rowLane, colLane);
+
+        if (rose.row == sky.row && rose.col == sky.col) {
             drawSharedSquare(canvas, board, rose, sky, now);
             return;
-        }
-        boolean sideBySide = Math.abs(rose.col - sky.col) <= 1
-                && Math.abs(rose.row - sky.row) <= 1;
-        if (sideBySide) {
-            drawTetherGlow(canvas, rose, sky);
         }
         // Whoever played most recently is drawn last, so the player who is actually
         // moving is never buried under a partner who is sitting still.
         boolean roseOnTop = ui.lastActive[0] >= ui.lastActive[1];
         drawCursor(canvas, board, roseOnTop ? sky : rose);
         drawCursor(canvas, board, roseOnTop ? rose : sky);
+        boolean sideBySide = Math.abs(rose.col - sky.col) <= 1
+                && Math.abs(rose.row - sky.row) <= 1;
         if (sideBySide) {
             drawTetherHeart(canvas, board, rose, sky);
         }
@@ -165,6 +277,8 @@ public final class CursorRenderer {
     private static final class Cursor {
         int player;
         int color;
+        /** The same colour lifted until it reads on the backdrop the tabs float on. */
+        int tab;
         int col;
         int row;
         float cx;
@@ -178,8 +292,11 @@ public final class CursorRenderer {
         float badge;
         /** 1 while the player is playing, easing to 0 once they have gone quiet. */
         float strength;
-        /** -1..1 breathing phase; pinned to 0 under calm motion. */
-        float breath;
+        /** 0 the instant this cursor moved, 1 once it has finished arriving. */
+        float land;
+        /** Which way it is travelling, -1/0/1 per axis, for the tabs' lean. */
+        float headingX;
+        float headingY;
         /** True when Sky must be told apart without relying on colour. */
         boolean dashed;
         boolean badgeRight;
@@ -193,63 +310,187 @@ public final class CursorRenderer {
 
         c.player = player;
         c.color = Theme.playerColor(player);
+        c.tab = tabColor(player, c.color);
         c.dashed = comfort.distinctPlayers && player == 1;
         c.strength = liveliness(ui, player, now);
-        // Only the halo breathes. The border has to stay exactly on the plate that
-        // BoardRenderer drew, and a plate that pulsed would smear its own hard edge — the
-        // one property the whole cursor now rests on.
-        c.breath = comfort.calmMotion ? 0f
-                : (float) Math.sin(now / BREATH_MS * Math.PI * 2 + player * 1.7f)
-                        * c.strength;
+        c.land = ui.landing(player, now);
+        c.headingX = ui.cursorHeadingX[player];
+        c.headingY = ui.cursorHeadingY[player];
 
         c.col = Math.round(ui.cursorDrawX[player]);
         c.row = Math.round(ui.cursorDrawY[player]);
         c.cx = board.left + (ui.cursorDrawX[player] + .5f) * cell;
         c.cy = board.top + (ui.cursorDrawY[player] + .5f) * cell;
 
+        // The landing squash. {@code cursorMovedAt} was added to time this and had no
+        // reader anywhere, so a move arrived with no feedback at all: the plate slid in and
+        // simply stopped, which is why a 92 ms glide still read as soft rather than as
+        // quick. Only the border squashes — the plate is BoardRenderer's, its hard edge is
+        // the whole findability argument, and an edge that pulses smears itself.
+        float settle = comfort.calmMotion ? 1f
+                : 1f + LAND_SQUASH * (1f - Draw.springy(c.land));
         c.plate = BoardRenderer.plateHalf(cell);
-        c.ring = BoardRenderer.plateRing(cell);
+        c.ring = BoardRenderer.plateRing(cell) * settle;
         c.stroke = BoardRenderer.plateBorder(cell);
         c.radius = Math.max(2f, cell * .17f) * (c.ring / c.plate);
-        c.badge = Math.max(Theme.scale(bold ? 13 : 11),
-                Math.min(Theme.scale(bold ? 20 : 17), cell * .28f));
+        // 21.75 px of radius, so the letter inside is 19.0 px of cap height — 13.7
+        // arcminutes from ten feet, just over Theme.MIN_READABLE_SP, which is this palette's
+        // own floor for a single isolated glyph. It was 16.5 px at 10x10, 15x15 and 20x20
+        // alike (the cell term never won), giving 10.4 arcminutes: a badge that broke the
+        // rule the rest of the game is held to, at every size anyone actually plays.
+        c.badge = Math.max(Theme.scale(bold ? 16f : 14.5f),
+                Math.min(Theme.scale(bold ? 24f : 20f), cell * .30f));
     }
 
     /**
      * How present a cursor should feel. A player who has not touched a control for a while
      * recedes — but only in the soft cues: the plate and its border stay at full strength,
      * because a resting cursor still has to be findable.
+     *
+     * <p>The wait was six seconds, which in a nonogram is not a pause, it is reading. A
+     * 20x20 clue gutter holds two hundred numbers and people work them out for a minute at
+     * a time without touching anything, so dimmed was the normal state of a player who was
+     * thinking rather than absent. It now runs off {@link Theme#IDLE_HUSH_START_MS}, the
+     * same clock the music's fade uses, so the evening quietens as one thing.
      */
     private static float liveliness(UiState ui, int player, long now) {
         long last = ui.lastActive[player];
         long idle = now - last;
-        if (last <= 0 || idle <= RESTS_AFTER_MS) {
+        if (last <= 0 || idle <= Theme.IDLE_HUSH_START_MS) {
             return 1f;
         }
-        return 1f - Draw.clamp01((idle - RESTS_AFTER_MS) / (float) REST_FADE_MS);
+        return 1f - Draw.clamp01((idle - Theme.IDLE_HUSH_START_MS) / (float) REST_FADE_MS);
+    }
+
+    // ---- The crosshair rail ------------------------------------------------------------
+
+    /**
+     * Four lines in the player's colour, on the boundaries of the cursor's own row and
+     * column, running the full width of the board and its gutter.
+     *
+     * <p>{@code BoardRenderer.drawCursorGuides} washes those two lines before the marks are
+     * drawn, which is the only order that leaves a placed tile its own colour — and it means
+     * a placed tile paints the wash out completely. Measured across Sky's row on a 20x20
+     * board mid-game, the pixels under the band read (85,52,75) and (82,50,73): per-square
+     * tile grain and nothing else. Blurred to a peripheral proxy, both crosshairs break into
+     * disconnected stubs through the picture, and the intersection — the one square the cue
+     * exists to point at — sits inside the filled region with no band at all. That is the
+     * nearly-solved board, which is exactly when finding your partner across the table
+     * matters most.
+     *
+     * <p>A cell boundary carries no mark ink. A line drawn on one can never mute a tile and
+     * can never be muted by one, so the rail is the half of the crosshair that survives the
+     * picture and the wash underneath is the half that carries the empty stretches.
+     *
+     * <p>Both rails step over both plates rather than running under them: this pass draws
+     * after the whole board, so a rail through a plate would cut the hard dark edge the
+     * cursor's findability rests on. The gap is a cell and a bit wide and reads as the rail
+     * arriving at the square rather than as a break in it.
+     *
+     * <p>On a shared line the two players take one boundary each — Rose the near one, Sky
+     * the far one — which is the same half each of them gets from
+     * {@link BoardRenderer#stripeFrom} in the band between.
+     */
+    private void drawRails(Canvas canvas, BoardLayout board, Cursor rose, Cursor sky,
+                           boolean sharedRow, boolean sharedCol) {
+        Paint paint = draw.paint();
+        paint.setStyle(Paint.Style.FILL);
+        rails(canvas, paint, board, rose, sky, sharedRow, sharedCol);
+        if (sky != null) {
+            rails(canvas, paint, board, sky, rose, sharedRow, sharedCol);
+        }
+    }
+
+    private void rails(Canvas canvas, Paint paint, BoardLayout board, Cursor c, Cursor other,
+                       boolean sharedRow, boolean sharedCol) {
+        float cell = board.cell;
+        float thick = Math.max(1.5f, Theme.scale(Theme.CURSOR_RAIL));
+        paint.setColor(Draw.withAlpha(c.color, RAIL_ALPHA));
+
+        // Rose takes the near boundary of a shared line — above on a row, left on a column
+        // — because that is the half BoardRenderer.stripeFrom gives her in the band between.
+        boolean ownsNear = c.player == 0;
+        if (!sharedRow || ownsNear) {
+            rail(canvas, paint, c.cy - cell * .5f, thick, board.clueLeft(), board.right,
+                    true, c, other);
+        }
+        if (!sharedRow || !ownsNear) {
+            rail(canvas, paint, c.cy + cell * .5f, thick, board.clueLeft(), board.right,
+                    true, c, other);
+        }
+        if (!sharedCol || ownsNear) {
+            rail(canvas, paint, c.cx - cell * .5f, thick, board.clueTop(), board.bottom,
+                    false, c, other);
+        }
+        if (!sharedCol || !ownsNear) {
+            rail(canvas, paint, c.cx + cell * .5f, thick, board.clueTop(), board.bottom,
+                    false, c, other);
+        }
+    }
+
+    /**
+     * One rail, from {@code from} to {@code to}, stepping over each plate that lies across
+     * it. The plates are taken in the order they sit along the rail, so the runs between
+     * them come out in order without anything being sorted.
+     */
+    private void rail(Canvas canvas, Paint paint, float fixed, float thick, float from,
+                      float to, boolean horizontal, Cursor one, Cursor two) {
+        // Snapped to whole pixels for the reason BoardRenderer.rule is: an anti-aliased
+        // line on a fractional coordinate spreads its weight over two pixels, and where it
+        // lands inside a pixel decides how dark it comes out.
+        float near = Math.round(fixed - thick * .5f);
+        float wide = Math.max(1f, Math.round(thick));
+        Cursor lead = two != null && along(two, horizontal) < along(one, horizontal)
+                ? two : one;
+        Cursor trail = lead == one ? two : one;
+
+        float at = skipPlate(canvas, paint, near, wide, from, to, horizontal, lead, fixed);
+        at = skipPlate(canvas, paint, near, wide, at, to, horizontal, trail, fixed);
+        run(canvas, paint, near, wide, at, to, horizontal);
+    }
+
+    /** Where a cursor sits along a rail's own axis. */
+    private static float along(Cursor c, boolean horizontal) {
+        return horizontal ? c.cx : c.cy;
+    }
+
+    /**
+     * Draws the rail up to {@code c}'s plate and answers where it should pick up again.
+     * A plate that is nowhere near this rail, or already behind it, costs nothing.
+     */
+    private float skipPlate(Canvas canvas, Paint paint, float near, float wide, float at,
+                            float limit, boolean horizontal, Cursor c, float fixed) {
+        if (c == null || Math.abs(along(c, !horizontal) - fixed) > c.plate) {
+            return at;
+        }
+        float gap = c.plate + Theme.keyline();
+        float lo = along(c, horizontal) - gap;
+        float hi = along(c, horizontal) + gap;
+        if (hi <= at || lo >= limit) {
+            return at;
+        }
+        run(canvas, paint, near, wide, at, Math.min(lo, limit), horizontal);
+        return Math.max(at, hi);
+    }
+
+    /** One unbroken stretch of rail. The paint must already be filled and coloured. */
+    private void run(Canvas canvas, Paint paint, float near, float wide, float from,
+                     float to, boolean horizontal) {
+        if (to - from < 1f) {
+            return;
+        }
+        if (horizontal) {
+            canvas.drawRect(from, near, to, near + wide, paint);
+        } else {
+            canvas.drawRect(near, from, near + wide, to, paint);
+        }
     }
 
     // ---- One cursor ------------------------------------------------------------------
 
     private void drawCursor(Canvas canvas, BoardLayout board, Cursor c) {
-        drawHalo(canvas, c);
         drawBorder(canvas, c);
         drawBadge(canvas, board, c, c.player, c.badgeRight, c.badgeBottom);
-    }
-
-    /**
-     * A soft outward glow that lifts the plate off whatever it is standing on. It is the
-     * only part of a cursor that breathes, and the only part that fades when a player goes
-     * quiet — everything load-bearing is drawn at full strength always.
-     */
-    private void drawHalo(Canvas canvas, Cursor c) {
-        float base = c.plate;
-        int alpha = (int) (20 * (.4f + .6f * c.strength));
-        for (int layer = 3; layer >= 1; layer--) {
-            float spread = base * (1.04f + layer * .11f + c.breath * .02f);
-            draw.circleStroke(canvas, c.cx, c.cy, spread, base * .24f,
-                    Draw.withAlpha(c.color, alpha - layer * 4));
-        }
     }
 
     /**
@@ -268,18 +509,19 @@ public final class CursorRenderer {
         float t = c.cy - c.ring;
         float r = c.cx + c.ring;
         float b = c.cy + c.ring;
-        float keyline = Math.max(1f, Theme.scale(1f));
+        float keyline = Theme.keyline();
         float inner = c.ring - c.stroke * .5f - keyline * .5f;
 
         draw.roundRectStroke(canvas, c.cx - inner, c.cy - inner, c.cx + inner,
-                c.cy + inner, c.radius * .9f, keyline, Color.argb(150, 30, 20, 46));
+                c.cy + inner, c.radius * .9f, keyline,
+                Draw.withAlpha(Theme.PLATE_INK, 150));
 
         if (c.dashed) {
             // Both passes share one pitch, so the dark backing lines up under the dashes
             // instead of showing through as a continuous outline.
             float pitch = Math.max(Theme.scale(6), c.stroke * 2.6f);
             dashedRect(canvas, l, t, r, b, c.radius, c.stroke * 1.6f,
-                    Color.argb(150, 22, 15, 38), pitch);
+                    Draw.withAlpha(Theme.PLATE_INK, 150), pitch);
             dashedRect(canvas, l, t, r, b, c.radius, c.stroke, c.color, pitch);
         } else {
             draw.roundRectStroke(canvas, l, t, r, b, c.radius, c.stroke, c.color);
@@ -342,14 +584,13 @@ public final class CursorRenderer {
         cy = Math.min(Math.max(cy, board.cardTop() + radius), board.cardBottom() - radius);
 
         int alpha = (int) (255 * (.8f + .2f * c.strength));
-        boolean square = c.dashed;
-        if (square) {
+        if (c.dashed) {
             // Sky's badge is a rounded square to Rose's circle: one more cue that owes
             // nothing to colour.
             float sx = cx + radius * .12f;
             float sy = cy + radius * .18f;
             draw.roundRect(canvas, sx - radius, sy - radius, sx + radius, sy + radius,
-                    radius * .42f, Color.argb(95, 18, 12, 32));
+                    radius * .42f, Draw.withAlpha(Theme.SHADOW_INK, 95));
             draw.roundRect(canvas, cx - radius, cy - radius, cx + radius, cy + radius,
                     radius * .42f, Draw.withAlpha(c.color, alpha));
             draw.roundRectStroke(canvas, cx - radius, cy - radius, cx + radius,
@@ -357,7 +598,7 @@ public final class CursorRenderer {
                     Draw.withAlpha(Theme.CREAM, 220));
         } else {
             draw.circle(canvas, cx + radius * .12f, cy + radius * .18f, radius,
-                    Color.argb(95, 18, 12, 32));
+                    Draw.withAlpha(Theme.SHADOW_INK, 95));
             draw.circle(canvas, cx, cy, radius, Draw.withAlpha(c.color, alpha));
             draw.circleStroke(canvas, cx, cy, radius, Math.max(1.5f, radius * .18f),
                     Draw.withAlpha(Theme.CREAM, 220));
@@ -370,64 +611,131 @@ public final class CursorRenderer {
     // ---- Margins ---------------------------------------------------------------------
 
     /**
+     * How long a margin tab is drawn.
+     *
+     * <p>It was {@code max(cell * .9, 45 px)}, which is wrong at both ends. On a big cell
+     * the cell won and there was no limit: a 5x5 tab measured 140 px, a slab rather than a
+     * pill. On a small cell the floor won — 45 px against a 39.3 px cell at 15x15 and a
+     * 31.7 px one at 20x20, so the tab was 1.42 columns wide while pointing at one column. A
+     * cue whose whole job is "this column, not that one" must never be wider than the column
+     * it is naming, so the floor became a ceiling: a constant while the squares are large,
+     * the square itself once the squares are small, and 51 px at both 5x5 and 10x10 —
+     * which is what "the same pill at every board size" was always supposed to mean.
+     *
+     * <p>The audit that found this proposed paying for the lost length in thickness. That
+     * was measured and dropped: the thickness formula it suggested resolves to the width the
+     * tab already has at 15x15 and 20x20, because {@code cell * .40} never reaches
+     * {@link #TAB_WIDTH} there — so it buys nothing at the two sizes where tabs collide, and
+     * {@link #marginBandHeight} would still have had to reserve the worst case, taking 23 px
+     * off the top of <em>every</em> board and making the 20x20 cell smaller. What actually
+     * stops two tabs fusing is the second lane, which now opens on distance rather than only
+     * on a shared line.
+     */
+    private static float tabLength(float cell) {
+        return Math.min(cell * .92f, Theme.scale(TAB_MAX_LENGTH));
+    }
+
+    /**
      * Tabs on the backdrop just outside the paper card, level with the cursor's row and
      * its column. They are the one cue whose size owes nothing at all to the board: at
      * 5x5 and at 20x20 they are the same pill in the same place, and because they sit off
      * the card they can be fully saturated without ever competing with a clue or a mark.
      * With the oversized finder frame retired, these are what a player picks up from
      * across the room before their eye has even reached the grid.
+     *
+     * <p>Which is also why the arrival lands here. A tab leads its cursor {@link #TAB_LEAN}
+     * into the direction of travel and eases back over {@link Theme#CURSOR_LAND_MS} —
+     * measured at 10x10, that puts it 7 px ahead of where the glide alone would have it one
+     * frame after the press. It is the loudest arrival cue the cursor has, because the
+     * landing squash on the border can only be worth 6% before it eats the cream margin the
+     * plate keeps outside it (at 5x5 the geometric ceiling is 7.6%).
+     *
+     * <p>Not stretched as well as offset, tempting though that is: a stretched tab is a tab
+     * that has stopped naming exactly one line, which is the property {@link #tabLength} was
+     * just cut back to protect. And not flashed to full opacity either — that was tried and
+     * it is a no-op, because anything that moves a cursor also marks its player active, so
+     * {@code strength} is already 1 and the tab is already at full alpha by the time the
+     * flash would apply.
      */
     private void drawMargins(Canvas canvas, BoardLayout board, Cursor c, boolean rowLane,
                              boolean colLane) {
-        boolean bold = Comfort.get().boldCursor;
-        float width = Theme.scale(TAB_WIDTH) * (bold ? 1.3f : 1f);
-        float length = Math.max(board.cell * .9f, Theme.scale(TAB_MIN_LENGTH));
+        Comfort comfort = Comfort.get();
+        float width = Theme.scale(TAB_WIDTH) * (comfort.boldCursor ? 1.3f : 1f);
+        float length = tabLength(board.cell);
         float gap = Theme.scale(5);
         float lane = width + Theme.scale(4);
         int alpha = (int) (255 * (.55f + .45f * c.strength));
+        // Clamped to under half a square so the lead can never point past the line next
+        // door, which only bites at 720p — 12 px is a third of a 20x20 cell at 1080p.
+        float lean = comfort.calmMotion ? 0f
+                : (1f - c.land) * Math.min(Theme.scale(TAB_LEAN), board.cell * .4f);
 
         float rowRight = board.cardLeft() - gap - (rowLane ? lane : 0);
-        tab(canvas, c, rowRight - width, c.cy - length * .5f, rowRight, c.cy + length * .5f,
-                alpha, true);
+        float rowY = c.cy + lean * c.headingY;
+        tab(canvas, c, rowRight - width, rowY - length * .5f, rowRight,
+                rowY + length * .5f, alpha, true);
 
         float colBottom = board.cardTop() - gap - (colLane ? lane : 0);
-        tab(canvas, c, c.cx - length * .5f, colBottom - width, c.cx + length * .5f,
+        float colX = c.cx + lean * c.headingX;
+        tab(canvas, c, colX - length * .5f, colBottom - width, colX + length * .5f,
                 colBottom, alpha, false);
+    }
+
+    /**
+     * The fill for one player's tabs: their identity colour, lifted until it reads on the
+     * dark the backdrop composites to behind the band.
+     *
+     * <p>Measured against {@link Theme#BACKDROP_REF}, Rose's pink is 5.53:1 and comes back
+     * unchanged, and so does Sky's default cyan at 7.27:1. The one that fails is the deep
+     * teal {@link Comfort#SKY_ALT} at 1.82:1 — and under that setting Sky's tab is drawn in
+     * two pieces as well, losing a further quarter of its ink, so blurred to a peripheral
+     * proxy Sky's tabs vanished while Rose's stayed obvious. An equality failure in the one
+     * mode that exists to fix an equality failure. Lifted, it reaches 4.15:1.
+     *
+     * <p>Lifting does spend the lightness gap {@code SKY_ALT} was chosen for: Rose against
+     * the lifted teal measures 1.33:1. That is not the loss it looks like, because Rose
+     * against Sky's <em>default</em> cyan is 1.31:1 — the tab in colour-blind mode ends up
+     * exactly as separable by lightness as the palette the game ships with, and everything
+     * it gains over that comes from being segmented rather than solid, which is a cue no
+     * amount of colour vision is needed for. Nothing else lifts: the border on the plate
+     * stays {@code SKY_ALT}, where it is already 6.91:1 on cream.
+     */
+    private int tabColor(int player, int color) {
+        if (tabSource[player] != color) {
+            tabSource[player] = color;
+            tabInk[player] = Theme.readableOn(color, Theme.BACKDROP_REF, TAB_RATIO);
+        }
+        return tabInk[player];
     }
 
     private void tab(Canvas canvas, Cursor c, float l, float t, float r, float b,
                      int alpha, boolean vertical) {
         float radius = Math.min(r - l, b - t) * .5f;
+        int fill = Draw.withAlpha(c.tab, alpha);
         draw.roundRect(canvas, l - 2, t - 1, r + 2, b + 3, radius,
-                Color.argb(120, 10, 6, 18));
+                Draw.withAlpha(Theme.SHADOW_INK, 120));
         // A nub on the inner edge turns the pill into a pointer aimed at the board.
         float nub = radius * 1.15f;
         if (vertical) {
             float mid = (t + b) * .5f;
-            triangle(canvas, r + nub, mid, r, mid - nub, r, mid + nub,
-                    Draw.withAlpha(c.color, alpha));
+            triangle(canvas, r + nub, mid, r, mid - nub, r, mid + nub, fill);
         } else {
             float mid = (l + r) * .5f;
-            triangle(canvas, mid, b + nub, mid - nub, b, mid + nub, b,
-                    Draw.withAlpha(c.color, alpha));
+            triangle(canvas, mid, b + nub, mid - nub, b, mid + nub, b, fill);
         }
         if (c.dashed) {
             // Segmented for Sky when colour cannot be relied on, matching the dashed ring.
             float length = vertical ? b - t : r - l;
             float piece = length * .38f;
             if (vertical) {
-                draw.roundRect(canvas, l, t, r, t + piece, radius,
-                        Draw.withAlpha(c.color, alpha));
-                draw.roundRect(canvas, l, b - piece, r, b, radius,
-                        Draw.withAlpha(c.color, alpha));
+                draw.roundRect(canvas, l, t, r, t + piece, radius, fill);
+                draw.roundRect(canvas, l, b - piece, r, b, radius, fill);
             } else {
-                draw.roundRect(canvas, l, t, l + piece, b, radius,
-                        Draw.withAlpha(c.color, alpha));
-                draw.roundRect(canvas, r - piece, t, r, b, radius,
-                        Draw.withAlpha(c.color, alpha));
+                draw.roundRect(canvas, l, t, l + piece, b, radius, fill);
+                draw.roundRect(canvas, r - piece, t, r, b, radius, fill);
             }
         } else {
-            draw.roundRect(canvas, l, t, r, b, radius, Draw.withAlpha(c.color, alpha));
+            draw.roundRect(canvas, l, t, r, b, radius, fill);
         }
         draw.roundRectStroke(canvas, l, t, r, b, radius, Math.max(1f, Theme.scale(1.6f)),
                 Draw.withAlpha(Theme.CREAM, (int) (alpha * .62f)));
@@ -439,12 +747,12 @@ public final class CursorRenderer {
         Paint paint = draw.paint();
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(color);
-        nubPath.reset();
-        nubPath.moveTo(x0, y0);
-        nubPath.lineTo(x1, y1);
-        nubPath.lineTo(x2, y2);
-        nubPath.close();
-        canvas.drawPath(nubPath, paint);
+        scratchPath.reset();
+        scratchPath.moveTo(x0, y0);
+        scratchPath.lineTo(x1, y1);
+        scratchPath.lineTo(x2, y2);
+        scratchPath.close();
+        canvas.drawPath(scratchPath, paint);
     }
 
     // ---- Playing together ------------------------------------------------------------
@@ -458,8 +766,6 @@ public final class CursorRenderer {
      */
     private void drawSharedSquare(Canvas canvas, BoardLayout board, Cursor rose, Cursor sky,
                                   long now) {
-        drawHalo(canvas, rose);
-        drawHalo(canvas, sky);
         drawSplitBorder(canvas, rose, sky);
 
         // Sky takes the corner across the diagonal from Rose, which is the same diagonal
@@ -482,69 +788,109 @@ public final class CursorRenderer {
         drawTogetherHeart(canvas, board, rose, now);
     }
 
-    /** The shared border: top and left in Rose's colour, bottom and right in Sky's. */
+    /**
+     * The shared border: top and left in Rose's colour, bottom and right in Sky's.
+     *
+     * <p>It was four straight lines, each begun {@code radius * .55} in from the corner so
+     * that the second colour would not cap over the first. That left the two corners nobody
+     * was arguing over — Rose's own top-left and Sky's own bottom-right — unpainted, a cream
+     * notch 4.2 px wide at 10x10, and the frame read as broken rather than as two players
+     * meeting. Each player now owns their diagonal corner outright, and the hand-offs happen
+     * half way round the other two, where both tangents point the same way so butt caps meet
+     * without either a gap or an overlap.
+     */
     private void drawSplitBorder(Canvas canvas, Cursor rose, Cursor sky) {
-        float l = rose.cx - rose.ring;
-        float t = rose.cy - rose.ring;
-        float r = rose.cx + rose.ring;
-        float b = rose.cy + rose.ring;
-        float core = rose.stroke;
-        float corner = rose.radius * .55f;
-        float keyline = Math.max(1f, Theme.scale(1f));
-        float inner = rose.ring - core * .5f - keyline * .5f;
+        // One square, one border, so the more recent landing drives the squash for both.
+        Cursor lead = sky.ring > rose.ring ? sky : rose;
+        float ring = lead.ring;
+        float radius = lead.radius;
+        float l = rose.cx - ring;
+        float t = rose.cy - ring;
+        float r = rose.cx + ring;
+        float b = rose.cy + ring;
+        float keyline = Theme.keyline();
+        float inner = ring - rose.stroke * .5f - keyline * .5f;
 
         draw.roundRectStroke(canvas, rose.cx - inner, rose.cy - inner, rose.cx + inner,
-                rose.cy + inner, rose.radius * .9f, keyline, Color.argb(150, 30, 20, 46));
+                rose.cy + inner, radius * .9f, keyline,
+                Draw.withAlpha(Theme.PLATE_INK, 150));
 
         Paint paint = draw.paint();
         paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(core);
+        paint.setStrokeWidth(rose.stroke);
         paint.setColor(rose.color);
-        canvas.drawLine(l + corner, t, r, t, paint);
-        canvas.drawLine(l, t + corner, l, b, paint);
+        canvas.drawPath(halfBorder(l, t, r, b, radius), paint);
         paint.setColor(sky.color);
-        canvas.drawLine(l, b, r - corner, b, paint);
-        canvas.drawLine(r, t, r, b - corner, paint);
-        paint.setStrokeCap(Paint.Cap.BUTT);
+        canvas.drawPath(halfBorder(r, b, l, t, radius), paint);
+    }
+
+    /**
+     * One player's half of a shared square's border: their own corner whole, the two edges
+     * either side of it, and half of each of the corners the other player finishes.
+     *
+     * <p>Written against a signed corner step, so Sky's half is the same call with the
+     * rectangle's opposite corners handed in — the two halves are one shape turned through
+     * 180°, and building them from one recipe is what guarantees they meet exactly.
+     */
+    private Path halfBorder(float l, float t, float r, float b, float radius) {
+        float dx = r > l ? radius : -radius;
+        float dy = b > t ? radius : -radius;
+        scratchPath.reset();
+        scratchPath.moveTo(l + HALF_ARC_MID * dx, b - HALF_ARC_MID * dy);
+        scratchPath.quadTo(l, b - dy + HALF_ARC_IN * dy, l, b - dy);
+        scratchPath.lineTo(l, t + dy);
+        scratchPath.cubicTo(l, t + dy - ARC_K * dy, l + dx - ARC_K * dx, t, l + dx, t);
+        scratchPath.lineTo(r - dx, t);
+        scratchPath.quadTo(r - dx + HALF_ARC_IN * dx, t, r - HALF_ARC_MID * dx,
+                t + HALF_ARC_MID * dy);
+        return scratchPath;
     }
 
     /** A shared heart above the square both players chose — a tiny co-op reward. */
     private void drawTogetherHeart(Canvas canvas, BoardLayout board, Cursor c, long now) {
         float beat = Comfort.get().calmMotion ? .5f
-                : (float) Math.abs(Math.sin(now / 620f));
+                : (float) Math.abs(Math.sin(now / Theme.MOTION_WARM_MS));
         float size = Math.max(board.cell * .26f, Theme.scale(15)) * (.94f + beat * .12f);
         float cy = c.badgeBottom ? c.cy + c.plate + size * 1.05f
                 : c.cy - c.plate - size * 1.05f;
-        // Drawn twice: a cream heart a shade larger reads as an outline, so the pink one
-        // survives on cream paper as well as on a filled tile.
-        draw.heart(canvas, c.cx, cy, size * 1.24f, Draw.withAlpha(Theme.CREAM, 225));
-        draw.heart(canvas, c.cx, cy, size, Draw.withAlpha(Theme.PINK, 235));
+        heartOnPlate(canvas, c.cx, cy, size, 235);
     }
 
     /**
-     * When the two cursors come to rest side by side, a soft warm tie is drawn between
-     * them. It lives on the boundary between the squares, where no mark ever sits, and it
-     * never moves on its own — hence no clock: this used to breathe, which under
-     * {@code calmMotion} was pinned anyway and otherwise only added a shimmer nobody asked
-     * a tether for.
+     * A heart on a little plate of its own.
+     *
+     * <p>It used to be a cream heart with a pink one inside it and nothing underneath, which
+     * works on clean paper and fails on the square next door: the heart lands one cell above
+     * whichever square the pair are sharing, and after ten minutes most of those squares are
+     * crossed out. Composited over an X, all four arms of the dark navy cross came out around
+     * the glyph and the whole thing read as a smudge — on the one beat the game calls
+     * "Together again ♥".
+     *
+     * <p>So it gets the same ground every other mark in this file gets: the cursor plate,
+     * scaled down. Paper fill, {@link Theme#PLATE_INK} keyline — 17:1 against paper, so the
+     * plate's edge is found by value alone whatever it is sitting on — and the heart drawn
+     * inside it. The cream outline stays, because the pink still has to separate from the
+     * plate it is now on.
      */
-    private void drawTetherGlow(Canvas canvas, Cursor rose, Cursor sky) {
-        int color = Draw.blend(rose.color, sky.color, .5f);
-        Paint paint = draw.paint();
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        for (int layer = 3; layer >= 1; layer--) {
-            paint.setStrokeWidth(Math.max(Theme.scale(12), rose.plate * layer * .5f));
-            paint.setColor(Draw.withAlpha(color, 32 - layer * 6));
-            canvas.drawLine(rose.cx, rose.cy, sky.cx, sky.cy, paint);
-        }
-        paint.setStrokeCap(Paint.Cap.BUTT);
+    private void heartOnPlate(Canvas canvas, float cx, float cy, float size, int alpha) {
+        float radius = size * .96f;
+        draw.circle(canvas, cx, cy, radius, Draw.withAlpha(Theme.PAPER, alpha));
+        draw.circleStroke(canvas, cx, cy, radius, Theme.keyline(),
+                Draw.withAlpha(Theme.PLATE_INK, alpha));
+        draw.heart(canvas, cx, cy, size * 1.16f, Draw.withAlpha(Theme.CREAM, alpha));
+        draw.heart(canvas, cx, cy, size, Draw.withAlpha(Theme.PINK, alpha));
     }
 
     /**
      * The heart goes above the pair rather than between them: the two plates meet in the
      * middle, and anything drawn there is lost under them.
+     *
+     * <p>A soft warm tie used to be drawn between the two centres as well. It was measured
+     * and removed: it only fired when the cursors were within one cell, by which point the
+     * whole line between them is underneath the two plates — and this pass runs after them,
+     * so it painted a 6% grey wash across both, taking two cream plates to (239,228,218).
+     * The tie was never once visible as a tie; all it ever did was dirty the thing it was
+     * tying.
      */
     private void drawTetherHeart(Canvas canvas, BoardLayout board, Cursor rose,
                                  Cursor sky) {
@@ -555,7 +901,6 @@ public final class CursorRenderer {
         if (my - size < board.cardTop()) {
             my = Math.max(rose.cy, sky.cy) + reach;
         }
-        draw.heart(canvas, mx, my, size * 1.3f, Draw.withAlpha(Theme.CREAM, 210));
-        draw.heart(canvas, mx, my, size, Draw.withAlpha(Theme.PINK, 220));
+        heartOnPlate(canvas, mx, my, size, 220);
     }
 }

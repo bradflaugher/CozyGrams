@@ -140,4 +140,155 @@ public class GameStateTest {
         game.startEndless(11, -4);
         assertEquals(GameState.MIN_SIZE, game.size);
     }
+
+    // ---- Who placed what -------------------------------------------------------------
+
+    /** Puts a player's cursor somewhere without going through the wrapping arithmetic. */
+    private static void at(GameState game, int player, int x, int y) {
+        game.cursorX[player] = x;
+        game.cursorY[player] = y;
+    }
+
+    @Test
+    public void aMarkRemembersWhoMadeItAndWhen() {
+        GameState game = new GameState(7, 5);
+        at(game, 0, 2, 3);
+        game.mark(0, Puzzle.FILLED, 5000);
+        assertEquals("Rose is player 1, so zero can keep meaning nobody",
+                1, game.placedBy[3][2]);
+        assertEquals(5000, game.placedAt[3][2]);
+
+        at(game, 1, 2, 3);
+        game.mark(1, Puzzle.FILLED, 9000);
+        assertEquals("clearing hands the square back to nobody",
+                GameState.NOBODY, game.placedBy[3][2]);
+        assertEquals(0, game.placedAt[3][2]);
+    }
+
+    /**
+     * The collision the design has by default: {@code resetTable} starts the two cursors on
+     * adjacent squares, so one player stepping onto the other's fresh square and pressing
+     * the same button is the ordinary opening move, not a corner case.
+     */
+    @Test
+    public void afreshSquareIsTheirPartnersForAWhile() {
+        GameState game = new GameState(7, 5);
+        at(game, 0, 2, 3);
+        game.mark(0, Puzzle.FILLED, 5000);
+
+        at(game, 1, 2, 3);
+        assertTrue("Sky is about to rub out something Rose just did",
+                game.wouldUndoPartner(1, 5000 + Theme.PARTNER_GRACE_MS - 1));
+        assertFalse("after the grace the square is simply part of the picture",
+                game.wouldUndoPartner(1, 5000 + Theme.PARTNER_GRACE_MS + 1));
+        assertFalse("nobody is ever protected from their own square",
+                game.wouldUndoPartner(0, 5000 + 10));
+    }
+
+    @Test
+    public void theGraceNeverFiresOnASquareWithNoClockBehindIt() {
+        GameState game = new GameState(7, 5);
+        at(game, 0, 2, 3);
+        game.mark(0, Puzzle.FILLED);
+        at(game, 1, 2, 3);
+        assertFalse("a timeless mark must fail open, not lock the square",
+                game.wouldUndoPartner(1, 1));
+    }
+
+    @Test
+    public void aCrossedSquareIsNeverGuarded() {
+        GameState game = new GameState(7, 5);
+        at(game, 0, 2, 3);
+        game.mark(0, Puzzle.CROSSED, 5000);
+        at(game, 1, 2, 3);
+        assertFalse("a cross is a guess about where the picture is not",
+                game.wouldUndoPartner(1, 5010));
+    }
+
+    @Test
+    public void aLineCountsAsSharedOnlyWhenBothHandsAreInIt() {
+        GameState game = new GameState(7, 5);
+        for (int x = 0; x < game.size; x++) {
+            at(game, 0, x, 2);
+            game.mark(0, Puzzle.FILLED, 100);
+        }
+        assertFalse("one player filling a row is not a shared row",
+                game.lineWasShared(0, 2, true));
+
+        at(game, 1, 4, 2);
+        game.mark(1, Puzzle.FILLED, 200);      // clears Rose's last square
+        game.mark(1, Puzzle.FILLED, 300);      // and puts Sky's own down
+        assertTrue("both of them are in that row now", game.lineWasShared(0, 2, true));
+        assertFalse("and the column through it is still Rose's alone",
+                game.lineWasShared(4, 0, false));
+    }
+
+    @Test
+    public void aNewBoardForgetsWhoPlacedWhat() {
+        GameState game = new GameState(7, 5);
+        at(game, 0, 2, 3);
+        game.mark(0, Puzzle.FILLED, 5000);
+        game.sharedLines = 4;
+        game.next();
+        assertEquals(GameState.NOBODY, game.placedBy[3][2]);
+        assertEquals(0, game.placedAt[3][2]);
+        assertEquals(0, game.sharedLines);
+        assertEquals(0, game.lastMarkAt[0]);
+    }
+
+    /** The attribution grid has to be the same shape as the marks it describes. */
+    @Test
+    public void theAttributionGridFollowsTheBoardSize() {
+        GameState game = new GameState(7, 5);
+        assertEquals(5, game.placedBy.length);
+        game.startEndless(11, 20);
+        assertEquals(20, game.placedBy.length);
+        assertEquals(20, game.placedAt[0].length);
+        game.startStory(0);
+        assertEquals(game.size, game.placedBy.length);
+    }
+
+    @Test
+    public void undoingAHintLeavesNothingBehindAndCrossingOutIsAMove() {
+        GameState game = new GameState(7, 5);
+        at(game, 0, 1, 1);
+        game.mark(0, Puzzle.FILLED, 5000);
+        int after = game.moves[0];
+        game.undoMark(0, 1, 1, Puzzle.UNKNOWN);
+        assertEquals(Puzzle.UNKNOWN, game.puzzle.marks[1][1]);
+        assertEquals(GameState.NOBODY, game.placedBy[1][1]);
+        assertEquals(after - 1, game.moves[0]);
+
+        game.crossOut(1, 4, 4, 6000);
+        assertEquals(Puzzle.CROSSED, game.puzzle.marks[4][4]);
+        assertEquals(2, game.placedBy[4][4]);
+        assertEquals(1, game.moves[1]);
+    }
+
+    @Test
+    public void aHintIsThatPlayersSquareToo() {
+        GameState game = new GameState(7, 5);
+        assertTrue(game.hint(1, 4000));
+        int x = game.cursorX[1];
+        int y = game.cursorY[1];
+        assertEquals(2, game.placedBy[y][x]);
+        assertEquals(4000, game.placedAt[y][x]);
+        assertEquals(Puzzle.FILLED, game.lastMarkKind[1]);
+    }
+
+    @Test
+    public void theCursorsKnowWhenTheyAreTogether() {
+        GameState game = new GameState(7, 10);
+        at(game, 0, 4, 4);
+        at(game, 1, 5, 4);
+        assertFalse(game.sharingASquare());
+        assertTrue(game.sideBySide());
+
+        at(game, 1, 4, 4);
+        assertTrue(game.sharingASquare());
+        assertTrue(game.sideBySide());
+
+        at(game, 1, 7, 4);
+        assertFalse(game.sideBySide());
+    }
 }

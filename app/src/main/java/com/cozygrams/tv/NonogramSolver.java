@@ -37,15 +37,22 @@ public final class NonogramSolver {
         public final byte[][] state;
         /** How many squares logic alone could not pin down. */
         public final int undetermined;
+        /**
+         * True when some line became impossible. Never happens for clues read off a real
+         * picture, but it does happen the moment a solve is seeded with a player's marks
+         * and one of those marks is wrong - see {@link #solveFrom}.
+         */
+        public final boolean contradicted;
 
-        Result(byte[][] state, int undetermined) {
+        Result(byte[][] state, int undetermined, boolean contradicted) {
             this.state = state;
             this.undetermined = undetermined;
+            this.contradicted = contradicted;
         }
 
         /** True when pure deduction filled in the whole board - the fairness guarantee. */
         public boolean solved() {
-            return undetermined == 0;
+            return undetermined == 0 && !contradicted;
         }
     }
 
@@ -101,11 +108,33 @@ public final class NonogramSolver {
      * solver never peeks at it while deducing.
      */
     public Result solve(boolean[][] picture) {
+        return solveFrom(picture, null);
+    }
+
+    /**
+     * The same line solve, but starting from what the players have already worked out
+     * instead of from an empty grid. {@code known} holds {@link #UNKNOWN}, {@link #FILL}
+     * or {@link #EMPTY} per square, or is null to start from nothing.
+     *
+     * <p>This is what lets a hint offer the square <em>logic</em> would settle next rather
+     * than whichever square happens to be nearest the cursor. A full 20x20 seeded solve
+     * costs about a tenth of a millisecond, so the game can afford to ask.
+     *
+     * <p>Seeded deduction is only as good as the seed. If a mark is wrong the line it is
+     * on may become impossible, and the result comes back {@link Result#contradicted}
+     * rather than wrong; callers fall back to solving from scratch.
+     */
+    public Result solveFrom(boolean[][] picture, byte[][] known) {
         readClues(picture);
         for (int y = 0; y < size; y++) {
-            java.util.Arrays.fill(state[y], UNKNOWN);
+            if (known == null) {
+                java.util.Arrays.fill(state[y], UNKNOWN);
+            } else {
+                System.arraycopy(known[y], 0, state[y], 0, size);
+            }
         }
 
+        boolean contradicted = false;
         int head = 0;
         int tail = 0;
         int pending = 0;
@@ -128,7 +157,9 @@ public final class NonogramSolver {
             int[] clues = isRow ? rowClues[index] : colClues[index];
             int count = isRow ? rowClueCount[index] : colClueCount[index];
             if (!narrow(clues, count)) {
-                // Cannot happen for clues taken from a real picture, but never loop forever.
+                // Cannot happen for clues taken from a real picture and an empty grid, but
+                // a seeded solve reaches it as soon as one of the seeded marks is wrong.
+                contradicted = true;
                 break;
             }
             for (int at = 0; at < size; at++) {
@@ -161,7 +192,75 @@ public final class NonogramSolver {
                 }
             }
         }
-        return new Result(copy, unknown);
+        return new Result(copy, unknown, contradicted);
+    }
+
+    // ---- Hinting ----------------------------------------------------------------------
+
+    /**
+     * The square pure logic would settle next, given what the players have marked so far:
+     * {@code {x, y, state}} where state is {@link #FILL} or {@link #EMPTY}, or null when
+     * there is nothing left to find.
+     *
+     * <p>Two things make this a better hint than "the nearest square that is not filled
+     * in yet". It only ever offers a square the clues actually force <em>from where the
+     * pair are now</em>, so the hint teaches the deduction rather than handing over an
+     * answer nobody could have reached. And it can say "this one is empty" - roughly half
+     * of all nonogram deductions are crosses, and a hint that can only ever fill squares
+     * has to skip them.
+     *
+     * <p>Among the squares it could offer it picks the one in the row or column with the
+     * fewest unknowns left, so a hint tends to be the square that finishes a line.
+     *
+     * <p>If the pair have made a mistake, the seeded solve contradicts itself or deduces
+     * something the picture disagrees with; either way this falls back to solving from
+     * scratch, which can still always find something while the board is unfinished.
+     */
+    public int[] nextDeduction(boolean[][] picture, byte[][] marks) {
+        int[] found = bestOf(solveFrom(picture, marks), picture, marks);
+        return found != null ? found : bestOf(solveFrom(picture, null), picture, marks);
+    }
+
+    private int[] bestOf(Result result, boolean[][] picture, byte[][] marks) {
+        if (result.contradicted) {
+            return null;
+        }
+        int[] rowLeft = new int[size];
+        int[] colLeft = new int[size];
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                if (marks == null || marks[y][x] == UNKNOWN) {
+                    rowLeft[y]++;
+                    colLeft[x]++;
+                }
+            }
+        }
+        int bestX = -1;
+        int bestY = -1;
+        byte bestState = UNKNOWN;
+        int bestScore = Integer.MAX_VALUE;
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                if (marks != null && marks[y][x] != UNKNOWN) {
+                    continue;
+                }
+                byte deduced = result.state[y][x];
+                if (deduced == UNKNOWN) {
+                    continue;
+                }
+                if ((deduced == FILL) != picture[y][x]) {
+                    return null;                 // a mark lied; this whole solve is suspect
+                }
+                int score = Math.min(rowLeft[y], colLeft[x]);
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestX = x;
+                    bestY = y;
+                    bestState = deduced;
+                }
+            }
+        }
+        return bestX < 0 ? null : new int[] {bestX, bestY, bestState};
     }
 
     // ---- Clue bookkeeping ------------------------------------------------------------

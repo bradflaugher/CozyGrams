@@ -13,14 +13,24 @@ import java.util.Arrays;
  * <ul>
  *   <li>A single rendered SFX voice is normalised so it can never exceed {@link #VOICE_PEAK}
  *       (0.30). Quiet sounds such as {@code MOVE} sit far below that.</li>
- *   <li>The SFX bus sums all twelve voice slots and is soft-limited to {@link #SFX_CEILING}
- *       (0.62), so even a wall of simultaneous two-player input cannot run away.</li>
+ *   <li>The SFX bus sums all twelve voice slots, adds the room, and is soft-limited to
+ *       {@link #SFX_CEILING} (0.62), so even a wall of simultaneous two-player input cannot
+ *       run away.</li>
  *   <li>The music bus is soft-limited to {@link #MUSIC_CEILING} (0.34).</li>
  * </ul>
  *
  * <p>Music and SFX are two separate {@code AudioTrack}s which the platform adds together, so the
  * worst case the speaker can ever see is 0.62 + 0.34 = <b>0.96 of full scale</b> — roughly 0.35 dB
  * of headroom held in reserve. Music plus a fistful of concurrent effects therefore cannot clip.
+ * {@link Room} is deliberately inserted <em>before</em> each bus limiter, so adding reverb cannot
+ * move that number: the limiter is what makes the guarantee, not the level of what feeds it.
+ *
+ * <h3>Two players, two pitches</h3>
+ * Rose and Sky are told apart on screen by colour and a badge. They are told apart in the room by
+ * {@link #playerTilt}: every frequency in a player's own sounds is multiplied by it, so Sky sits a
+ * perfect fifth above Rose. That interval is safe by construction because the score is F major
+ * pentatonic (F G A C D) — Rose's fill lands on F4 and Sky's on C5, both in the scale, so two
+ * people pressing at the same instant make a fifth and never a clash.
  */
 final class CozySynth {
 
@@ -47,7 +57,8 @@ final class CozySynth {
     static final int SELECT = 7;
     static final int LINE = 8;
     static final int JOIN = 9;
-    static final int SOUND_COUNT = 10;
+    static final int NUDGE = 10;
+    static final int SOUND_COUNT = 11;
 
     private static final int[] DURATION_MS = {
             58,    // MOVE   — barely there
@@ -56,15 +67,16 @@ final class CozySynth {
             170,   // CLEAR
             620,   // HINT
             340,   // ERROR
-            1500,  // WIN
+            2100,  // WIN
             160,   // SELECT
-            460,   // LINE
-            760    // JOIN
+            560,   // LINE
+            760,   // JOIN
+            240    // NUDGE
     };
 
     /** Per-sound peak target, all comfortably under {@link #VOICE_PEAK}. */
     private static final double[] PEAK = {
-            0.075, // MOVE   — a fingertip, not a click
+            0.100, // MOVE   — a fingertip, not a click, but it has to beat the music
             0.220, // FILL
             0.150, // CROSS
             0.135, // CLEAR
@@ -73,7 +85,8 @@ final class CozySynth {
             0.300, // WIN
             0.185, // SELECT
             0.215, // LINE
-            0.235  // JOIN
+            0.235, // JOIN
+            0.105  // NUDGE  — a refusal should be softer than an answer
     };
 
     static int durationMs(int sound) {
@@ -141,6 +154,36 @@ final class CozySynth {
         return 440 * Math.pow(2, (midi - 69) / 12.0);
     }
 
+    /** Sky's frequency multiplier: a perfect fifth, {@code cents(700)}. */
+    static final double FIFTH = 1.4983070768766815;
+
+    /**
+     * The audible half of a player's identity, to sit beside {@code Theme.playerColor(who)}.
+     * Player 0 keeps the sounds as written; player 1 hears every one of them a fifth up.
+     * Anything else — a menu, a shared cursor, the room — is player 0's pitch, because the
+     * cursor it belongs to is nobody's in particular.
+     */
+    static double playerTilt(int who) {
+        return who == 1 ? FIFTH : 1.0;
+    }
+
+    /**
+     * Constant-power pan, {@code position} from -1 (hard left) to +1 (hard right). Constant
+     * power rather than constant amplitude because a TV that folds down to mono is the common
+     * case, and this keeps a panned sound within 0.5 dB of a centred one when it does.
+     */
+    static double panLeft(double position) {
+        return Math.cos((clampPan(position) + 1) * Math.PI / 4);
+    }
+
+    static double panRight(double position) {
+        return Math.sin((clampPan(position) + 1) * Math.PI / 4);
+    }
+
+    private static double clampPan(double position) {
+        return position < -1 ? -1 : (position > 1 ? 1 : position);
+    }
+
     /**
      * Click-free amplitude shape: raised-cosine attack, exponential body, raised-cosine release
      * that reaches exactly zero at {@code duration}. Returns 0 outside {@code (0, duration)}.
@@ -193,38 +236,55 @@ final class CozySynth {
         }
     }
 
-    // ---- The ten voices --------------------------------------------------------------
+    // ---- The eleven voices ------------------------------------------------------------
 
+    /** The sounds as written, with no player identity and no run position on them. */
     static int render(int sound, long seed, float[] out) {
+        return render(sound, seed, out, 1.0);
+    }
+
+    /**
+     * Renders one voice with every frequency in it multiplied by {@code tilt}.
+     *
+     * <p>One multiplier carries two things at once: which player pressed the key
+     * ({@link #playerTilt}) and where in a run or a walk the press sits. Folding them into a
+     * single number is what keeps this class ignorant of players and of the game — it only ever
+     * has to know how far to move the pitch. {@code HINT}, {@code WIN}, {@code JOIN} and
+     * {@code LINE} ignore it: those belong to the room, not to a person.
+     */
+    static int render(int sound, long seed, float[] out, double tilt) {
         int count = sampleCount(sound);
         Arrays.fill(out, 0, count, 0f);
         switch (sound) {
             case MOVE:
-                renderMove(seed, out, count);
+                renderMove(seed, out, count, tilt);
                 break;
             case FILL:
-                renderFill(seed, out, count);
+                renderFill(seed, out, count, tilt);
                 break;
             case CROSS:
-                renderCross(seed, out, count);
+                renderCross(seed, out, count, tilt);
                 break;
             case CLEAR:
-                renderClear(seed, out, count);
+                renderClear(seed, out, count, tilt);
                 break;
             case HINT:
                 renderHint(seed, out, count);
                 break;
             case ERROR:
-                renderError(seed, out, count);
+                renderError(seed, out, count, tilt);
                 break;
             case WIN:
                 renderWin(seed, out, count);
                 break;
             case SELECT:
-                renderSelect(seed, out, count);
+                renderSelect(seed, out, count, tilt);
                 break;
             case LINE:
                 renderLine(seed, out, count);
+                break;
+            case NUDGE:
+                renderNudge(seed, out, count, tilt);
                 break;
             default:
                 renderJoin(seed, out, count);
@@ -233,9 +293,15 @@ final class CozySynth {
         return polish(out, count, PEAK[sound], seed);
     }
 
-    /** A fingertip landing on felt. Dark, tiny, and never the same twice. */
-    private static void renderMove(long seed, float[] out, int count) {
-        double freq = 592 * cents((rnd(seed, 1) - .5) * 110);
+    /**
+     * A fingertip landing on felt. Dark, tiny, and never the same twice.
+     *
+     * <p>The base note is D5, not the 592 Hz it used to be: the tick now sits inside the score's
+     * F major pentatonic, so a cursor walking across the board is in tune with the music behind
+     * it instead of beating against it.
+     */
+    private static void renderMove(long seed, float[] out, int count, double tilt) {
+        double freq = 587.33 * tilt * cents((rnd(seed, 1) - .5) * 110);
         double duration = count / (double) SAMPLE_RATE;
         double puff = 0;
         for (int i = 0; i < count; i++) {
@@ -248,8 +314,8 @@ final class CozySynth {
     }
 
     /** A wooden bead pressed into place: a soft thock plus a short, warm modal ring. */
-    private static void renderFill(long seed, float[] out, int count) {
-        double freq = 349.23 * cents((rnd(seed, 2) - .5) * 44);
+    private static void renderFill(long seed, float[] out, int count, double tilt) {
+        double freq = 349.23 * tilt * cents((rnd(seed, 2) - .5) * 44);
         double duration = count / (double) SAMPLE_RATE;
         double[] ratios = {1, 2.01, 3.04, 4.97, 6.91};
         double[] gains = {1, .42, .20, .10, .045};
@@ -268,14 +334,27 @@ final class CozySynth {
         }
     }
 
-    /** Graphite dragged across paper: a swept resonant noise band with a little grain. */
-    private static void renderCross(long seed, float[] out, int count) {
+    /**
+     * Graphite dragged across paper: a swept resonant noise band with a little grain.
+     *
+     * <p>Crossing is the most repeated deliberate action in a nonogram — most of a 20x20 board
+     * ends up with an X on it — so this is the one voice that has to survive being heard a
+     * thousand times in an evening. It used to sweep 3050 → 1650 Hz with a wide resonance and
+     * put 77% of its energy in 2–6 kHz, which is the ear's presence peak and the most fatiguing
+     * region there is. Now it sweeps 2050 → 980 Hz through a tighter band into a 4.2 kHz
+     * one-pole, and the paper body is up from .10 to .16 to give the pencil back the weight the
+     * lost top used to imply. Same gesture, an octave less spray.
+     */
+    private static void renderCross(long seed, float[] out, int count, double tilt) {
         double duration = count / (double) SAMPLE_RATE;
-        double top = 3050 * cents((rnd(seed, 3) - .5) * 260);
-        double bottom = 1650;
-        double resonance = 1 / 1.55;
+        double top = 2050 * tilt * cents((rnd(seed, 3) - .5) * 260);
+        double bottom = 980 * tilt;
+        double resonance = 1 / 1.95;
+        // 1 - exp(-2*PI*4200/44100): the corner that takes the spray off without dulling the bite.
+        double smoothing = .450;
         double ic1 = 0;
         double ic2 = 0;
+        double lp = 0;
         for (int i = 0; i < count; i++) {
             double t = i / (double) SAMPLE_RATE;
             double position = t / duration;
@@ -291,17 +370,18 @@ final class CozySynth {
             ic2 = 2 * v2 - ic2;
             double grain = .78 + .22 * sin(150 * t + rnd(seed, 5));
             double shape = env(t, duration, .0025, .048) * grain;
-            double paper = sin(168 * t) * Math.exp(-t * 58) * .10;
-            out[i] = (float) (shape * v1 * 1.9 + paper * shape);
+            double paper = sin(168 * tilt * t) * Math.exp(-t * 58) * .16;
+            lp += (v1 * 1.9 - lp) * smoothing;
+            out[i] = (float) (shape * lp + paper * shape);
         }
     }
 
     /** Brushing a crumb off the table: dark air sweeping down with a soft descending puff. */
-    private static void renderClear(long seed, float[] out, int count) {
+    private static void renderClear(long seed, float[] out, int count, double tilt) {
         double duration = count / (double) SAMPLE_RATE;
         double lp = 0;
         double lp2 = 0;
-        double base = 330 * cents((rnd(seed, 4) - .5) * 50);
+        double base = 330 * tilt * cents((rnd(seed, 4) - .5) * 50);
         double phase = 0;
         for (int i = 0; i < count; i++) {
             double t = i / (double) SAMPLE_RATE;
@@ -341,8 +421,8 @@ final class CozySynth {
      * A soft two-note sigh, not a scold. Two felt-piano notes a minor third apart, the second
      * leaning down under the first — the sound of someone saying "mm, not quite" kindly.
      */
-    private static void renderError(long seed, float[] out, int count) {
-        double drift = cents((rnd(seed, 6) - .5) * 20);
+    private static void renderError(long seed, float[] out, int count, double tilt) {
+        double drift = tilt * cents((rnd(seed, 6) - .5) * 20);
         double[] ratios = {1, 2.002, 3.01, 4.02};
         double[] gains = {1, .26, .09, .035};
         double[] taus = {.30, .17, .10, .06};
@@ -351,10 +431,35 @@ final class CozySynth {
                 ratios, gains, taus, .034, .21);
     }
 
-    /** Sunlight through the window: a rolled Fmaj9 on bells over a warm pad and a low root. */
+    /**
+     * A single muted note that does not fall — "mm", where {@link #ERROR} says "sorry".
+     *
+     * <p>Refusing something is not the same as getting something wrong, and the game had only
+     * one sound for both: asking for a hint with hints switched off used to play the two-note
+     * apology built for a mis-tap. This is the answer to "that is not available right now".
+     */
+    private static void renderNudge(long seed, float[] out, int count, double tilt) {
+        double drift = tilt * cents((rnd(seed, 12) - .5) * 16);
+        double[] ratios = {1, 2.002, 3.01};
+        double[] gains = {1, .18, .05};
+        double[] taus = {.20, .11, .06};
+        softNote(out, count, 0, 293.66 * drift, .60, ratios, gains, taus, .035, .22);
+    }
+
+    /**
+     * Sunlight through the window: a rolled Fmaj9 on bells over a warm pad and a low root.
+     *
+     * <p>The roll is nine bells over 1.18 s rather than seven over 0.70 s because it has to keep
+     * pace with what the screen is doing: {@code WinScene}'s beat sheet lands the plaque at
+     * 340 ms, the name at 470, the message at 620, the credit at 740, the journey at 850, the
+     * invitation at 950 and the last hint at 1120. With the old roll the final five of those
+     * arrived into a decaying tail, so the picture kept unfolding after the music had stopped
+     * having anything to say about it.
+     */
     private static void renderWin(long seed, float[] out, int count) {
-        double[] roll = {349.23, 440.00, 523.25, 659.25, 783.99, 1046.50, 1396.91};
-        int[] onsets = {0, 88, 172, 254, 336, 470, 700};
+        double[] roll = {349.23, 440.00, 523.25, 659.25, 783.99, 1046.50, 1396.91, 1567.98,
+                2093.00};
+        int[] onsets = {0, 88, 172, 254, 336, 470, 700, 950, 1180};
         for (int n = 0; n < roll.length; n++) {
             double detune = cents((rnd(seed, 80 + n) - .5) * 16);
             fmBell(out, count, onsets[n] * SAMPLE_RATE / 1000, roll[n] * detune,
@@ -378,9 +483,9 @@ final class CozySynth {
     }
 
     /** A rounded wooden button: a fast downward glide settling onto C5. */
-    private static void renderSelect(long seed, float[] out, int count) {
+    private static void renderSelect(long seed, float[] out, int count, double tilt) {
         double duration = count / (double) SAMPLE_RATE;
-        double target = 523.25 * cents((rnd(seed, 7) - .5) * 30);
+        double target = 523.25 * tilt * cents((rnd(seed, 7) - .5) * 30);
         double phase = 0;
         for (int i = 0; i < count; i++) {
             double t = i / (double) SAMPLE_RATE;
@@ -393,21 +498,30 @@ final class CozySynth {
         }
     }
 
-    /** A line settles: three chimes up the F pentatonic with a thin shimmer behind them. */
+    /**
+     * A line settles: three chimes down the F pentatonic onto the tonic, under a warm shimmer.
+     *
+     * <p>This used to rise — C5 G5 D6 with a 2–3 kHz shimmer — which made it the same gesture as
+     * {@link #renderHint}, and the two were measurably the closest pair in the whole set. They
+     * also share the same gold on screen, so neither eye nor ear could tell them apart. A hint
+     * <em>opens something up</em>, so it still climbs; a finished line <em>closes</em>, so it now
+     * falls C5 → G4 → F4 and lands on the tonic. Ending on the root is a resolution, not a
+     * disappointment — and the gold toast above it is already saying the nice part out loud.
+     */
     private static void renderLine(long seed, float[] out, int count) {
-        double[] notes = {783.99, 1046.50, 1174.66};
-        int[] onsets = {0, 84, 164};
+        double[] notes = {523.25, 392.00, 349.23};
+        int[] onsets = {0, 110, 210};
         for (int n = 0; n < notes.length; n++) {
             double detune = cents((rnd(seed, 20 + n) - .5) * 22);
             fmBell(out, count, onsets[n] * SAMPLE_RATE / 1000, notes[n] * detune,
-                    .58 - n * .04, 2.5, .24, .34, .46);
+                    .58 - n * .04, 1.5, .19, .42, .58);
         }
         double duration = count / (double) SAMPLE_RATE;
         for (int i = 0; i < count; i++) {
             double t = i / (double) SAMPLE_RATE;
             double shape = env(t, duration, .09, .34);
-            out[i] += (float) (shape * .055
-                    * (sin(2093 * t) + .6 * sin(3136.0 * 1.001 * t)));
+            out[i] += (float) (shape * .038
+                    * (sin(1046.50 * t) + .6 * sin(1567.98 * 1.001 * t)));
         }
     }
 
@@ -487,5 +601,123 @@ final class CozySynth {
             out[i] = (float) (out[i] * gain);
         }
         return count;
+    }
+
+    // ---- The room --------------------------------------------------------------------
+
+    /**
+     * The room CozyGrams is played in: a small, damped, slightly asymmetric space.
+     *
+     * <p>Everything before this class was bone dry and dead centre, which is the one thing a
+     * living-room game cannot be. A sound with no reflections has no distance, and a mix with no
+     * width has no room — it has a speaker. This is a cut-down Freeverb: four damped comb filters
+     * in parallel into two allpass diffusers, per channel, with the right channel's delay lines
+     * 23 samples longer so the two ears never hear the same tail.
+     *
+     * <p>The numbers, and why: the combs average 1522 samples (34.5 ms) and each pass loses
+     * 1.94 dB to the 0.80 feedback plus more off the top to the damping, which measures out as an
+     * <b>RT60 of 0.84 s</b> — a small warm room, not a hall, which is what a sofa wants. The
+     * one-pole damping at 0.36 pulls the treble off each pass so the tail darkens as it goes, the
+     * way a room full of soft furniture does. Measured cost is 1.31 ms of CPU per second of
+     * stereo audio, 0.13% of one core on this desktop, and 55 KB of delay line for the pair.
+     *
+     * <p>It is deliberately inserted <em>before</em> each bus limiter. That keeps
+     * {@link CozySynth}'s headroom proof exactly as it was: the limiter is the guarantee, and
+     * everything upstream of it is free to get louder.
+     */
+    static final class Room {
+
+        private static final int[] COMB = {1557, 1617, 1491, 1422};
+        private static final int[] ALLPASS = {225, 556};
+        /** The right channel's lines are this much longer, which is all the width there is. */
+        private static final int SPREAD = 23;
+        private static final double FEEDBACK = .80;
+        private static final double DAMPING = .36;
+        private static final double ALLPASS_GAIN = .5;
+        /** Averages the four parallel combs so the wet path cannot out-shout the dry one. */
+        private static final double INPUT = .25;
+
+        private final float[][] comb = new float[COMB.length * 2][];
+        private final int[] combAt = new int[COMB.length * 2];
+        private final float[] combStore = new float[COMB.length * 2];
+        private final float[][] allpass = new float[ALLPASS.length * 2][];
+        private final int[] allpassAt = new int[ALLPASS.length * 2];
+        private final double wet;
+
+        /** {@code wet} is how much of the room to add to the dry signal, which stays at 1.0. */
+        Room(double wet) {
+            this.wet = wet;
+            for (int channel = 0; channel < 2; channel++) {
+                for (int k = 0; k < COMB.length; k++) {
+                    comb[channel * COMB.length + k] =
+                            new float[COMB[k] + channel * SPREAD];
+                }
+                for (int k = 0; k < ALLPASS.length; k++) {
+                    allpass[channel * ALLPASS.length + k] =
+                            new float[ALLPASS[k] + channel * SPREAD];
+                }
+            }
+        }
+
+        /**
+         * Adds the room to {@code frames} interleaved stereo frames starting at frame
+         * {@code from}, in place. Purely sequential and sample-by-sample, so the result does not
+         * depend on how the caller chops the stream into blocks.
+         */
+        void process(float[] out, int from, int frames) {
+            for (int f = 0; f < frames; f++) {
+                int i = (from + f) * 2;
+                double input = (out[i] + out[i + 1]) * .5 * INPUT;
+                for (int channel = 0; channel < 2; channel++) {
+                    out[i + channel] += (float) (diffuse(combs(input, channel), channel) * wet);
+                }
+            }
+        }
+
+        /** Four damped combs in parallel: the body of the tail. */
+        private double combs(double input, int channel) {
+            double sum = 0;
+            for (int k = 0; k < COMB.length; k++) {
+                int s = channel * COMB.length + k;
+                float[] line = comb[s];
+                double delayed = line[combAt[s]];
+                combStore[s] = (float) (delayed * (1 - DAMPING) + combStore[s] * DAMPING);
+                line[combAt[s]] = (float) (input + combStore[s] * FEEDBACK);
+                if (++combAt[s] >= line.length) {
+                    combAt[s] = 0;
+                }
+                sum += delayed;
+            }
+            return sum;
+        }
+
+        /** Two allpasses in series: smears the comb echoes into something without a pulse. */
+        private double diffuse(double input, int channel) {
+            double value = input;
+            for (int k = 0; k < ALLPASS.length; k++) {
+                int s = channel * ALLPASS.length + k;
+                float[] line = allpass[s];
+                double delayed = line[allpassAt[s]];
+                line[allpassAt[s]] = (float) (value + delayed * ALLPASS_GAIN);
+                if (++allpassAt[s] >= line.length) {
+                    allpassAt[s] = 0;
+                }
+                value = delayed - value;
+            }
+            return value;
+        }
+
+        /** Empties the room. Needed whenever the track underneath is flushed. */
+        void clear() {
+            for (float[] line : comb) {
+                Arrays.fill(line, 0f);
+            }
+            for (float[] line : allpass) {
+                Arrays.fill(line, 0f);
+            }
+            Arrays.fill(combStore, 0f);
+            Arrays.fill(combAt, 0);
+            Arrays.fill(allpassAt, 0);
+        }
     }
 }

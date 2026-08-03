@@ -53,6 +53,7 @@ public final class SaveStore {
     private static final String KEY_STORY_FURTHEST = "storyFurthest";
     private static final String KEY_MARKS = "marks";
     private static final String KEY_PICTURE = "picture";
+    private static final String KEY_NEXT_SIZE = "nextSize";
 
     private static final String KEY_FINISHED = "finished";
     private static final String KEY_CHAPTERS = "chapters";
@@ -93,6 +94,17 @@ public final class SaveStore {
     private boolean writeScheduled;
     private boolean startedFresh;
 
+    /**
+     * A board size chosen while a picture was in progress, waiting for the next one.
+     *
+     * <p>It lives here rather than only in the view because it is a choice the player made
+     * and would notice losing: stepping BOARD SIZE to 15x15 halfway through a picture and
+     * then turning the television off used to throw the choice away silently, while the
+     * board it was waiting for came back intact. Zero means "no pending size", which is
+     * also what an absent key reads as — so this needs no {@link #SCHEMA} bump.
+     */
+    private int pendingSize;
+
     public SaveStore(Context context) {
         this.prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
         Looper main = Looper.getMainLooper();
@@ -124,8 +136,35 @@ public final class SaveStore {
                 clampStoryIndex(readInt(KEY_STORY_FURTHEST, game.storyIndex), chapters));
 
         startedFresh = !trusted || !restoreBoard(game);
+        // Kept in story mode too, deliberately: a size banked while a chapter was open is
+        // the pair asking to leave the book after it, and dropping it here would make the
+        // book a one-way door again for anyone who turned the television off first.
+        pendingSize = trusted ? clampPendingSize(readInt(KEY_NEXT_SIZE, 0)) : 0;
         loadJourney();
         return game;
+    }
+
+    /**
+     * A pending size, or 0. Anything outside the board sizes the game deals is dropped
+     * rather than clamped: a value we cannot vouch for is not a choice the player made,
+     * and the honest answer to "which size did they pick" is then "none".
+     */
+    static int clampPendingSize(int size) {
+        return size < GameState.MIN_SIZE || size > GameState.MAX_SIZE ? 0 : size;
+    }
+
+    /** The size the next endless picture should use, or 0 when none was chosen. */
+    public int pendingSize() {
+        return pendingSize;
+    }
+
+    /**
+     * Records a size chosen for the next picture. It is part of {@link #digest}, ahead of
+     * the newline, so choosing one is written straight away rather than coalesced with the
+     * squares.
+     */
+    public void setPendingSize(int size) {
+        pendingSize = clampPendingSize(size);
     }
 
     /**
@@ -221,7 +260,7 @@ public final class SaveStore {
 
     private void store(GameState game, UiState ui, boolean immediate) {
         accrueJourney(game);
-        String digest = digest(game, ui, journey);
+        String digest = digest(game, ui, journey, pendingSize);
         if (digest.equals(lastWritten)) {
             return;
         }
@@ -241,7 +280,8 @@ public final class SaveStore {
      */
     private void scheduleTrailingWrite(GameState game, UiState ui, long delay) {
         if (handler == null) {
-            write(game, ui, digest(game, ui, journey), System.currentTimeMillis());
+            write(game, ui, digest(game, ui, journey, pendingSize),
+                    System.currentTimeMillis());
             return;
         }
         if (writeScheduled) {
@@ -269,6 +309,7 @@ public final class SaveStore {
                 .putInt(KEY_STORY_FURTHEST, game.storyFurthest)
                 .putString(KEY_MARKS, encodeMarks(game.puzzle.marks))
                 .putString(KEY_PICTURE, fingerprint(game.puzzle))
+                .putInt(KEY_NEXT_SIZE, pendingSize)
                 .putInt(KEY_FINISHED, journey.puzzlesFinished)
                 .putInt(KEY_CHAPTERS, journey.chaptersFinished)
                 .putInt(KEY_SQUARES_0, journey.squares[0])
@@ -419,13 +460,17 @@ public final class SaveStore {
      * told apart from a setting being changed, so the burst can be coalesced while
      * anything the player would notice losing is written straight away. The clock is
      * deliberately left out, so "nothing happened" stays equal to itself.
+     *
+     * @param pendingSize the size waiting for the next picture, 0 for none. It sits ahead
+     *                    of the newline because choosing one is a decision, not a square.
      */
-    static String digest(GameState game, UiState ui, Journey journey) {
+    static String digest(GameState game, UiState ui, Journey journey, int pendingSize) {
         Comfort comfort = Comfort.get();
         StringBuilder out = new StringBuilder(600);
         out.append(SCHEMA).append('|')
                 .append(game.seed).append('|')
                 .append(game.size).append('|')
+                .append(pendingSize).append('|')
                 .append(game.solved).append('|')
                 .append(game.storyMode ? 1 : 0).append('|')
                 .append(game.storyIndex).append('|')

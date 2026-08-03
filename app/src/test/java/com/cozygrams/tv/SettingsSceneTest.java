@@ -2,14 +2,17 @@ package com.cozygrams.tv;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 /**
  * The cozy corner's contract: the rows line up with what they claim to do, every row can
- * be reached and changed with nothing but a D-pad, and the whole list still fits on a
- * 1080p panel at the largest text size.
+ * be reached and changed with nothing but a D-pad, the one row that cannot be undone asks
+ * first, and the whole list still fits on a 1080p panel at the largest text size.
  */
 public class SettingsSceneTest {
 
@@ -18,6 +21,15 @@ public class SettingsSceneTest {
      * behave as though the screen were 16% taller than it is.
      */
     private static final float BIG_TEXT_SCALE = 1.16f;
+
+    /** The screen keeps its armed row and its note in statics, so put them back. */
+    @Before
+    @After
+    public void tidyUp() {
+        SettingsScene.forgetTheRoom();
+        Comfort.get().restoreDefaults();
+        Theme.setTextScale(1f);
+    }
 
     @Test
     public void everyRowHasALabelAndAnExplanation() {
@@ -35,17 +47,39 @@ public class SettingsSceneTest {
 
     /**
      * Long strings are what break a 10-foot layout. The label shares its pill with a
-     * switch, and the explanation gets one line across the panel, so both have a budget.
+     * switch, the printed state and — on one row — two identity chips, and the explanation
+     * gets one line across the panel.
+     *
+     * <p>Character counts are a proxy, and they are the only one available here:
+     * {@code Paint.measureText} returns zero under {@code returnDefaultValues}, so
+     * {@code fit()} would report every string as fitting. The real numbers come from the
+     * preview harness at 1920x1080 with LARGER TEXT on, where the label lane is 560.6 px
+     * for a plain switch row and 468.0 px for the identity row, which also carries two
+     * colour chips. The longest of each measured 528.8 px ("GENTLE MISTAKE CHECK", 20
+     * characters) and 389.6 px ("TELL THEM APART", 15). A label can never shrink to fit,
+     * because at LARGER TEXT {@code textSize(17)} is already sitting on the prose floor —
+     * so these caps are the whole guard, and the render is what checks them.
      */
     @Test
     public void nothingIsTooLongToFitItsPlace() {
-        for (String label : SettingsScene.labels()) {
-            assertTrue(label + " is too long for a row", label.length() <= 22);
+        for (int item = 0; item < SettingsScene.ITEM_COUNT; item++) {
+            String label = SettingsScene.labels()[item];
+            int budget = item == SettingsScene.ITEM_DISTINCT_PLAYERS ? 16
+                    : (SettingsScene.hasSwitch(item) ? 20 : 22);
+            assertTrue(label + " is too long for its lane", label.length() <= budget);
         }
         for (String description : SettingsScene.descriptions()) {
             assertTrue(description + " is too long for one line",
                     description.length() <= 46);
         }
+    }
+
+    /** The armed label is drawn in the same lane as the resting one. */
+    @Test
+    public void theQuestionFitsWhereTheRowDoes() {
+        SettingsScene.armDefaults(1000);
+        assertTrue(SettingsScene.labels()[SettingsScene.ITEM_DEFAULTS].length() <= 22);
+        assertTrue(SettingsScene.labels()[SettingsScene.ITEM_DEFAULTS].endsWith("?"));
     }
 
     @Test
@@ -129,6 +163,12 @@ public class SettingsSceneTest {
         assertFalse(SettingsScene.hasSwitch(-1));
     }
 
+    /**
+     * The reset now takes two presses, not one. That is a deliberate change: the row wipes
+     * all nine options with no undo and sits one row above BACK TO THE PUZZLE, which is
+     * where every visit ends — a single overshoot downward from CALMER ANIMATION used to
+     * be enough to lose the lot.
+     */
     @Test
     public void puttingEverythingBackReachesBothHalvesOfTheOptions() {
         UiState ui = new UiState();
@@ -138,11 +178,117 @@ public class SettingsSceneTest {
         Comfort.get().distinctPlayers = true;
 
         SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS);
+        assertTrue("the first press only asks", SettingsScene.defaultsArmed());
+        assertTrue("nothing has been undone yet", ui.bigTextOn);
 
+        SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS);
+
+        assertFalse(SettingsScene.defaultsArmed());
         assertFalse(ui.bigTextOn);
         assertTrue(ui.musicOn);
         assertFalse(Comfort.get().calmMotion);
         assertFalse(Comfort.get().distinctPlayers);
+    }
+
+    @Test
+    public void theQuestionLapsesRatherThanWaitingForEver() {
+        SettingsScene.armDefaults(10_000);
+        SettingsScene.expireDefaults(10_000 + SettingsScene.CONFIRM_WINDOW_MS);
+        assertTrue("still armed on the last millisecond", SettingsScene.defaultsArmed());
+        SettingsScene.expireDefaults(10_000 + SettingsScene.CONFIRM_WINDOW_MS + 1);
+        assertFalse(SettingsScene.defaultsArmed());
+    }
+
+    /** Touching any other row is an answer of "no". */
+    @Test
+    public void changingSomethingElseTakesTheQuestionBack() {
+        UiState ui = new UiState();
+        SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS);
+        assertTrue(SettingsScene.defaultsArmed());
+        SettingsScene.toggle(ui, SettingsScene.ITEM_MUSIC);
+        assertFalse(SettingsScene.defaultsArmed());
+    }
+
+    /** A clock of zero must not arm something for ever, and must still be able to fire. */
+    @Test
+    public void aClocklessCallerCanStillArmAndConfirm() {
+        UiState ui = new UiState();
+        ui.hintsOn = false;
+        SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS, 0);
+        assertTrue(SettingsScene.defaultsArmed());
+        SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS, 0);
+        assertTrue(ui.hintsOn);
+    }
+
+    // ---- Saying what happened ---------------------------------------------------------
+
+    /**
+     * Nine of the eleven rows change something the player cannot see from this screen, and
+     * the corner has no message ribbon of its own — the ribbon is drawn with the board. The
+     * explanation slot is the one voice it has, so it carries the answer.
+     */
+    @Test
+    public void everySwitchSaysWhatItJustDid() {
+        UiState ui = new UiState();
+        for (int item = 0; item <= SettingsScene.ITEM_CALM_MOTION; item++) {
+            SettingsScene.toggle(ui, item, 1000);
+            String said = SettingsScene.bottomLine(item, 1000);
+            assertNotEquals("row " + item + " says nothing back",
+                    SettingsScene.descriptions()[item], said);
+            assertTrue(said + " does not name its row",
+                    said.startsWith(SettingsScene.friendlyName(item)));
+            assertTrue(said + " does not say which way it went",
+                    said.endsWith(SettingsScene.states(ui)[item] ? " is on" : " is off"));
+        }
+    }
+
+    @Test
+    public void theNoteGivesTheRowsExplanationBackAfterwards() {
+        UiState ui = new UiState();
+        SettingsScene.toggle(ui, SettingsScene.ITEM_MUSIC, 1000);
+        assertNotEquals(SettingsScene.descriptions()[SettingsScene.ITEM_MUSIC],
+                SettingsScene.bottomLine(SettingsScene.ITEM_MUSIC, 1000));
+        assertEquals(SettingsScene.descriptions()[SettingsScene.ITEM_MUSIC],
+                SettingsScene.bottomLine(SettingsScene.ITEM_MUSIC,
+                        1000 + SettingsScene.NOTE_MS));
+    }
+
+    /** While the question is up it is the only thing the bottom line has to say. */
+    @Test
+    public void theQuestionOwnsTheBottomLineWhileItIsArmed() {
+        SettingsScene.armDefaults(500);
+        for (int item = 0; item < SettingsScene.ITEM_COUNT; item++) {
+            assertTrue(SettingsScene.bottomLine(item, 500).contains("to be sure"));
+        }
+    }
+
+    /** The state is a word, not just a colour and a knob that moves 27 px. */
+    @Test
+    public void aSwitchStatesItselfInWords() {
+        assertEquals("ON", SettingsScene.stateWord(true));
+        assertEquals("OFF", SettingsScene.stateWord(false));
+    }
+
+    /** All-caps is a drawing decision; what a screen reader is handed is a sentence. */
+    @Test
+    public void aRowCanBeSpokenWithoutShouting() {
+        assertEquals("Music", SettingsScene.friendlyName(SettingsScene.ITEM_MUSIC));
+        assertEquals("Larger text", SettingsScene.friendlyName(SettingsScene.ITEM_BIG_TEXT));
+        // A row index from nowhere still names a row rather than throwing.
+        assertFalse(SettingsScene.friendlyName(-1).isEmpty());
+        assertFalse(SettingsScene.friendlyName(9999).isEmpty());
+    }
+
+    // ---- Who is tidying ----------------------------------------------------------------
+
+    @Test
+    public void theSubtitleNamesWhoeverOpenedTheCorner() {
+        assertEquals("Make the room feel just right", SettingsScene.subtitle());
+        SettingsScene.setTidyingPlayer(1);
+        assertEquals(Theme.playerName(1) + " is tidying the room", SettingsScene.subtitle());
+        SettingsScene.setTidyingPlayer(7);
+        assertEquals("a seat nobody is in must not be named",
+                "Make the room feel just right", SettingsScene.subtitle());
     }
 
     // ---- Player identity -------------------------------------------------------------

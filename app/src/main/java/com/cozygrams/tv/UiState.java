@@ -44,6 +44,28 @@ public final class UiState {
     public boolean bigTextOn = DEFAULT_BIG_TEXT;
     public boolean highContrastOn = DEFAULT_CONTRAST;
 
+    /**
+     * The television's own Display &amp; Sound text size, as {@code Configuration.fontScale}.
+     *
+     * <p>Kept beside {@link #bigTextOn} because the two are the same request arriving by two
+     * routes, and they have to <em>compose</em>: someone who has already told the whole
+     * television they need bigger words and then turns LARGER TEXT on is asking twice, not
+     * asking for the larger of the two. See {@link #textScale()}.
+     */
+    public float systemTextScale = 1f;
+
+    /**
+     * What type is multiplied by: the set's own preference and the game's own switch,
+     * together.
+     *
+     * <p>{@link Theme#setTextScale} clamps the product, so a manufacturer shipping a
+     * {@code fontScale} of 2.0 cannot combine with LARGER TEXT to demand type half again
+     * as large as the board can hold.
+     */
+    public float textScale() {
+        return systemTextScale * (bigTextOn ? Theme.TEXT_SCALE_BIG : 1f);
+    }
+
     /** True once a controller has claimed the matching player slot. */
     public final boolean[] joined = {false, false};
     /** When each player last did anything, for gently dimming an idle cursor. */
@@ -55,6 +77,13 @@ public final class UiState {
 
     /** When each cursor last moved, used to time the landing squash. */
     public final long[] cursorMovedAt = {0, 0};
+
+    /**
+     * Which way each cursor is travelling, -1, 0 or 1 per axis. Held after it lands so the
+     * margin tabs can ease their lean out instead of dropping it the frame the glide ends.
+     */
+    public final float[] cursorHeadingX = {0, 0};
+    public final float[] cursorHeadingY = {0, 0};
 
     /** Puts every option back to the look the game ships with. */
     public void restoreDefaults() {
@@ -86,11 +115,29 @@ public final class UiState {
     }
 
     /**
-     * Eases the drawn cursors toward their logical squares. Wrapping is handled by
-     * snapping instead of gliding, so a cursor never streaks across the whole board.
+     * Eases the drawn cursors toward their logical squares over {@code dtMillis} of real
+     * time. Wrapping is handled by snapping instead of gliding, so a cursor never streaks
+     * across the whole board.
+     *
+     * <p>This took a fraction to close <em>per frame</em> — .34, which lands in 92 ms at
+     * 60 Hz. That makes the glide's speed a property of the panel rather than of the game:
+     * the identical code takes 184 ms on a 30 Hz box and 245 ms at 24 Hz, where it reads as
+     * floaty and then as broken. Android TV hardware is not all 60 Hz and neither is a view
+     * that has just been resumed, so the curve is an exponential in milliseconds now — see
+     * {@link Theme#MOTION_TAU_MS}, whose 42 ms reproduces the 60 Hz feel the game shipped
+     * with.
+     *
+     * <p>Clamping {@code dtMillis} to something a frame could plausibly have taken is the
+     * caller's job: a view that was paused for a minute otherwise hands over sixty thousand
+     * milliseconds and both cursors teleport.
      */
-    public void animateCursors(GameState game, float amount) {
+    public void animateCursors(GameState game, long dtMillis) {
+        float amount = Draw.approachRate(dtMillis, Theme.MOTION_TAU_MS);
         for (int player = 0; player < 2; player++) {
+            cursorHeadingX[player] = heading(cursorDrawX[player], game.cursorX[player],
+                    cursorHeadingX[player]);
+            cursorHeadingY[player] = heading(cursorDrawY[player], game.cursorY[player],
+                    cursorHeadingY[player]);
             cursorDrawX[player] = approach(cursorDrawX[player], game.cursorX[player], amount);
             cursorDrawY[player] = approach(cursorDrawY[player], game.cursorY[player], amount);
         }
@@ -104,6 +151,35 @@ public final class UiState {
             return to;
         }
         return from + (to - from) * amount;
+    }
+
+    /**
+     * Which way a cursor is travelling on one axis, or the way it last travelled once the
+     * gap has closed.
+     *
+     * <p>Read off the gap the glide is closing rather than recorded at the key press, so it
+     * is right for the analog stick and for a hint that jumps the cursor across the board,
+     * and so it cannot drift out of step with the motion it is describing.
+     */
+    private static float heading(float from, float to, float previous) {
+        float gap = to - from;
+        if (gap > .01f) {
+            return 1f;
+        }
+        return gap < -.01f ? -1f : previous;
+    }
+
+    /**
+     * How far through its arrival a cursor is: 0 the instant it moves, 1 once it has
+     * settled. {@link CursorRenderer} draws the landing squash and the margin tabs' lean
+     * from this, and {@code Renderer.animating} reads it to know when it may stop asking
+     * for frames.
+     */
+    public float landing(int player, long now) {
+        if (cursorMovedAt[player] <= 0) {
+            return 1f;
+        }
+        return Draw.clamp01((now - cursorMovedAt[player]) / Theme.CURSOR_LAND_MS);
     }
 
     /** True while any cursor is still sliding, so the view keeps requesting frames. */

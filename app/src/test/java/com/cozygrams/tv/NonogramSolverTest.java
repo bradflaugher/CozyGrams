@@ -9,6 +9,8 @@ import java.util.Random;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -94,6 +96,134 @@ public class NonogramSolverTest {
                 }
             }
         }
+    }
+
+    // ---- Seeded solving and hints ------------------------------------------------------
+
+    /** Starting from what the players already know never loses ground. */
+    @Test
+    public void seededSolvingPicksUpWherePlayersLeftOff() {
+        boolean[][] board = grid(".#.#.", "#####", "#####", ".###.", "..#..");
+        NonogramSolver solver = new NonogramSolver(5);
+        NonogramSolver.Result cold = solver.solve(board);
+        byte[][] known = new byte[5][5];
+        known[0][1] = NonogramSolver.FILL;
+        known[4][0] = NonogramSolver.EMPTY;
+        NonogramSolver.Result warm = solver.solveFrom(board, known);
+        assertTrue(warm.undetermined <= cold.undetermined);
+        assertFalse(warm.contradicted);
+    }
+
+    /**
+     * A board that needs a guess stops being one once the guess has been made: seeding the
+     * solve with the two squares that were ambiguous finishes it. This is exactly what a
+     * hint is for.
+     */
+    @Test
+    public void aSeededSquareUnlocksWhatLogicCouldNotReach() {
+        boolean[][] board = grid("#.", ".#");
+        assertFalse(NonogramSolver.uniquelyLineSolvable(board));
+        byte[][] known = new byte[2][2];
+        known[0][0] = NonogramSolver.FILL;
+        assertTrue(new NonogramSolver(2).solveFrom(board, known).solved());
+    }
+
+    /** A mark that cannot be right makes its line impossible, and says so. */
+    @Test
+    public void aWrongMarkIsReportedRatherThanBelieved() {
+        boolean[][] board = grid("###", "#.#", "###");
+        byte[][] known = new byte[3][3];
+        known[1][1] = NonogramSolver.FILL;         // the hole in the middle is not filled
+        NonogramSolver.Result result = new NonogramSolver(3).solveFrom(board, known);
+        assertTrue(result.contradicted);
+        assertFalse(result.solved());
+    }
+
+    /**
+     * The hint has to be a square the clues force from where the pair are now, and it has
+     * to agree with the hidden picture. Checked over the whole endless deck at four sizes
+     * with a quarter of the board already marked: every hint offered is a real deduction.
+     */
+    @Test
+    public void everyHintIsADeductionAndNeverAGuess() {
+        Random random = new Random(31L);
+        for (int size : new int[] {5, 10, 15, 20}) {
+            NonogramSolver solver = new NonogramSolver(size);
+            for (int subject = 0; subject < PuzzleGenerator.subjectCount(); subject++) {
+                Puzzle puzzle = PuzzleGenerator.compose(subject, 0, size);
+                byte[][] marks = new byte[size][size];
+                for (int y = 0; y < size; y++) {
+                    for (int x = 0; x < size; x++) {
+                        if (random.nextInt(4) == 0) {
+                            marks[y][x] = puzzle.solution[y][x]
+                                    ? NonogramSolver.FILL : NonogramSolver.EMPTY;
+                        }
+                    }
+                }
+                int[] hint = solver.nextDeduction(puzzle.solution, marks);
+                assertNotNull(puzzle.name + " at " + size + " had no hint to give", hint);
+                assertEquals(puzzle.name + " hinted a square that is already marked",
+                        NonogramSolver.UNKNOWN, marks[hint[1]][hint[0]]);
+                assertEquals(puzzle.name + " hinted the wrong answer",
+                        puzzle.solution[hint[1]][hint[0]], hint[2] == NonogramSolver.FILL);
+            }
+        }
+    }
+
+    /**
+     * Roughly half of every nonogram is empty squares, so a hint that could only ever fill
+     * one in had to skip half the deductions there are. Over the deck it now offers plenty
+     * of crosses as well as fills.
+     */
+    @Test
+    public void hintsCanSayThisOneIsEmptyToo() {
+        NonogramSolver solver = new NonogramSolver(15);
+        int crosses = 0;
+        for (int subject = 0; subject < PuzzleGenerator.subjectCount(); subject++) {
+            Puzzle puzzle = PuzzleGenerator.compose(subject, 0, 15);
+            int[] hint = solver.nextDeduction(puzzle.solution, new byte[15][15]);
+            assertNotNull(hint);
+            if (hint[2] == NonogramSolver.EMPTY) {
+                crosses++;
+            }
+        }
+        assertTrue("only " + crosses + " of 24 opening hints were crosses", crosses >= 4);
+    }
+
+    /**
+     * The pair are allowed to be wrong. When a mark makes the seeded solve impossible, or
+     * makes it deduce something the picture disagrees with, the hint falls back to solving
+     * from scratch rather than handing over a square that is not there.
+     */
+    @Test
+    public void aMistakeOnTheBoardStillGetsARealHint() {
+        Puzzle puzzle = PuzzleGenerator.compose(0, 0, 10);
+        byte[][] marks = new byte[10][10];
+        int wrong = 0;
+        for (int y = 0; y < 10 && wrong < 6; y++) {
+            for (int x = 0; x < 10 && wrong < 6; x++) {
+                marks[y][x] = puzzle.solution[y][x]
+                        ? NonogramSolver.EMPTY : NonogramSolver.FILL;
+                wrong++;
+            }
+        }
+        int[] hint = new NonogramSolver(10).nextDeduction(puzzle.solution, marks);
+        assertNotNull("a board full of mistakes should still get a hint", hint);
+        assertEquals(puzzle.solution[hint[1]][hint[0]], hint[2] == NonogramSolver.FILL);
+    }
+
+    /** Nothing left to deduce on a finished board. */
+    @Test
+    public void aFinishedBoardHasNoHintLeft() {
+        Puzzle puzzle = PuzzleGenerator.compose(3, 0, 10);
+        byte[][] marks = new byte[10][10];
+        for (int y = 0; y < 10; y++) {
+            for (int x = 0; x < 10; x++) {
+                marks[y][x] = puzzle.solution[y][x]
+                        ? NonogramSolver.FILL : NonogramSolver.EMPTY;
+            }
+        }
+        assertNull(new NonogramSolver(10).nextDeduction(puzzle.solution, marks));
     }
 
     // ---- Helpers ----------------------------------------------------------------------

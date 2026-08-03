@@ -102,6 +102,49 @@ public class BoardRendererTest {
                 Theme.PAPER);
     }
 
+    /**
+     * When the two cursors land on the same line, the band splits along it instead of
+     * compositing.
+     *
+     * <p>Two independent full-width washes on one row multiply into a mauve that belongs to
+     * neither player — measured 1.95:1 against paper where Rose alone is 1.54:1 and Sky
+     * 1.45:1 — so the one moment the colour is most worth having said "somebody is here",
+     * 30% louder than either band was designed to be. Split, the two stripes tile the line
+     * exactly once between them and neither is thinner than the other.
+     */
+    @Test
+    public void aSharedLineIsSplitBetweenTheTwoPlayersRatherThanComposited() {
+        for (boolean shared : new boolean[]{false, true}) {
+            float rose = BoardRenderer.stripeTo(shared, 0) - BoardRenderer.stripeFrom(shared, 0);
+            float sky = BoardRenderer.stripeTo(shared, 1) - BoardRenderer.stripeFrom(shared, 1);
+            assertEquals("the two stripes are not the same width", rose, sky, 1e-4);
+            if (shared) {
+                assertEquals("the stripes do not tile the line exactly once", 1f,
+                        rose + sky, 1e-4);
+                assertEquals("the stripes do not meet", BoardRenderer.stripeTo(true, 0),
+                        BoardRenderer.stripeFrom(true, 1), 1e-4);
+                // At 20x20 a 30 px line splits into 15 px stripes: about 11 arcminutes from
+                // ten feet, well clear of resolvable. Anything below .4 would not be.
+                assertTrue("a shared stripe is only " + rose + " of the line", rose >= .4f);
+            } else {
+                assertEquals("a lone band does not cover its whole line", 1f, rose, 1e-4);
+            }
+        }
+    }
+
+    /** The split holds through the glide, not only once both cursors have landed. */
+    @Test
+    public void twoCursorsCountAsSharingALineBeforeTheySettleOnIt() {
+        assertTrue("settled cursors on one line are not seen as sharing it",
+                BoardRenderer.sameLine(6f, 6f));
+        assertTrue("the split does not engage until the glide has finished",
+                BoardRenderer.sameLine(5.6f, 6f));
+        assertTrue("the split lets go the moment a cursor starts to leave",
+                BoardRenderer.sameLine(6f, 6.4f));
+        assertTrue("two cursors a square apart are treated as sharing a line",
+                !BoardRenderer.sameLine(5f, 6f));
+    }
+
     // ---- The cursor plate -----------------------------------------------------------------
 
     /**
@@ -153,6 +196,69 @@ public class BoardRendererTest {
                 + cell, inner * 2 >= cell * .55f);
     }
 
+    /**
+     * A gliding plate always shows one opaque mark.
+     *
+     * <p>The mark used to be drawn on its square's centre while the plate was drawn on the
+     * smoothed cursor position, so mid-glide the plate showed part of one tile and part of
+     * the paper beside it, split by a hard vertical seam that jumped sides the instant
+     * {@code Math.round} crossed the halfway point. Both squares are drawn at the plate's
+     * centre now and handed over as it travels — and the handover is deliberately not a
+     * 50/50 crossfade, because two marks at half strength composited over cream leave a
+     * quarter of the plate showing through, which is its own kind of half-erased square.
+     */
+    @Test
+    public void aGlidingPlateNeverShowsCreamThroughItsMark() {
+        for (float across = 0; across < 1f; across += .01f) {
+            float leaving = BoardRenderer.leavingFade(across);
+            float entering = BoardRenderer.enteringFade(across);
+            assertTrue("neither mark is opaque " + across + " of the way across",
+                    Math.max(leaving, entering) >= 1f - 1e-4);
+            assertTrue("a fade is out of range at " + across,
+                    leaving >= 0 && leaving <= 1 && entering >= 0 && entering <= 1);
+        }
+        // The two ends of a stride have to agree with the two ends of the next one, or the
+        // mark flickers once per square crossed.
+        assertEquals("a settled plate does not show its own square", 1f,
+                BoardRenderer.leavingFade(0f), 1e-4);
+        assertEquals("a settled plate shows the next square as well", 0f,
+                BoardRenderer.enteringFade(0f), 1e-4);
+        assertEquals("the arriving square is not fully there by the end of the stride", 1f,
+                BoardRenderer.enteringFade(.999f), 1e-3);
+        assertTrue("the departing square is still visible at the end of the stride",
+                BoardRenderer.leavingFade(.999f) <= .01f);
+    }
+
+    /**
+     * The ruling reads as a printed grid: a frame heavier than the five-square rules, which
+     * are heavier than the rules between squares, at every size and in whole pixels.
+     *
+     * <p>{@code i == 0} and {@code i == size} used to be drawn exactly like the interior
+     * fives, so the block at columns 0-4 appeared to carry on into the clue gutter and the
+     * eye had to find the board's edge from where the numbers stopped.
+     */
+    @Test
+    public void theFrameOutweighsTheFivesAndTheFivesOutweighTheRest() {
+        for (float height : new float[]{720, 1080, 2160}) {
+            Theme.setScreenHeight(height);
+            for (int size : new int[]{5, 10, 15, 20}) {
+                BoardLayout board = new BoardLayout(height * 16 / 9, height,
+                        new GameState(7, size).puzzle, true);
+                for (boolean bold : new boolean[]{false, true}) {
+                    String at = size + "x" + size + " at " + (int) height + (bold ? " bold" : "");
+                    float edge = Math.round(BoardRenderer.ruleWeight(board.cell, true, true, bold));
+                    float five = Math.round(BoardRenderer.ruleWeight(board.cell, false, true, bold));
+                    float thin = Math.round(BoardRenderer.ruleWeight(board.cell, false, false, bold));
+                    assertTrue(at + ": the frame (" + edge + ") does not outweigh a five ("
+                            + five + ")", edge > five);
+                    assertTrue(at + ": a five (" + five + ") does not outweigh a rule ("
+                            + thin + ")", five > thin);
+                    assertTrue(at + ": a rule rounds away to nothing", thin >= 1);
+                }
+            }
+        }
+    }
+
     /** Bold cursors thicken the border without moving the plate it is drawn on. */
     @Test
     public void boldCursorsThickenTheBorderInPlace() {
@@ -166,6 +272,83 @@ public class BoardRendererTest {
                 BoardRenderer.plateHalf(cell), 1e-4);
         assertTrue("a bold border ate the mark",
                 BoardRenderer.plateInner(cell) * 2 >= cell * .55f);
+    }
+
+    // ---- Squares ---------------------------------------------------------------------------
+
+    /**
+     * A crossed square really does differ in value from the paper under it — including from
+     * the five-square checker, which is the comparison that failed.
+     *
+     * <p>The wash was a fixed alpha of 26 and measured 1.17:1 on paper, while the checker
+     * printed underneath measured 1.087:1. An untouched square on a shaded block and a
+     * crossed square on a plain one were therefore 1.07:1 apart, which is nothing from a
+     * sofa, and the board's promise that filled, crossed and untouched separate by value
+     * held for filled and for nothing else. Asked for as {@link Theme#CROSS_RATIO} through
+     * {@link Theme#washAlpha} the pair is 1.21:1 apart, measured on the rendered pixels.
+     */
+    @Test
+    public void aCrossedSquareOutrunsTheCheckerItIsPrintedOn() {
+        for (boolean bold : new boolean[]{false, true}) {
+            int wash = BoardRenderer.crossWash(bold);
+            double asked = bold ? Theme.CROSS_RATIO_BOLD : Theme.CROSS_RATIO;
+            int onPaper = Draw.blend(Theme.PAPER, wash, (wash >>> 24) / 255f);
+            int onShade = Draw.blend(Theme.PAPER_SHADE, wash, (wash >>> 24) / 255f);
+
+            double plain = Theme.contrastRatio(onPaper, Theme.PAPER);
+            assertTrue("a crossed square is only " + plain + ":1 on paper (bold=" + bold
+                    + ")", plain >= asked - .03);
+            // The one that decides whether "ruled out" survives at a glance: a crossed
+            // square on plain paper against an untouched square on a shaded block.
+            double confusable = Theme.contrastRatio(onPaper, Theme.PAPER_SHADE);
+            assertTrue("a crossed square is only " + confusable + ":1 against the checker",
+                    confusable >= 1.15);
+            assertTrue("the wash went opaque and erased the square it is washing over",
+                    (wash >>> 24) < 128);
+            assertTrue("a crossed square is lighter on shaded paper than on plain",
+                    Theme.contrastRatio(onShade, Theme.PAPER) > plain);
+        }
+    }
+
+    /**
+     * The tile grain is grain, not corduroy.
+     *
+     * <p>It was {@code x + y}, a diagonal ramp: taken modulo four it repeats every four
+     * cells along both axes, and a regular diagonal grating is the one spatial pattern the
+     * visual system amplifies instead of averaging. Measured across rows 6-10 of a 20x20
+     * board the filled-tile centres cycled 88, 85, 82, 79 in perfect diagonal step.
+     */
+    @Test
+    public void theTileGrainHasNoPeriod() {
+        int[] counts = new int[4];
+        int acrossMatches = 0;
+        int downMatches = 0;
+        int diagonalMatches = 0;
+        for (int y = 0; y < 20; y++) {
+            for (int x = 0; x < 20; x++) {
+                int shade = BoardRenderer.grain(x, y);
+                assertTrue("grain is out of range at " + x + "," + y,
+                        shade >= 0 && shade < 4);
+                counts[shade]++;
+                acrossMatches += shade == BoardRenderer.grain(x + 1, y) ? 1 : 0;
+                downMatches += shade == BoardRenderer.grain(x, y + 1) ? 1 : 0;
+                diagonalMatches += shade == BoardRenderer.grain(x + 1, y + 1) ? 1 : 0;
+            }
+        }
+        for (int shade = 0; shade < 4; shade++) {
+            assertTrue("shade " + shade + " lands on " + counts[shade] + " of 400 tiles",
+                    counts[shade] > 400 / 8);
+        }
+        // Chance is 100 of 400 in each direction. x + y scores 400 down the diagonal;
+        // `x * PHI ^ y * PRIME` with one shift scores 360 across, because the low two bits
+        // of an odd multiple barely move. A hash that has actually avalanched sits near
+        // chance in all three.
+        assertTrue("neighbouring tiles share a shade " + acrossMatches + " times across",
+                acrossMatches < 160);
+        assertTrue("neighbouring tiles share a shade " + downMatches + " times down",
+                downMatches < 160);
+        assertTrue("the grain still repeats diagonally (" + diagonalMatches + " matches)",
+                diagonalMatches < 160);
     }
 
     // ---- Clues -----------------------------------------------------------------------------
@@ -210,6 +393,41 @@ public class BoardRendererTest {
         // a subtler one.
         assertEquals(renderer.clueColor(false, false, loud),
                 renderer.clueColor(false, true, loud));
+    }
+
+    /**
+     * The alternating ground behind the column clues turns up where the clues actually
+     * crowd, and stays away where they do not.
+     *
+     * <p>The two ends are what matter and they are the two ends this pins: a 20x20 board
+     * always gets it, because six pixels of paper between two-digit clues is three
+     * arcminutes and they merge; a 5x5 board never does, because single digits 87 px apart
+     * in 115 px columns have no problem to solve, and two tinted lanes among five make those
+     * two columns look singled out for a reason nobody can find. In between it follows the
+     * measurement, and it may only ever go one way as the board gets busier.
+     */
+    @Test
+    public void theClueGroundAppearsOnlyWhereTheCluesCrowd() {
+        for (float height : new float[]{720, 1080, 2160}) {
+            Theme.setScreenHeight(height);
+            boolean crowdedAlready = false;
+            for (int size = 5; size <= 20; size++) {
+                BoardLayout board = new BoardLayout(height * 16 / 9, height,
+                        new GameState(7, size).puzzle, true);
+                boolean crowds = BoardRenderer.columnCluesCrowd(board);
+                String at = size + "x" + size + " at " + (int) height + ", "
+                        + (board.cell - board.colClueNumberWidth()) + " px of clear paper";
+                if (size == 20) {
+                    assertTrue(at + ": no ground behind clues that merge", crowds);
+                }
+                if (size == 5) {
+                    assertTrue(at + ": a ground the clues do not need", !crowds);
+                }
+                assertTrue(at + ": a busier board stopped needing a ground",
+                        crowds || !crowdedAlready);
+                crowdedAlready = crowds;
+            }
+        }
     }
 
     /**

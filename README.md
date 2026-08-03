@@ -23,11 +23,21 @@ including across a controller falling asleep and waking up with a new device id.
 
 - **Every board is uniquely line-solvable.** A real constraint solver checks each puzzle,
   so the clues alone are always enough — you never have to guess, and there is never a
-  second valid answer to feel cheated by.
+  second valid answer to feel cheated by. All 4,608 boards the endless deck can deal and
+  all 24 Story Book chapters are checked on every test run.
 - Deterministic endless play from 5×5 to 20×20, with 24 cozy subjects (hearts, sleepy
   cats, cocoa, moons, rain on the window, teapots, mittens, sleeping foxes, pie…) each
-  drawn in up to 12 variations.
-- An 18-chapter handcrafted Story Book that grows from 5×5 through 10×10 to 15×15.
+  drawn in 12 looks: mirrored or not, three poses that change the silhouette, and whether
+  a little star or heart keeps it company.
+- **Bigger boards are bigger puzzles.** Subjects are drawn with holes rather than filled
+  in — a handle to hook a finger through, two slats of pastry, the middle lifted out of a
+  heart — so a 20×20 line averages two clue groups instead of one long run, no row or
+  column is ever completely blank, and the first sweep of the clues gives away 59% of the
+  grid instead of 69%.
+- A 24-chapter handcrafted Story Book with a real size ladder: four 5×5 evenings, three
+  7×7, six 10×10, four 12×12, five 15×15 and two 20×20 to finish on. Every chapter is its
+  own picture rather than one the endless deck also deals, carries a line of its own, and
+  asks at least one question the first sweep of the clues cannot answer.
 - Local couch co-op with two independent cursors, shared credit and no scoreboard.
 - Runtime-synthesized score — a 3½-minute evolving music box in F pentatonic with five
   layers that fade between sections, plus ten distinctly-synthesized sound effects and a
@@ -57,13 +67,64 @@ The entire UI is drawn onto one `Canvas`, and the rendering code is deliberately
 desktop JVM, with no emulator:
 
 ```sh
-tools/preview/render.sh [outputDir] [width] [height]     # 15 scenarios, default 1920x1080
+tools/preview/render.sh [outputDir] [width] [height]     # 23 scenarios, default 1920x1080
 ```
 
 It compiles a Java2D-backed set of `android.graphics` stubs together with the app's own
 rendering sources and writes deterministic PNGs — the same input always produces the same
 bytes, so frames can be compared across changes. `tools/legacy-preview/render-legacy.sh`
 does the same for the pre-2.0 interface, for side-by-side comparison.
+
+The set covers both menus, the board at every size it deals, an authored story chapter, a
+solo table and a two-player one, the feedback a press produces, the win card early and
+settled, the page turn between chapters, and the layout cases that break things — the
+widest message, Larger Text, Extra Contrast, and one title screen carrying every long
+string at once. Twenty-one of them render at whatever resolution you ask for; `sizes/`
+holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a scaling regression turns
+up as a picture rather than as an argument.
+
+Nothing in the set is posed. The frames that show the game reacting — the particles, the
+win — press the button and let the same calls the real input path makes decide what comes
+out, because a harness that emits its own prettier confetti is a harness that gets
+reviewed instead of the game.
+
+**These frames outlive the tree they came from.** `tools/preview/out/` is in `.gitignore`,
+so nothing in the repository records how old a copy of one is, and a set rendered before
+v2.0.0 once survived long enough to have a review written from it. Every frame therefore
+carries the short commit and a fingerprint of the compiled sources in its bottom-left
+corner, outside the safe area, where it can cover backdrop and nothing else; if that
+disagrees with `git log -1`, the picture is old. Alongside them, `MANIFEST.sha256` lists
+every input and every output, so
+
+```sh
+sha256sum -c tools/preview/out/MANIFEST.sha256    # from the repository root
+```
+
+names the file that has moved — a source means the frames are stale, a PNG means one has
+been edited. The date lives there and in `out/README.md` rather than in a pixel, so that
+two renders of one tree stay byte-identical.
+
+Half of a cozy interface is its timing, and a still frame cannot show that. The companion
+script records the same renderer in motion:
+
+```sh
+tools/preview/record.sh [outputDir] [width] [height] [fps] [clip]   # 8 clips, default 30 fps
+```
+
+Each clip opens on a settled state and then replays a script of controller presses through
+the same calls the real input path makes — a cursor walk, a run of fills, crossing out and
+taking it back, the wave down a completed line, a hint, gentle mode's soft correction, the
+last square of a picture through to the settled win card, and the home menu's focus. The
+clock is wound forward sixty steps a second whatever the capture rate is, because that is
+the rate a television redraws at and a clip should be a recording rather than a
+reconstruction.
+
+Every clip is written three ways into the output directory: `<clip>.mp4` to judge the
+timing by, `<clip>.gif` to glance at, and `<clip>-contact.png`, a contact sheet tiling
+eight evenly spaced frames with their millisecond offsets burned in — that last one is
+what a review actually reads, and it carries the same commit and fingerprint in its
+header. `ffmpeg` is the only extra dependency, `COZY_KEEP_FRAMES=1` keeps the PNG
+sequences it encodes from, and passing a clip name records just that one.
 
 ## Release
 

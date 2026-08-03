@@ -7,6 +7,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import org.junit.After;
 import org.junit.Test;
 
 import java.util.HashSet;
@@ -23,11 +24,17 @@ import java.util.Set;
  * end.
  *
  * <p>The choreography is asserted the same way, by keeping the parts of it that are pure
- * functions of time pure: {@link WinScene#paperOpacity} and {@link WinScene#inviteBreath}
- * decide how bright the card is and whether anything is still moving, and both can be
- * walked frame by frame here rather than eyeballed in a screenshot.
+ * functions of time pure: {@link WinScene#paperOpacity} decides when the puzzle has become
+ * the picture, {@link WinScene#lift} where the picture is, and {@link WinScene#inviteBreath}
+ * whether anything is still moving. All three can be walked frame by frame here rather than
+ * eyeballed in a screenshot.
  */
 public class WinSceneTest {
+
+    @After
+    public void restoreComfort() {
+        Comfort.get().restoreDefaults();
+    }
 
     private static GameState endless(int solved) {
         GameState game = new GameState(7L, 10);
@@ -122,7 +129,7 @@ public class WinSceneTest {
     /**
      * The whole picture has to be on screen before a button press can take it away —
      * otherwise the lock-out is friction protecting nothing. Checked against every board
-     * the game can actually deal: all eighteen authored chapters and a wide sweep of
+     * the game can actually deal: every authored chapter in the book and a wide sweep of
      * generated boards at every size.
      */
     @Test
@@ -204,14 +211,22 @@ public class WinSceneTest {
     /**
      * The beats have to stay in order and the whole celebration has to be over in about
      * two seconds, or the screen stops being a moment and starts being a wait.
+     *
+     * <p>The cap moved 1500 -> 1800 for the two beats that were added at the front. The
+     * entrances themselves are all the same length as before; what is new is 220 ms of
+     * holding still on the finished board and 320 ms of the puzzle resolving into the
+     * picture, which is the half-second that turns a fade-to-black into a reveal.
      */
     @Test
     public void theBeatsRunInOrderAndFinishPromptly() {
-        // The room is dim before the picture moves, so the lift is seen against a calm
-        // board rather than a bright one.
-        assertTrue(WinScene.DIM_MS <= WinScene.LIFT_AT + 60f);
-        // The first square lands no later than the lift starts: the card is never blank.
-        assertTrue(WinScene.REVEAL_AT <= WinScene.LIFT_AT);
+        // Nothing moves at all until the pair have had the board to themselves.
+        assertTrue(WinScene.HOLD_MS <= WinScene.RESOLVE_AT);
+        // The squares are already recolouring when the paper starts covering the workings,
+        // so the sheet never comes up over a board that has not started changing.
+        assertTrue(WinScene.REVEAL_AT <= WinScene.RESOLVE_AT);
+        // And the sheet is complete before the picture leaves the table.
+        assertEquals(WinScene.LIFT_AT, WinScene.RESOLVE_AT + WinScene.RESOLVE_MS, 0f);
+
         assertTrue(WinScene.PLAQUE_AT < WinScene.NAME_AT);
         assertTrue(WinScene.NAME_AT < WinScene.MESSAGE_AT);
         assertTrue(WinScene.MESSAGE_AT < WinScene.CREDIT_AT);
@@ -226,73 +241,104 @@ public class WinSceneTest {
         assertTrue(WinScene.MESSAGE_AT + WinScene.MESSAGE_MS <= WinScene.INPUT_DELAY_MS);
 
         assertTrue("the celebration runs long: " + WinScene.ARRIVED_MS + "ms",
-                WinScene.ARRIVED_MS <= 1500f);
+                WinScene.ARRIVED_MS <= 1800f);
+    }
+
+    /**
+     * The board is only removed once it has been completely painted over.
+     *
+     * <p>{@code Renderer} stops drawing the puzzle, the cursors and the rail at
+     * {@link WinScene#BOARD_GONE_MS}, so that instant has to be one where the win card's own
+     * sheet is fully opaque and still sitting exactly on the board's card — otherwise the
+     * hand-over is a visible cut. It used to sit at the end of the lift instead, with the
+     * card at 30% opacity and moving away, which is why the clue digits ghosted through the
+     * picture in flight.
+     */
+    @Test
+    public void theBoardIsOnlyDroppedOnceItIsUnderPaper() {
+        assertEquals("the board outlives the sheet that hides it",
+                WinScene.LIFT_AT, WinScene.BOARD_GONE_MS, 0f);
+        assertEquals("the sheet is not opaque when the board goes", 1f,
+                WinScene.paperOpacity(WinScene.BOARD_GONE_MS), 1e-4);
+        assertEquals("the picture has started moving before the board goes", 0f,
+                WinScene.lift(WinScene.BOARD_GONE_MS), 0f);
     }
 
     /**
      * The card and the words are two halves of one composition, so the plaque has to be on
-     * its way up while the picture is still assembling. It used to start at 500 ms — two
-     * hundred milliseconds <em>after</em> the card had already gone fully opaque and two
-     * hundred before the picture finished.
+     * its way up while the picture is still travelling, and the picture has to have
+     * finished assembling by the time it lands in its frame.
+     *
+     * <p>This used to be stated against {@code revealDoneMs}, which was right while the
+     * picture assembled in mid-air. It now assembles on the table, between 573 and 787 ms
+     * across the whole deck, so that comparison would only be measuring which chapter has
+     * the fewest squares.
      */
     @Test
-    public void theWordsStartArrivingWhileThePictureIsStillAssembling() {
+    public void theWordsAreOnTheirWayBeforeThePictureLands() {
+        assertTrue(WinScene.PLAQUE_AT < WinScene.PICTURE_HOME_MS);
         for (int chapter = 0; chapter < PuzzleLibrary.count(); chapter++) {
-            float done = WinScene.revealDoneMs(PuzzleLibrary.get(chapter));
-            assertTrue("chapter " + chapter + " finishes assembling before the plaque",
-                    WinScene.PLAQUE_AT < done);
+            assertTrue("chapter " + chapter + " lands in its frame still assembling",
+                    WinScene.revealDoneMs(PuzzleLibrary.get(chapter))
+                            <= WinScene.PICTURE_HOME_MS);
+        }
+        for (int size = GameState.MIN_SIZE; size <= GameState.MAX_SIZE; size++) {
+            for (long seed = 0; seed < 24; seed++) {
+                assertTrue("seed " + seed + " at " + size + " lands still assembling",
+                        WinScene.revealDoneMs(PuzzleGenerator.generate(seed, size))
+                                <= WinScene.PICTURE_HOME_MS);
+            }
         }
     }
 
     // ---- The brightest surface in the game --------------------------------------------
 
     /**
-     * The one that failed the review: at 310 ms the picture's card hit full opacity while
-     * the picture would not be assembled for another 390 ms and there were no words at all
-     * for another 190. A 620x620 near-white rectangle sat alone on near-black holding half
-     * a heart — in a dark room, on a panel that may be OLED, as the first frame of the
-     * reward. The sheet now follows the picture onto itself.
+     * The sheet may not touch the board until the pair have been given time to look at it.
+     *
+     * <p>The old guard was arithmetic — the card's opacity was tied to how much of the
+     * picture existed, because it arrived over a 93%-black screen with nothing on it. The
+     * guard is now structural: the sheet only ever comes up over the board's own card, in a
+     * room dimmed to 21%, with the picture already blooming on it. What has to be asserted
+     * is the timing that makes that true.
      */
     @Test
-    public void theCardIsNeverBrightAndEmpty() {
-        for (int chapter = 0; chapter < PuzzleLibrary.count(); chapter++) {
-            Puzzle puzzle = PuzzleLibrary.get(chapter);
-            float done = WinScene.revealDoneMs(puzzle);
-            float assembly = done - WinScene.REVEAL_AT;
-
-            // Stated against how much of the picture exists, not against the clock: a
-            // small chapter finishes assembling sooner, and a bright card is right as
-            // soon as there is a picture on it. The property is that the sheet is never
-            // bright while it is still mostly empty — whatever "still" means for that
-            // particular picture.
-            for (float elapsed = 0; elapsed <= done; elapsed += 10f) {
-                float assembled = (elapsed - WinScene.REVEAL_AT) / assembly;
-                if (assembled >= .5f) {
-                    continue;
-                }
-                assertTrue("chapter " + chapter + " is a bright empty sheet at "
-                                + elapsed + "ms (" + Math.round(assembled * 100)
-                                + "% assembled)",
-                        WinScene.paperOpacity(elapsed, assembly) < .75f);
-            }
-            assertEquals("chapter " + chapter + " never reaches full paper", 1f,
-                    WinScene.paperOpacity(done, assembly), 1e-3);
+    public void theSheetWaitsForTheHoldAndThenCoversEverything() {
+        for (float elapsed = 0; elapsed <= WinScene.RESOLVE_AT; elapsed += 5) {
+            assertEquals("paper on the board at " + elapsed + "ms", 0f,
+                    WinScene.paperOpacity(elapsed), 0f);
         }
+        assertTrue("the sheet is still see-through half way through the resolve",
+                WinScene.paperOpacity(WinScene.RESOLVE_AT + WinScene.RESOLVE_MS / 2)
+                        < 1f);
+        assertEquals(1f, WinScene.paperOpacity(WinScene.LIFT_AT), 1e-4);
+        assertEquals(1f, WinScene.paperOpacity(60_000), 0f);
     }
 
     /** The sheet only ever gets brighter — a card that dips reads as a flicker. */
     @Test
     public void theCardOnlyEverBrightens() {
-        float assembly = WinScene.revealDoneMs(PuzzleLibrary.get(0)) - WinScene.REVEAL_AT;
         float previous = -1;
-        for (float elapsed = 0; elapsed <= 1200; elapsed += 5) {
-            float opacity = WinScene.paperOpacity(elapsed, assembly);
+        for (float elapsed = 0; elapsed <= 2000; elapsed += 5) {
+            float opacity = WinScene.paperOpacity(elapsed);
             assertTrue("paper dipped at " + elapsed + "ms", opacity >= previous - 1e-4);
             assertTrue(opacity >= 0f && opacity <= 1f);
             previous = opacity;
         }
-        assertEquals("nothing is drawn before the card arrives", 0f,
-                WinScene.paperOpacity(WinScene.LIFT_AT, 570f), 0f);
+    }
+
+    /** And the picture only ever travels forwards, from the table into its frame. */
+    @Test
+    public void thePictureOnlyEverTravelsForwards() {
+        float previous = -1;
+        for (float elapsed = 0; elapsed <= 2000; elapsed += 5) {
+            float lift = WinScene.lift(elapsed);
+            assertTrue("the picture went backwards at " + elapsed + "ms",
+                    lift >= previous - 1e-4);
+            previous = lift;
+        }
+        assertEquals("the picture moves during the hold", 0f, WinScene.lift(0), 0f);
+        assertEquals(1f, WinScene.lift(WinScene.PICTURE_HOME_MS), 1e-4);
     }
 
     // ---- Stillness --------------------------------------------------------------------
@@ -329,23 +375,71 @@ public class WinSceneTest {
                 WinScene.STILL_AT_MS, 1f);
     }
 
+    /**
+     * And the number {@code Renderer} actually reads outlives the entrance in both comfort
+     * modes.
+     *
+     * <p>Under Calmer Animation there is no breath, no name pop and no pill spring, so
+     * waiting the full {@link WinScene#STILL_AT_MS} would repaint an identical frame for
+     * nearly seven seconds; but stopping at the last beat's <em>start</em> would freeze the
+     * invitation half way in, which is what the old {@code !calmMotion} branch did.
+     */
+    @Test
+    public void theLoopIsToldToWaitForTheWholeEntrance() {
+        for (boolean calm : new boolean[]{false, true}) {
+            Comfort.get().calmMotion = calm;
+            assertTrue("calm=" + calm + " sleeps at " + WinScene.stillAtMs()
+                            + "ms, before the last beat lands at " + WinScene.ARRIVED_MS,
+                    WinScene.stillAtMs() > WinScene.ARRIVED_MS);
+        }
+        Comfort.get().calmMotion = false;
+        assertEquals(WinScene.STILL_AT_MS, WinScene.stillAtMs());
+        Comfort.get().calmMotion = true;
+        assertTrue("calm waits as long as full motion does",
+                WinScene.stillAtMs() < WinScene.STILL_AT_MS);
+    }
+
+    // ---- The page turn ------------------------------------------------------------------
+
+    /**
+     * The wash between two pictures has to start opaque, finish transparent and then stay
+     * out of the way for ever — a handover whose clock has run past its own window must
+     * draw nothing at all, or a stale timestamp would tint every subsequent frame.
+     */
+    @Test
+    public void thePageTurnFinishesAndStaysFinished() {
+        assertEquals("the page turn has already started", 0f, WinScene.handover(0), 0f);
+        assertTrue(WinScene.handover(WinScene.HANDOVER_MS / 2f) > .5f);
+        assertEquals(1f, WinScene.handover(WinScene.HANDOVER_MS), 1e-4);
+        for (float since = WinScene.HANDOVER_MS; since <= 600_000; since += 997) {
+            assertEquals("still washing at " + since + "ms", 1f,
+                    WinScene.handover(since), 0f);
+        }
+        // A clock that has gone backwards — a frame drawn before the swap it is measuring —
+        // draws nothing rather than a full-strength curtain.
+        assertEquals(1f, WinScene.handover(-1), 0f);
+    }
+
     // ---- Composition ------------------------------------------------------------------
 
     /**
-     * The confetti rises in whatever the composition leaves over, so the composition has to
-     * leave the same amount on each side. It did not: a hand-picked left edge of .122 of the
-     * width put a 702 px band on the left — 554 px of it painted over by the picture card —
-     * and a 131 px strip pinned to the right edge, while the comment three lines above the
-     * numbers claimed the two came out equal.
+     * The composition is centred on the screen, so the air either side of it is equal.
+     *
+     * <p>It was not: a hand-picked left edge of .122 of the width put a 702 px band on the
+     * left and a 131 px strip pinned to the right edge, while the comment three lines above
+     * the numbers claimed the two came out equal. The confetti no longer lives in that air
+     * — it is given the whole safe width — but a card that is not centred on the screen is
+     * still a card that looks like it slipped.
      */
     @Test
-    public void theTwoConfettiLanesAreTheSameWidth() {
+    public void theCompositionIsCentredAndInsideTheSafeArea() {
         for (float width : new float[]{1280, 1920, 3840}) {
-            float leftLane = WinScene.compositionLeft(width);
-            float rightLane = width - WinScene.compositionRight(width);
-            assertEquals("lanes differ at " + width + "px", leftLane, rightLane, .01f);
-            assertTrue("no room for confetti at " + width + "px",
-                    leftLane > width * Theme.SAFE_AREA * 2);
+            float leftAir = WinScene.compositionLeft(width);
+            float rightAir = width - WinScene.compositionRight(width);
+            assertEquals("the composition is off centre at " + width + "px", leftAir,
+                    rightAir, .01f);
+            assertTrue("the composition crosses the overscan boundary at " + width + "px",
+                    leftAir > width * Theme.SAFE_AREA);
         }
     }
 
@@ -379,7 +473,10 @@ public class WinSceneTest {
         GameState game = story(0);
         assertEquals("THE FIRST CHAPTER", WinScene.eyebrow(game, true));
         assertFalse(WinScene.isFinalChapter(game));
-        assertEquals("The book is open — seventeen chapters to come.",
+        // Twenty-three, not seventeen, since the book grew from eighteen chapters to
+        // twenty-four. The literal is pinned rather than derived because this is the very
+        // first sentence the book says and it should not be able to change unnoticed.
+        assertEquals("The book is open — twenty-three more.",
                 WinScene.journeyLine(game));
         assertEquals("Press A for the next chapter", WinScene.invite(game));
     }
@@ -390,9 +487,43 @@ public class WinSceneTest {
         assertEquals("CHAPTER 10 OF " + PuzzleLibrary.count(),
                 WinScene.eyebrow(game, true));
         assertFalse(WinScene.isFinalChapter(game));
-        assertEquals("Eight more chapters to come.", WinScene.journeyLine(game));
+        // Fourteen left of twenty-four, where the eighteen-chapter book left eight.
+        assertEquals("Fourteen more chapters to come.", WinScene.journeyLine(game));
         assertEquals("Press A for the next chapter", WinScene.invite(game));
-        assertEquals(WinScene.message(game.solved, true), WinScene.message(game, true));
+        // A chapter says its own line rather than drawing from the endless rotation. The
+        // twenty-four lines in PuzzleLibrary.LINES had no caller outside these tests, so the
+        // warmest writing in the game had never reached a television; this is where it goes.
+        assertEquals(PuzzleLibrary.line(9), WinScene.message(game, true));
+        assertNotEquals(WinScene.message(game.solved, true), WinScene.message(game, true));
+    }
+
+    /** Every chapter's own line reaches the card, and no two chapters share one. */
+    @Test
+    public void everyChapterSaysItsOwnLine() {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (int index = 0; index < PuzzleLibrary.count(); index++) {
+            GameState game = story(index);
+            if (WinScene.isFinalChapter(game)) {
+                // The book closing earns its own ending; it is not about the picture.
+                continue;
+            }
+            String line = PuzzleLibrary.line(index);
+            for (boolean together : new boolean[]{true, false}) {
+                assertEquals("chapter " + (index + 1) + " should say its own line",
+                        line, WinScene.message(game, together));
+            }
+            assertTrue("chapter " + (index + 1) + " repeats another chapter's line",
+                    seen.add(line));
+        }
+    }
+
+    /** Endless play has no authored line, so it keeps the rotation. */
+    @Test
+    public void endlessPlayStillRotatesThroughTheWarmLines() {
+        for (int solved = 0; solved < WinScene.messageCount(); solved++) {
+            GameState game = endless(solved);
+            assertEquals(WinScene.message(solved, true), WinScene.message(game, true));
+        }
     }
 
     @Test
@@ -408,7 +539,7 @@ public class WinSceneTest {
         GameState game = story(PuzzleLibrary.count() - 1);
         assertTrue(WinScene.isFinalChapter(game));
         assertEquals("THE LAST CHAPTER", WinScene.eyebrow(game, true));
-        assertEquals("Eighteen pictures, cover to cover.", WinScene.journeyLine(game));
+        assertEquals("Twenty-four pictures, cover to cover.", WinScene.journeyLine(game));
         assertEquals("Press A to open the book again", WinScene.invite(game));
 
         String together = WinScene.message(game, true);
@@ -438,33 +569,191 @@ public class WinSceneTest {
         }
     }
 
+    /**
+     * The journey line is prose, so it counts in words all the way to the last chapter.
+     *
+     * <p>This is the test the book's growth from eighteen chapters to twenty-four needed
+     * and did not have. {@code NUMBER_WORDS} stopped at twenty and {@code word} fell back
+     * to {@link Integer#toString}, so the first thing the book ever said became "The book
+     * is open — 23 chapters to come." The three copy assertions above only caught it
+     * because they happened to pin those exact sentences; this one catches it for any
+     * length of book, and for the eyebrow's sake it is deliberately scoped to the journey
+     * line — "CHAPTER 10 OF 24" is a location and is meant to be numerals.
+     */
+    @Test
+    public void theBookCountsInWordsAtEveryLength() {
+        GameState game = new GameState(7L, 10);
+        game.storyMode = true;
+        for (int index = 0; index < PuzzleLibrary.count(); index++) {
+            game.storyIndex = index;
+            String line = WinScene.journeyLine(game);
+            for (int at = 0; at < line.length(); at++) {
+                assertFalse("chapter " + (index + 1) + " says \"" + line + "\"",
+                        Character.isDigit(line.charAt(at)));
+            }
+        }
+    }
+
     /** Endless boards never mention the book. */
     @Test
     public void endlessSaysNothingAboutChapters() {
         GameState game = endless(4);
-        assertNull(WinScene.journeyLine(game));
         assertFalse(WinScene.isFinalChapter(game));
         assertEquals("Press A for another picture", WinScene.invite(game));
         assertFalse(WinScene.eyebrow(game, true).contains("CHAPTER"));
+        assertFalse(WinScene.journeyLine(game).toLowerCase(Locale.ROOT)
+                .contains("chapter"));
+        assertFalse(WinScene.journeyLine(game).toLowerCase(Locale.ROOT).contains("book"));
     }
 
-    /** Every chapter of the shipped book produces wording that fits a ten-foot line. */
+    /**
+     * Endless closes with a memento instead of a blank.
+     *
+     * <p>It used to return {@code null}, so the mode people spend most of their evenings in
+     * went straight from the move count to the button while story mode got a chapter row
+     * and a journey line. The count is {@code game.solved} plus the picture just finished,
+     * which is exactly the figure the rail prints as "ENDLESS&nbsp;#4" — the two must never
+     * disagree, two seconds apart, about the same picture.
+     */
+    @Test
+    public void endlessCountsThePicturesOnTheWall() {
+        assertEquals("The first picture on the wall.",
+                WinScene.journeyLine(endless(0)));
+        assertEquals("Two pictures on the wall.", WinScene.journeyLine(endless(1)));
+        assertEquals("Twenty pictures on the wall.", WinScene.journeyLine(endless(19)));
+        assertEquals("Twenty-one pictures on the wall.",
+                WinScene.journeyLine(endless(20)));
+        // Above ninety-nine the game stops trying to say it out loud, which keeps the line
+        // shorter than the words would have been rather than longer.
+        assertEquals("100 pictures on the wall.", WinScene.journeyLine(endless(99)));
+        // A corrupt save cannot produce a line about "minus four pictures".
+        assertNull(WinScene.journeyLine(endless(-1)));
+        assertNull(WinScene.journeyLine(endless(-40)));
+    }
+
+    // ---- Fitting the column ------------------------------------------------------------
+
+    /**
+     * Every string the plaque can show fits its column at the prose floor.
+     *
+     * <p>Character counts are a proxy and a poor one — "Twenty-four pictures, cover to
+     * cover." is 37 characters and 582 px while "The book is open — twenty-three chapters
+     * to come." was 49 and 826 px — but they are the only proxy available here: the test
+     * source set runs with {@code returnDefaultValues}, so {@code Paint.measureText}
+     * answers zero and a real width assertion would pass on anything.
+     *
+     * <p>So the caps are calibrated against real measurements taken through the desktop
+     * render harness at 1920x1080, where the plaque column is 651.2&nbsp;px and
+     * {@link Theme#MIN_PROSE_SP} is 36&nbsp;px:
+     *
+     * <ul>
+     *   <li>journey — worst case "The book is open — twenty-three more." at 632 px, and
+     *       "Seventy-seven pictures on the wall." at 566. 37 characters.</li>
+     *   <li>message — measured at {@link Theme#SUBHEAD}, so it has room to shrink before
+     *       it has to overflow. "You never rushed. Look what happened." is the tightest in
+     *       the deck: 865 px at 48 px, which {@code fit} settles at 36.2 px, two tenths of
+     *       a pixel above the floor. 38 characters is where that runs out.</li>
+     *   <li>invite — the binding one, because a pill cannot shrink to fit. "Press A to open
+     *       the book again" is 538 px bold at the floor and its pill adds another
+     *       {@link Theme#PILL_PAD_X}: 625 of the 651 available. 30 characters, and there is
+     *       no room for a longer invitation.</li>
+     * </ul>
+     *
+     * <p>Characters are a proxy for width and a lenient one — a line of thirty-eight
+     * capitals would still overflow — so a new string near any of these caps should be
+     * measured through the render harness rather than counted.</p>
+     *
+     * <p>The floor these are measured against moved from {@link Theme#MIN_READABLE_SP} to
+     * {@link Theme#MIN_PROSE_SP} — 27 px to 36 px — because nothing on this plaque is an
+     * isolated clue digit. That is what makes the caps binding rather than advisory: a line
+     * that does not fit now overflows instead of shrinking into unreadability, which is the
+     * correct trade for a ten-foot screen and the reason these numbers are pinned.
+     */
+    /**
+     * The widest line the plaque will draw for a message, in characters.
+     *
+     * <p>Mirrors {@code WinScene.wrapMessage}: a message that fits stays on one line, and one
+     * that does not is broken at the space that makes the wider half as narrow as possible.
+     * Characters stand in for pixels here exactly as they do elsewhere in this test — a
+     * lenient proxy, so a new line near the cap should be checked through the render harness.
+     */
+    private static int longestWrappedLine(String message) {
+        if (message.length() <= 38) {
+            return message.length();
+        }
+        int best = message.length();
+        for (int at = message.indexOf(' '); at >= 0; at = message.indexOf(' ', at + 1)) {
+            best = Math.min(best,
+                    Math.max(at, message.length() - at - 1));
+        }
+        return best;
+    }
+
     @Test
     public void everyChapterHasShortEnoughWording() {
         for (int index = 0; index < PuzzleLibrary.count(); index++) {
             GameState game = story(index);
             for (boolean together : new boolean[]{true, false}) {
                 assertTrue(WinScene.eyebrow(game, together).length() <= 24);
-                assertTrue(WinScene.message(game, together).length() <= 44);
+                // Per wrapped line, not per sentence. A chapter's own line is about twice
+                // the length of a rotation message - "She has claimed the warm end of the
+                // sofa. That is simply how it is now." is 70 characters against "Nobody
+                // rushed. Look what happened."'s 33 - and the plaque turns it onto two
+                // balanced lines rather than shrinking it under the prose floor. What still
+                // has to hold is the width of the widest line, which is the same 38 the
+                // one-line messages were measured at. The worst chapter balances at 35.
+                assertTrue(WinScene.message(game, together),
+                        longestWrappedLine(WinScene.message(game, together)) <= 38);
             }
-            assertTrue(WinScene.journeyLine(game).length() <= 46);
-            assertTrue(WinScene.invite(game).length() <= 34);
+            assertTrue(WinScene.journeyLine(game), WinScene.journeyLine(game).length() <= 37);
+            assertTrue(WinScene.invite(game).length() <= 30);
         }
         for (int solved = 0; solved < WinScene.messageCount(); solved++) {
             for (boolean together : new boolean[]{true, false}) {
                 assertTrue(WinScene.message(solved, together),
-                        WinScene.message(solved, together).length() <= 44);
+                        WinScene.message(solved, together).length() <= 38);
+            }
+            String wall = WinScene.journeyLine(endless(solved));
+            assertTrue(wall, wall.length() <= 37);
+        }
+        // The wall line grows with a number that never stops, so it is checked past the
+        // point where the game gives up on words.
+        for (int solved : new int[]{0, 1, 6, 16, 66, 76, 98, 99, 100, 999, 100_000}) {
+            String wall = WinScene.journeyLine(endless(solved));
+            assertTrue(wall, wall.length() <= 37);
+        }
+    }
+
+    /**
+     * The story book's row of hearts stays inside the plaque, at any length of book and on
+     * any screen.
+     *
+     * <p>With twenty-four chapters in a 651 px column a single row is a 27 px pitch, which
+     * makes an unvisited chapter a 7 px dot — about five arcminutes from ten feet, which is
+     * the point at which a mark stops being identifiable at all. The row wraps rather than
+     * shrinking past a floor, so this has to prove both halves: that it never packs tighter
+     * than the floor while it has lines left, and that it never runs outside the column.
+     */
+    @Test
+    public void theChapterRowFitsItsColumnAtEveryLength() {
+        for (float screen : new float[]{720, 1080, 2160}) {
+            Theme.setScreenHeight(screen);
+            // The real plaque columns at 1280x720, 1920x1080 and 3840x2160, plus a
+            // deliberately cramped one either side of them.
+            float real = screen * .6030f;
+            for (float column : new float[]{real * .5f, real, real * 1.4f}) {
+                int lines = WinScene.chapterLines(column);
+                float step = WinScene.chapterStep(column);
+                int perLine = (int) Math.ceil(
+                        PuzzleLibrary.count() / (double) Math.max(1, lines));
+                assertTrue("no lines at column " + column, lines >= 1);
+                assertTrue("the row runs outside the plaque: " + step * (perLine - 1)
+                                + "px in a " + column + "px column",
+                        step * (perLine - 1) <= column);
+                assertTrue("the block has no height at column " + column,
+                        WinScene.chapterBlockHeight(column) > 0);
             }
         }
+        Theme.setScreenHeight(720);
     }
 }

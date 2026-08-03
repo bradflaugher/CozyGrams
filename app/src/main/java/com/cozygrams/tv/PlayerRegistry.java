@@ -5,8 +5,10 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Decides which physical controller is Rose and which is Sky.
@@ -28,7 +30,24 @@ import java.util.Map;
  *   <li><b>A stick can twitch on connect.</b> A joystick that has never been seen at rest
  *       cannot produce a step, so a controller can never "join" without a human touching
  *       it.</li>
+ *   <li><b>A controller can leave.</b> {@link #releaseDevice} frees the seat without
+ *       forgetting who was in it, so a flat battery empties a chair rather than leaving a
+ *       cursor on the board that nobody is driving.</li>
  * </ul>
+ *
+ * <h2>Empty is not the same as never</h2>
+ *
+ * <p>Slots used to be tested with {@code playerByDevice.containsValue(player)}, and
+ * nothing was ever removed from that map, so "Sky has joined" was true for the rest of the
+ * session from the first press — including after her pad died. Two things went wrong at
+ * once: her cursor, her tinted bands and her beating dot stayed on screen forever, and a
+ * <em>different</em> controller picked up later could never become Sky, because her seat
+ * still read as taken. It shared Rose instead and two people drove one cursor.
+ *
+ * <p>{@link #away} is the fix, and it is deliberately a set of names rather than a
+ * deletion: the descriptor keeps its slot, so the same controller coming back gets its own
+ * seat, while {@link #seatOccupied} — which is what "is anyone sitting there" now means —
+ * reports the chair as free in the meantime.
  */
 public final class PlayerRegistry {
 
@@ -128,6 +147,12 @@ public final class PlayerRegistry {
         int dy;
         /** Steps produced since it last passed through the centre. */
         int repeats;
+        /**
+         * True once a deflection from this stick has been swallowed for want of arming, so
+         * the room acknowledges the push once rather than sixty times a second. Cleared
+         * when the stick comes back to rest, which is also when it arms.
+         */
+        boolean stirred;
     }
 
     private final Devices devices;
@@ -140,11 +165,19 @@ public final class PlayerRegistry {
     private final Map<String, Stick> sticks = new HashMap<>();
     /** Whether each device id lacks face buttons, asked of the platform only once. */
     private final Map<Integer, Boolean> cycleInput = new HashMap<>();
+    /**
+     * Names whose controller has gone away. They keep their slot in
+     * {@link #playerByDevice} so a reconnect lands in the same seat; this set is what makes
+     * the seat read as empty while they are gone. See the notes on the class.
+     */
+    private final Set<String> away = new HashSet<>();
 
     /** Set when {@link #playerFor} assigns a slot for the first time. */
     private int justJoined = -1;
     /** Set when {@link #playerFor} attaches an extra controller to an existing slot. */
     private boolean justShared;
+    /** Set when {@link #stickStep} swallows an unarmed controller's first deflection. */
+    private boolean justStirred;
 
     public PlayerRegistry() {
         this(new PlatformDevices());
@@ -163,12 +196,16 @@ public final class PlayerRegistry {
      * <p>A third or later controller shares Rose so nobody is ever locked out; that is
      * reported by {@link #justShared()} rather than {@link #justJoined()}, because no new
      * player has arrived — someone has simply picked up a second way to play.
+     *
+     * <p>Any press is also proof that this controller is back in the room, so it comes off
+     * the {@link #away} list before anything else is decided.
      */
     public int playerFor(int deviceId) {
         justJoined = -1;
         justShared = false;
 
         String name = nameOf(deviceId);
+        away.remove(name);
         Integer known = playerByDevice.get(name);
         if (known != null) {
             // Either a device we have seen before, or the same controller back from a
@@ -177,9 +214,9 @@ public final class PlayerRegistry {
         }
 
         int player;
-        if (!joined(ROSE)) {
+        if (!seatOccupied(ROSE)) {
             player = ROSE;
-        } else if (!joined(SKY)) {
+        } else if (!seatOccupied(SKY)) {
             player = SKY;
         } else {
             player = ROSE;
@@ -223,9 +260,22 @@ public final class PlayerRegistry {
         return justShared;
     }
 
-    /** How many player slots are being played. */
+    /**
+     * True when the last {@link #stickStep} swallowed an un-armed controller's first
+     * deflection. Nothing has joined and nothing has moved — but somebody just pushed a
+     * stick, and the room can say it noticed instead of staying silent.
+     *
+     * <p>Fires once per deflection, not once per sample: a genuinely stuck axis stirs the
+     * empty seat a single time and is then quiet, which is the difference between an
+     * acknowledgement and a fault light.
+     */
+    public boolean justStirred() {
+        return justStirred;
+    }
+
+    /** How many seats have somebody in them right now. */
     public int playerCount() {
-        return (joined(ROSE) ? 1 : 0) + (joined(SKY) ? 1 : 0);
+        return (seatOccupied(ROSE) ? 1 : 0) + (seatOccupied(SKY) ? 1 : 0);
     }
 
     /** How many distinct physical controllers have been seen, including extras. */
@@ -233,18 +283,63 @@ public final class PlayerRegistry {
         return playerByDevice.size();
     }
 
-    /** True once a controller has claimed the given slot. */
+    /**
+     * True once a controller has ever claimed the given slot, present or not.
+     *
+     * <p>Kept apart from {@link #seatOccupied} because they answer different questions and
+     * the game needs both: this one is "have we met this player", which is the difference
+     * between saying "Sky joined ♥" and "Sky is back ♥".
+     */
     public boolean joined(int player) {
         return playerByDevice.containsValue(player);
     }
 
     /**
-     * Drops everything remembered about a device id. Optional: the game works without it,
-     * but a caller that listens for {@code onInputDeviceRemoved} can call this to release
-     * the id, and the controller will still get its slot back when it returns.
+     * True when a controller that is still in the room holds this seat.
+     *
+     * <p>This, not {@link #joined}, is what the cursors and the rail are drawn from: a pad
+     * whose batteries died has {@code joined} true for ever and nobody at the table.
      */
-    public void forgetDevice(int deviceId) {
-        nameByDeviceId.remove(deviceId);
+    public boolean seatOccupied(int player) {
+        for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
+            if (entry.getValue() == player && !away.contains(entry.getKey())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Which seat a device drives, or -1 for one we have never heard from. */
+    public int slotOf(int deviceId) {
+        String name = nameByDeviceId.get(deviceId);
+        Integer slot = name == null ? null : playerByDevice.get(name);
+        return slot == null ? -1 : slot;
+    }
+
+    /**
+     * Lets go of a controller that the platform says has gone — a flat battery, a pad
+     * switched off, someone unplugging a dongle.
+     *
+     * <p>The device <em>id</em> is dropped, because the platform reissues ids and the next
+     * controller to plug in may well be given this one. The device's <em>name</em> is not:
+     * that is what carries the seat and the stick's arming across a reconnect, so the same
+     * pad waking up is still Sky and still does not need to be shown its own centre again.
+     *
+     * @return the seat this emptied, or -1 when the device was unknown or its seat is
+     *         still being played by another controller
+     */
+    public int releaseDevice(int deviceId) {
+        String name = nameByDeviceId.remove(deviceId);
+        cycleInput.remove(deviceId);
+        if (name == null) {
+            return -1;
+        }
+        away.add(name);
+        Integer slot = playerByDevice.get(name);
+        if (slot == null || seatOccupied(slot)) {
+            return -1;
+        }
+        return slot;
     }
 
     /**
@@ -289,6 +384,7 @@ public final class PlayerRegistry {
      * @return a two element array of {dx, dy}, or null for "no movement this frame"
      */
     public int[] stickStep(MotionEvent event, long now) {
+        justStirred = false;
         if (event == null
                 || (event.getSource() & InputDevice.SOURCE_JOYSTICK) == 0
                 || event.getActionMasked() != MotionEvent.ACTION_MOVE) {
@@ -314,6 +410,7 @@ public final class PlayerRegistry {
      */
     public int[] stickStep(int deviceId, float stickX, float stickY, float hatX, float hatY,
                            long now) {
+        justStirred = false;
         float x = strongest(stickX, hatX);
         float y = strongest(stickY, hatY);
         Stick stick = stickFor(deviceId);
@@ -323,6 +420,7 @@ public final class PlayerRegistry {
             // controller has a centre to come back to.
             stick.armed = true;
             stick.centred = true;
+            stick.stirred = false;
             stick.repeats = 0;
             stick.dx = 0;
             stick.dy = 0;
@@ -337,6 +435,13 @@ public final class PlayerRegistry {
             // A deflection is the first thing we have ever heard from this controller.
             // That is what a stuck or badly calibrated axis looks like on connect, and it
             // must not be able to sign a player up on its own.
+            //
+            // The push is still worth acknowledging once. Somebody whose first instinct is
+            // the stick rather than a button otherwise gets nothing at all and concludes
+            // the second controller is broken — and a stick at rest sends no event, so
+            // this branch is exactly what a brand-new pad's first movement hits.
+            justStirred = !stick.stirred;
+            stick.stirred = true;
             stick.centred = false;
             return null;
         }

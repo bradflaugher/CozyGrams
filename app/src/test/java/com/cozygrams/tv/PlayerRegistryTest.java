@@ -148,6 +148,86 @@ public class PlayerRegistryTest {
         assertEquals(2, registry.playerCount());
     }
 
+    // ---- Leaving, and coming back ----------------------------------------------------
+
+    /**
+     * The failure nothing was watching for: a pad goes flat and its cursor, its tinted
+     * bands and its beating dot stay on the board for the rest of the evening, because
+     * "has Sky joined" was answered by a map that never had anything removed from it.
+     */
+    @Test
+    public void aControllerThatLeavesEmptiesItsSeatAndKeepsIt() {
+        FakeDevices room = twoPads();
+        PlayerRegistry registry = new PlayerRegistry(room);
+        registry.playerFor(11);
+        registry.playerFor(12);
+        assertEquals(PlayerRegistry.SKY, registry.slotOf(12));
+
+        room.unplug(12);
+        assertEquals("the seat Sky's pad just left", PlayerRegistry.SKY,
+                registry.releaseDevice(12));
+        assertFalse("nobody is sitting there now",
+                registry.seatOccupied(PlayerRegistry.SKY));
+        assertTrue("but the chair still has her name on it",
+                registry.joined(PlayerRegistry.SKY));
+        assertEquals(1, registry.playerCount());
+        assertTrue(registry.seatOccupied(PlayerRegistry.ROSE));
+
+        // And back she comes, under the new id the platform gives a woken controller.
+        room.plug(77, "pad-sky");
+        assertEquals(PlayerRegistry.SKY, registry.playerFor(77));
+        assertTrue(registry.seatOccupied(PlayerRegistry.SKY));
+        assertEquals("nobody joined; Sky simply came back", -1, registry.justJoined());
+        assertEquals(2, registry.playerCount());
+    }
+
+    @Test
+    public void releasingSomethingWeNeverHeardFromEmptiesNothing() {
+        PlayerRegistry registry = new PlayerRegistry(twoPads());
+        registry.playerFor(11);
+        assertEquals(-1, registry.slotOf(99));
+        assertEquals(-1, registry.releaseDevice(99));
+        assertTrue(registry.seatOccupied(PlayerRegistry.ROSE));
+    }
+
+    /**
+     * Rose has two controllers on her seat. One of them dying must not empty the chair she
+     * is still sitting in.
+     */
+    @Test
+    public void aSharedSeatSurvivesLosingOneOfItsControllers() {
+        PlayerRegistry registry = new PlayerRegistry(
+                twoPads().plug(13, "tv-remote"));
+        registry.playerFor(11);
+        registry.playerFor(12);
+        registry.playerFor(13);
+
+        assertEquals("the seat still has Rose's own pad in it", -1,
+                registry.releaseDevice(13));
+        assertTrue(registry.seatOccupied(PlayerRegistry.ROSE));
+        assertEquals(2, registry.playerCount());
+    }
+
+    /**
+     * Once a seat is genuinely empty a different controller may take it. It used to be
+     * locked for the session: a pad that had been seen and lost left the chair lit, so the
+     * next controller shared Rose and two people drove one cursor.
+     */
+    @Test
+    public void aFreshControllerTakesASeatNobodyIsSittingIn() {
+        FakeDevices room = twoPads().plug(31, "pad-guest");
+        PlayerRegistry registry = new PlayerRegistry(room);
+        registry.playerFor(11);
+        registry.playerFor(12);
+        room.unplug(12);
+        registry.releaseDevice(12);
+
+        assertEquals(PlayerRegistry.SKY, registry.playerFor(31));
+        assertFalse("nobody is sharing anything here", registry.justShared());
+        assertEquals(PlayerRegistry.SKY, registry.justJoined());
+        assertEquals(2, registry.playerCount());
+    }
+
     /** A device the platform will not name still works; it just cannot be recognised again. */
     @Test
     public void anUnnamedDeviceStillGetsASlot() {
@@ -194,6 +274,34 @@ public class PlayerRegistryTest {
         // Once it has been seen at rest, the very next push works normally.
         assertNull(registry.stickStep(11, 0, 0, 0, 0, 100));
         assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 200));
+    }
+
+    /**
+     * The twitch guard is right and it used to be silent. A stick at rest sends no event,
+     * so a brand-new pad's very first push is always the swallowed one — and somebody whose
+     * instinct is the stick rather than a button got no sign at all that the game had
+     * noticed them.
+     */
+    @Test
+    public void aFirstStickPushIsAcknowledgedOnceEvenThoughItCannotJoin() {
+        PlayerRegistry registry = new PlayerRegistry(twoPads());
+
+        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 0));
+        assertTrue("the room noticed the push", registry.justStirred());
+        assertEquals("and nobody joined on the strength of it", 0, registry.playerCount());
+
+        for (long now = 16; now < 400; now += 16) {
+            assertNull(registry.stickStep(11, 1f, 0, 0, 0, now));
+            assertFalse("a stuck axis must not pulse sixty times a second",
+                    registry.justStirred());
+        }
+
+        // Back to rest, out again: a second deliberate push is acknowledged again.
+        assertNull(registry.stickStep(11, 0, 0, 0, 0, 500));
+        assertFalse(registry.justStirred());
+        assertArrayEquals("and by now it is armed, so it moves instead",
+                new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 600));
+        assertFalse(registry.justStirred());
     }
 
     /** A human who pressed a button first is trusted, twitch or no twitch. */
