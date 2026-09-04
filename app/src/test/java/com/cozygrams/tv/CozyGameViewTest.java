@@ -58,6 +58,21 @@ public class CozyGameViewTest {
      * than a wait. It used to be counted in key repeats, which fired at 500 ms on a stock
      * remote and never at all on one that emits no repeats.
      */
+    /**
+     * A size sitting in the stepper must not steal the next story chapter. That is how
+     * finishing the first heart jumped to a 20×20.
+     */
+    @Test
+    public void aBankedSizeNeverHijacksTheStoryBook() {
+        assertFalse(CozyGameView.takesTheBankedSize(true, 20, 5));
+        assertFalse(CozyGameView.takesTheBankedSize(true, 10, 10));
+        assertTrue("endless play still honours a size that is actually next",
+                CozyGameView.takesTheBankedSize(false, 20, 5));
+        assertFalse("a matching size is not a change",
+                CozyGameView.takesTheBankedSize(false, 10, 10));
+        assertFalse(CozyGameView.takesTheBankedSize(false, 0, 5));
+    }
+
     @Test
     public void theHintHoldIsLongerThanALongPressAndShorterThanAPause() {
         assertTrue(CozyGameView.HINT_HOLD_MS > 500);

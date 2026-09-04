@@ -51,6 +51,7 @@ public final class SaveStore {
     private static final String KEY_STORY_MODE = "storyMode";
     private static final String KEY_STORY_INDEX = "storyIndex";
     private static final String KEY_STORY_FURTHEST = "storyFurthest";
+    private static final String KEY_STORY_COMPLETED = "storyCompleted";
     private static final String KEY_MARKS = "marks";
     private static final String KEY_PICTURE = "picture";
     private static final String KEY_NEXT_SIZE = "nextSize";
@@ -134,6 +135,8 @@ public final class SaveStore {
         game.storyIndex = storyIndex;
         game.storyFurthest = Math.max(game.storyIndex,
                 clampStoryIndex(readInt(KEY_STORY_FURTHEST, game.storyIndex), chapters));
+        game.storyCompleted = readLong(KEY_STORY_COMPLETED,
+                GameState.completedPrefix(game.storyFurthest));
 
         startedFresh = !trusted || !restoreBoard(game);
         // Kept in story mode too, deliberately: a size banked while a chapter was open is
@@ -307,6 +310,7 @@ public final class SaveStore {
                 .putBoolean(KEY_STORY_MODE, game.storyMode)
                 .putInt(KEY_STORY_INDEX, game.storyIndex)
                 .putInt(KEY_STORY_FURTHEST, game.storyFurthest)
+                .putLong(KEY_STORY_COMPLETED, game.storyCompleted)
                 .putString(KEY_MARKS, encodeMarks(game.puzzle.marks))
                 .putString(KEY_PICTURE, fingerprint(game.puzzle))
                 .putInt(KEY_NEXT_SIZE, pendingSize)
@@ -341,7 +345,8 @@ public final class SaveStore {
             countedMoves[player] = game.moves[player];
         }
         journey.puzzlesFinished = Math.max(journey.puzzlesFinished, game.solved);
-        journey.chaptersFinished = Math.max(journey.chaptersFinished, game.storyFurthest);
+        journey.chaptersFinished = Math.max(journey.chaptersFinished,
+                game.storyCompleteCount());
     }
 
     // ---- Pure helpers ----------------------------------------------------------------
@@ -475,6 +480,7 @@ public final class SaveStore {
                 .append(game.storyMode ? 1 : 0).append('|')
                 .append(game.storyIndex).append('|')
                 .append(game.storyFurthest).append('|')
+                .append(game.storyCompleted).append('|')
                 .append(journey.puzzlesFinished).append('|')
                 .append(journey.chaptersFinished).append('|')
                 .append(journey.visits).append('|')

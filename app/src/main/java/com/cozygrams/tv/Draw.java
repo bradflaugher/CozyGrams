@@ -64,6 +64,43 @@ public final class Draw {
         canvas.drawText(value, x, y, paint);
     }
 
+    /** Width of the shared rounded keycap used anywhere the UI names a real button. */
+    public float keycapWidth(String label, float height) {
+        return Math.max(height, measure(label, keycapGlyphSize(label, height), true)
+                + height * .50f);
+    }
+
+    /** Draws the same physical-button cue in menus, the HUD, and end-state prompts. */
+    public void keycap(Canvas canvas, float left, float centreY, float height,
+                       String label, int color) {
+        float width = keycapWidth(label, height);
+        float glyph = keycapGlyphSize(label, height);
+        roundRect(canvas, left, centreY - height / 2, left + width,
+                centreY + height / 2, height / 2, color);
+        int alpha = color >>> 24;
+        text(canvas, label, left + width / 2, centreY + capCentreOffset(glyph), glyph,
+                withAlpha(Theme.textOn(color), alpha), Paint.Align.CENTER, true);
+    }
+
+    /** A code-drawn D-pad, avoiding a font glyph that changes shape across televisions. */
+    public void dpadKeycap(Canvas canvas, float left, float centreY, float height,
+                           int color) {
+        roundRect(canvas, left, centreY - height / 2, left + height,
+                centreY + height / 2, height / 2, color);
+        int mark = withAlpha(Theme.textOn(color), color >>> 24);
+        float cx = left + height / 2;
+        float arm = height * .58f;
+        float thick = height * .16f;
+        roundRect(canvas, cx - thick / 2, centreY - arm / 2, cx + thick / 2,
+                centreY + arm / 2, thick / 2, mark);
+        roundRect(canvas, cx - arm / 2, centreY - thick / 2, cx + arm / 2,
+                centreY + thick / 2, thick / 2, mark);
+    }
+
+    private float keycapGlyphSize(String label, float height) {
+        return height / 1.26f * (label.length() > 1 ? .52f : .78f);
+    }
+
     /**
      * Draws text with a soft dark drop shadow behind it. Illustrated backdrops vary in
      * brightness, and the shadow keeps light copy readable wherever it lands.

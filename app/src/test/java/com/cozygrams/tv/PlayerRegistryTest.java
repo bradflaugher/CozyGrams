@@ -76,6 +76,21 @@ public class PlayerRegistryTest {
     }
 
     @Test
+    public void identicalPadsStaySeparateWhenAndroidTemporarilyCannotEnumerateTheFirst() {
+        FakeDevices room = new FakeDevices().plug(11, "same-model-pad")
+                .plug(12, "same-model-pad");
+        PlayerRegistry registry = new PlayerRegistry(room);
+
+        assertEquals(PlayerRegistry.ROSE, registry.playerFor(11));
+        // Reproduce the Shield/Android TV race: the first pad vanishes from getDevice()
+        // for one lookup even though no removal callback was delivered.
+        room.unplug(11);
+        assertEquals(PlayerRegistry.SKY, registry.playerFor(12));
+        assertEquals(PlayerRegistry.ROSE, registry.slotOf(11));
+        assertEquals(PlayerRegistry.SKY, registry.slotOf(12));
+    }
+
+    @Test
     public void aControllerKeepsItsSlotForTheRestOfTheSession() {
         PlayerRegistry registry = new PlayerRegistry(twoPads());
         registry.playerFor(11);
@@ -126,6 +141,7 @@ public class PlayerRegistryTest {
 
         // Sky's pad drops off and comes back as device 77.
         room.unplug(12).plug(77, "pad-sky");
+        registry.releaseDevice(12);
 
         assertEquals(PlayerRegistry.SKY, registry.playerFor(77));
         assertEquals("nobody joined; Sky simply came back", -1, registry.justJoined());
@@ -146,6 +162,28 @@ public class PlayerRegistryTest {
         assertEquals(PlayerRegistry.ROSE, registry.playerFor(21));
         assertEquals(PlayerRegistry.SKY, registry.playerFor(22));
         assertEquals(2, registry.playerCount());
+    }
+
+    @Test
+    public void theSecondTwinReclaimsItsOwnSlotAfterAReconnect() {
+        FakeDevices room = new FakeDevices().plug(21, "same-model")
+                .plug(22, "same-model");
+        PlayerRegistry registry = new PlayerRegistry(room);
+        assertEquals(PlayerRegistry.ROSE, registry.playerFor(21));
+        assertEquals(PlayerRegistry.SKY, registry.playerFor(22));
+
+        room.unplug(22);
+        assertEquals(PlayerRegistry.SKY, registry.releaseDevice(22));
+        room.plug(77, "same-model");
+
+        assertEquals("the waking twin must not become another Rose",
+                PlayerRegistry.SKY, registry.playerFor(77));
+        assertEquals(PlayerRegistry.ROSE, registry.slotOf(21));
+        assertEquals(PlayerRegistry.SKY, registry.slotOf(77));
+        assertEquals(2, registry.playerCount());
+        assertEquals("nobody new joined; Sky simply came back", -1,
+                registry.justJoined());
+        assertFalse(registry.justShared());
     }
 
     // ---- Leaving, and coming back ----------------------------------------------------
@@ -321,19 +359,19 @@ public class PlayerRegistryTest {
                 registry.stickStep(11, 1f, 0, 0, 0, 1000));
         assertNull("still the same push", registry.stickStep(11, 1f, 0, 0, 0, 1100));
         assertNull("a tap must not become two squares",
-                registry.stickStep(11, 1f, 0, 0, 0, 1300));
+                registry.stickStep(11, 1f, 0, 0, 0, 1400));
         assertArrayEquals("the first repeat, once it is clearly a hold",
-                new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1400));
+                new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1480));
 
         // From there it repeats at a steady, countable rate rather than a machine gun.
-        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 1500));
-        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1600));
-        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 1700));
-        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1800));
+        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 1600));
+        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1720));
+        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 1840));
+        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1960));
 
         // Letting go and pushing again is immediate, however quickly it is done.
-        assertNull(registry.stickStep(11, 0, 0, 0, 0, 1810));
-        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1820));
+        assertNull(registry.stickStep(11, 0, 0, 0, 0, 1970));
+        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1980));
     }
 
     /** Sixty samples a second of a held stick must not become sixty steps. */
@@ -347,7 +385,7 @@ public class PlayerRegistryTest {
             }
         }
         assertTrue("a second of holding gave " + steps + " steps", steps >= 3);
-        assertTrue("a second of holding gave " + steps + " steps", steps <= 7);
+        assertTrue("a second of holding gave " + steps + " steps", steps <= 5);
     }
 
     @Test
@@ -407,6 +445,7 @@ public class PlayerRegistryTest {
         FakeDevices room = twoPads();
         PlayerRegistry registry = armed(room, 12);
         room.unplug(12).plug(77, "pad-sky");
+        registry.releaseDevice(12);
 
         assertArrayEquals(new int[]{1, 0}, registry.stickStep(77, 1f, 0, 0, 0, 500));
     }
@@ -427,7 +466,9 @@ public class PlayerRegistryTest {
         assertTrue(PlayerRegistry.isHint(KeyEvent.KEYCODE_BUTTON_Y));
         assertTrue(PlayerRegistry.isHint(KeyEvent.KEYCODE_BUTTON_L1));
         assertTrue(PlayerRegistry.isMenu(KeyEvent.KEYCODE_BUTTON_START));
-        assertTrue(PlayerRegistry.isMenu(KeyEvent.KEYCODE_BUTTON_SELECT));
+        assertTrue("View / Select is Back on an Xbox pad, not the cozy corner",
+                PlayerRegistry.isBack(KeyEvent.KEYCODE_BUTTON_SELECT));
+        assertFalse(PlayerRegistry.isMenu(KeyEvent.KEYCODE_BUTTON_SELECT));
         assertTrue(PlayerRegistry.isBack(KeyEvent.KEYCODE_BACK));
 
         // A bare TV remote: a D-pad, a centre, Back, and usually a menu key.

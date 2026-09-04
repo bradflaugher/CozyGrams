@@ -229,8 +229,8 @@ public final class HudScene {
      *
      * <p>Set by {@code CozyGameView}'s constructor, from {@code game.solved} as it comes off
      * disk and after the finished-board fix-up, so the baseline is the count the pair sat
-     * down with. {@link #tailLabel} then says "TONIGHT" and {@link #picturesToShow} counts
-     * only this evening's pictures.
+     * down with. {@link #tailLabel} then says "THIS SESSION" and
+     * {@link #picturesToShow} counts only this session's pictures.
      *
      * <p>Until something sets it the rail does not pretend: the block says "TOGETHER SO FAR"
      * and shows the lifetime figure, which is at least true. That is the state the preview
@@ -312,11 +312,22 @@ public final class HudScene {
         return knowsTonight() ? Math.max(0, solved - puzzlesBeforeTonight) : solved;
     }
 
+    /**
+     * The name of the back control on whatever is actually in the player's hands.
+     *
+     * <p>A gamepad's View / Select key — two overlapping squares on an Xbox pad — is how
+     * Android TV means Back, and the legend used to never mention it. {@code ⧉} is that
+     * glyph. A bare remote just says BACK.
+     */
+    public static String backName() {
+        return remoteOnly ? "Back" : "⧉";
+    }
+
     /** What is printed in each legend chip, in order. */
     public static String[] legendButtons() {
         return remoteOnly
                 ? new String[]{"OK", "HOLD", "MENU", "BACK"}
-                : new String[]{"A", "B", "Y", "☰"};
+                : new String[]{"A", "B", "Y", "☰", "⧉"};
     }
 
     /**
@@ -330,22 +341,25 @@ public final class HudScene {
     public static String[] legendLabels(UiState ui) {
         String hint = ui.hintsOn ? "Reveal one" : "Hints resting";
         return remoteOnly
-                ? new String[]{"Fill, cross, clear", hint, "Cozy corner", "Back home"}
-                : new String[]{"Fill a square", "Cross it out", hint, "Cozy corner"};
+                ? new String[]{"Fill, cross, clear", hint, "Settings", "Back home"}
+                : new String[]{"Fill a square", "Cross it out", hint, "Settings",
+                        "Back home"};
     }
 
     /** Which chips are lit: a resting hint button is drawn as resting. */
     private static boolean[] legendActive(UiState ui) {
         return remoteOnly
                 ? new boolean[]{true, ui.hintsOn, true, true}
-                : new boolean[]{true, true, ui.hintsOn, true};
+                : new boolean[]{true, true, ui.hintsOn, true, true};
     }
 
-    /** The colour of each chip, in order. Gold is always the hint. */
+    /** The colour of each chip, in order. Gamepad letters use Xbox conventions. */
     private static int[] legendColors() {
         return remoteOnly
                 ? new int[]{Theme.PINK, Theme.GOLD, Theme.SOFT_TEXT, Theme.SOFT_TEXT}
-                : new int[]{Theme.PINK, Theme.BLUE, Theme.GOLD, Theme.SOFT_TEXT};
+                : new int[]{Theme.BUTTON_A, Theme.BUTTON_B, Theme.BUTTON_Y,
+                        Theme.SOFT_TEXT,
+                        Theme.SOFT_TEXT};
     }
 
     // ---- The ribbon's geometry, shared with BoardLayout -------------------------------
@@ -634,12 +648,14 @@ public final class HudScene {
      */
     private int legendRowsThatFit(GameState game, UiState ui, Wrapped name, int wanted,
                                   float available) {
-        for (int rows = wanted; rows > 1; rows--) {
-            if (panelHeight(game, ui, name, rows) <= available) {
-                return rows;
-            }
-        }
-        return 1;
+        // The renderer has two honest modes: every labelled row, or one compact strip.
+        // Reserving room for two or three rows while drawLegend paints every button is
+        // how Larger Text pushed Settings and Back home below the panel.
+        return legendMode(wanted, panelHeight(game, ui, name, wanted) <= available);
+    }
+
+    static int legendMode(int wanted, boolean fullLegendFits) {
+        return fullLegendFits ? Math.max(1, wanted) : 1;
     }
 
     private static int openSeats(UiState ui) {
@@ -1072,24 +1088,14 @@ public final class HudScene {
 
     /** A chip is a pill sized to its own text, and a single character comes out round. */
     private float chipWidth(String button, float height) {
-        return Math.max(height, draw.measure(button, glyphSize(button, height), true)
-                + height * .50f);
-    }
-
-    private float glyphSize(String button, float height) {
-        return height / 1.26f * (button.length() > 1 ? .52f : .78f);
+        return draw.keycapWidth(button, height);
     }
 
     /** The pill and the button's name on it, centred on {@code centreY}. */
     private void drawChip(Canvas canvas, float left, float centreY, float width,
                           float height, String button, int color, boolean active) {
         int chip = active ? color : Draw.blend(Theme.PANEL, color, .34f);
-        float glyph = glyphSize(button, height);
-        draw.roundRect(canvas, left, centreY - height / 2, left + width,
-                centreY + height / 2, height / 2, chip);
-        draw.text(canvas, button, left + width / 2,
-                centreY + draw.capCentreOffset(glyph), glyph, Theme.textOn(chip),
-                Paint.Align.CENTER, true);
+        draw.keycap(canvas, left, centreY, height, button, chip);
     }
 
     /**
@@ -1138,7 +1144,7 @@ public final class HudScene {
         if (game.storyMode) {
             return "THE STORY BOOK";
         }
-        return knowsTonight() ? "TONIGHT" : "TOGETHER SO FAR";
+        return knowsTonight() ? "THIS SESSION" : "TOGETHER SO FAR";
     }
 
     /**
@@ -1161,7 +1167,7 @@ public final class HudScene {
         }
         int made = picturesToShow(game);
         if (made <= 0) {
-            return knowsTonight() ? "The evening is young" : "The first one is waiting";
+            return knowsTonight() ? "First picture underway" : "The first one is waiting";
         }
         return capitalise(word(made)) + (made == 1 ? " picture done" : " pictures done");
     }
@@ -1267,7 +1273,7 @@ public final class HudScene {
     private void drawPips(Canvas canvas, float left, float top, float lane,
                           GameState game) {
         int total = pipCount(game);
-        int made = game.storyMode ? Math.min(total, game.storyFurthest + 1)
+        int made = game.storyMode ? game.storyCompleteCount()
                 : picturesToShow(game);
         int current = game.storyMode ? game.storyIndex : -1;
 
@@ -1282,7 +1288,7 @@ public final class HudScene {
             float cy = top + pitch * (pip / perRow + .5f);
             if (pip == current) {
                 draw.heart(canvas, cx, cy, pitch * .62f, Theme.GOLD);
-            } else if (pip < made) {
+            } else if (game.storyMode ? game.storyChapterComplete(pip) : pip < made) {
                 draw.heart(canvas, cx, cy, pitch * .58f, Theme.PINK);
             } else {
                 draw.circle(canvas, cx, cy, pitch * .11f,

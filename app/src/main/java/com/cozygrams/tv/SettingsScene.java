@@ -9,8 +9,8 @@ import android.graphics.Paint;
  * <p>The room is read from a sofa, with a remote that has a D-pad, a centre button and
  * Back — nothing else is assumed. So every row is a single line with a switch, the whole
  * list moves under up and down, and the explanation for whichever row is highlighted is
- * given once, in full size, along the bottom. Eleven small captions all shouting at once
- * is a control panel; one calm sentence is a cozy corner.
+ * given once, in full size, along the bottom. Only seven generous rows are shown at once:
+ * twelve tiny labels are a control panel; a calm, focus-following list is a cozy corner.
  *
  * <p><b>Every row answers back.</b> The switch used to be the only reply: a 56 x 29 px
  * pill whose knob travelled 27 px, which is 40 x 21 arcminutes from ten feet and a state
@@ -35,17 +35,15 @@ public final class SettingsScene {
     public static final int ITEM_BOLD_CURSOR = 7;
     public static final int ITEM_CALM_MOTION = 8;
     public static final int ITEM_DEFAULTS = 9;
-    public static final int ITEM_BACK = 10;
-    public static final int ITEM_COUNT = 11;
+    public static final int ITEM_START_STORY = 10;
+    public static final int ITEM_BACK = 11;
+    public static final int ITEM_COUNT = 12;
 
     /** The last row that carries a switch; everything after it is an action. */
     private static final int LAST_SWITCH = ITEM_CALM_MOTION;
 
-    /** Rows after which a little extra air separates one group of options from the next. */
-    private static final int[] BREAK_AFTER = {ITEM_SFX, ITEM_HINTS, ITEM_CALM_MOTION};
-
-    /** A group break is worth this much of a row. */
-    private static final float GROUP_GAP = .34f;
+    /** Enough choices to scan at once from a sofa without turning the screen into a ledger. */
+    static final int VISIBLE_ROWS = 7;
 
     /** The band of the screen the rows live in, as a fraction of its height. */
     static final float ROWS_TOP = .215f;
@@ -87,6 +85,8 @@ public final class SettingsScene {
      * same way so a reader who has met one has met both.
      */
     private static long defaultsArmedAt;
+    private static long storyRestartArmedAt;
+    private static boolean storyRestartConfirmed;
 
     /** A short line to show instead of the row's explanation, and when it was said. */
     private static String note = "";
@@ -96,30 +96,39 @@ public final class SettingsScene {
     private static int tidyingPlayer = -1;
 
     private final Draw draw;
+    private final HomeScene.MenuFrame frame;
 
     public SettingsScene(Draw draw) {
         this.draw = draw;
+        this.frame = new HomeScene.MenuFrame(draw);
     }
 
     public static String[] labels() {
+        return labels(new UiState());
+    }
+
+    /** Labels adjusted to the place the corner will return to. */
+    public static String[] labels(UiState ui) {
         return new String[]{
-                "MUSIC",
-                "SOUND EFFECTS",
-                "GENTLE MISTAKE CHECK",
-                "HINT BUTTON",
-                "LARGER TEXT",
-                "EXTRA CONTRAST",
+                "Music",
+                "Sound effects",
+                "Gentle guidance",
+                "Hints",
+                "Larger text",
+                "Extra contrast",
                 // "TELL ROSE & SKY APART" measured 528.9 px at LARGER TEXT against a lane
                 // that is 468.0 px wide once the row carries a printed state and two
                 // identity chips — and a label can never shrink to fit, because
                 // textSize(17) is already sitting on the prose floor there. This is
                 // 389.6 px, and the two chips beside it are Rose and Sky, so they are what
                 // names the "them".
-                "TELL THEM APART",
-                "BOLDER CURSORS",
-                "CALMER ANIMATION",
-                defaultsArmed() ? "PUT EVERYTHING BACK?" : "PUT EVERYTHING BACK",
-                "BACK TO THE PUZZLE"
+                "Player colors",
+                "Bolder cursors",
+                "Reduce motion",
+                defaultsArmed() ? "Reset all settings?" : "Reset settings",
+                storyRestartArmed() ? "Start the story over?" : "Start story over",
+                ui.screenBeforeSettings == UiState.GAME
+                        ? "Back to the puzzle" : "Back to the menu"
         };
     }
 
@@ -128,18 +137,25 @@ public final class SettingsScene {
      * largest text size, on the narrowest panel we draw.
      */
     public static String[] descriptions() {
+        return descriptions(new UiState());
+    }
+
+    /** Supporting copy adjusted to the place the corner will return to. */
+    public static String[] descriptions(UiState ui) {
         return new String[]{
                 "a soft music box in the background",
                 "little chimes for every square",
-                "we'll gently say when a square isn't right",
-                "the hint button lights up one square",
+                "gently catch a square that isn't right",
+                "light up one square when you ask",
                 "bigger type for the far side of the room",
                 "deepen the backdrop so the clues pop",
                 "Sky takes a deeper teal and a dashed ring",
                 "thicker cursor rings that are easy to find",
-                "fewer sparkles, and nothing that pulses",
+                "fewer sparkles, with no pulsing",
                 "every option back the way it started",
-                "we'll keep your place"
+                "chapter one, a fresh book",
+                ui.screenBeforeSettings == UiState.GAME
+                        ? "we'll keep your place" : "back to choosing a picture"
         };
     }
 
@@ -155,6 +171,7 @@ public final class SettingsScene {
                 comfort.distinctPlayers,
                 comfort.boldCursor,
                 comfort.calmMotion,
+                false,
                 false,
                 false
         };
@@ -215,6 +232,8 @@ public final class SettingsScene {
                 return sayState(item, ui, now);
             case ITEM_DEFAULTS:
                 return putEverythingBack(ui, now);
+            case ITEM_START_STORY:
+                return askToStartTheStoryAgain(now);
             default:
                 return false;
         }
@@ -233,6 +252,7 @@ public final class SettingsScene {
     /** Puts the new state of a switch row into the explanation slot, and says it was handled. */
     private static boolean sayState(int item, UiState ui, long now) {
         disarmDefaults();
+        disarmStoryRestart();
         say(friendlyName(item) + " is " + (states(ui)[item] ? "on" : "off"), now);
         return true;
     }
@@ -242,19 +262,43 @@ public final class SettingsScene {
      * "LARGER TEXT is on". All-caps is a drawing decision; a sentence is not.
      */
     static String friendlyName(int item) {
-        String label = labels()[Math.floorMod(item, ITEM_COUNT)];
-        return label.charAt(0) + label.substring(1).toLowerCase(java.util.Locale.ROOT);
+        return friendlyName(new UiState(), item);
+    }
+
+    static String friendlyName(UiState ui, int item) {
+        return labels(ui)[Math.floorMod(item, ITEM_COUNT)];
     }
 
     private static boolean putEverythingBack(UiState ui, long now) {
-        if (defaultsArmed()) {
+        if (confirmationIsFresh(defaultsArmedAt, now)) {
             disarmDefaults();
             ui.restoreDefaults();
             say("Everything is back the way it started  ♥", now);
             return true;
         }
+        disarmStoryRestart();
         armDefaults(now);
         return true;
+    }
+
+    private static boolean askToStartTheStoryAgain(long now) {
+        if (confirmationIsFresh(storyRestartArmedAt, now)) {
+            disarmStoryRestart();
+            storyRestartConfirmed = true;
+            return true;
+        }
+        disarmDefaults();
+        armStoryRestart(now);
+        return true;
+    }
+
+    /** A confirmation must still be fresh when the second press arrives. */
+    static boolean confirmationIsFresh(long armedAt, long now) {
+        if (armedAt == 0) {
+            return false;
+        }
+        // The clockless overload deliberately uses 0 for both presses in unit tests.
+        return now == 0 || (now >= armedAt && now - armedAt <= CONFIRM_WINDOW_MS);
     }
 
     // ---- Asking before something that cannot be undone --------------------------------
@@ -275,10 +319,37 @@ public final class SettingsScene {
         defaultsArmedAt = 0;
     }
 
+    public static boolean storyRestartArmed() {
+        return storyRestartArmedAt != 0;
+    }
+
+    public static void armStoryRestart(long now) {
+        storyRestartArmedAt = now == 0 ? 1 : now;
+    }
+
+    public static void disarmStoryRestart() {
+        storyRestartArmedAt = 0;
+    }
+
+    /**
+     * True once the pair have confirmed they want chapter one again. Consuming it clears
+     * the flag so a later visit to settings cannot fire it by accident.
+     */
+    public static boolean consumeStoryRestart() {
+        if (!storyRestartConfirmed) {
+            return false;
+        }
+        storyRestartConfirmed = false;
+        return true;
+    }
+
     /** Lets the question lapse once it has been on screen long enough to have been read. */
     static void expireDefaults(long now) {
         if (defaultsArmedAt != 0 && now - defaultsArmedAt > CONFIRM_WINDOW_MS) {
             defaultsArmedAt = 0;
+        }
+        if (storyRestartArmedAt != 0 && now - storyRestartArmedAt > CONFIRM_WINDOW_MS) {
+            storyRestartArmedAt = 0;
         }
     }
 
@@ -299,9 +370,8 @@ public final class SettingsScene {
 
     /** What the bottom line should read, given the highlighted row and the clock. */
     static String bottomLine(int focus, long now) {
-        if (defaultsArmed()) {
-            return "press " + HomeScene.confirmName()
-                    + " again to be sure — this cannot be undone";
+        if (defaultsArmed() || storyRestartArmed()) {
+            return "Choose again to be sure — this cannot be undone";
         }
         if (!note.isEmpty() && noteAt > 0 && now - noteAt < NOTE_MS) {
             return note;
@@ -309,9 +379,21 @@ public final class SettingsScene {
         return descriptions()[Math.floorMod(focus, ITEM_COUNT)];
     }
 
+    static String bottomLine(int focus, long now, UiState ui) {
+        if (defaultsArmed() || storyRestartArmed()) {
+            return bottomLine(focus, now);
+        }
+        if (!note.isEmpty() && noteAt > 0 && now - noteAt < NOTE_MS) {
+            return note;
+        }
+        return descriptions(ui)[Math.floorMod(focus, ITEM_COUNT)];
+    }
+
     /** Puts the screen's memory back, for tests that share one static corner between them. */
     static void forgetTheRoom() {
         defaultsArmedAt = 0;
+        storyRestartArmedAt = 0;
+        storyRestartConfirmed = false;
         note = "";
         noteAt = 0;
         tidyingPlayer = -1;
@@ -334,22 +416,28 @@ public final class SettingsScene {
 
     // ---- Layout ----------------------------------------------------------------------
 
-    /**
-     * The vertical centre of every row, spread evenly through the band between
-     * {@code top} and {@code bottom} with a breath of air between groups.
-     *
-     * <p>Deliberately worked out from the space available rather than from fixed design
-     * pixels: larger text scales the type, and the rows have to keep fitting.
-     */
+    /** The first item in the seven-row window, keeping focus near its calm centre. */
+    static int windowStart(int focus) {
+        int selected = Math.floorMod(focus, ITEM_COUNT);
+        return Math.max(0, Math.min(ITEM_COUNT - VISIBLE_ROWS,
+                selected - VISIBLE_ROWS / 2));
+    }
+
+    /** The current group, used as an eyebrow above the focus-following list. */
+    static String sectionName(int item) {
+        int selected = Math.floorMod(item, ITEM_COUNT);
+        if (selected <= ITEM_SFX) return "SOUND";
+        if (selected <= ITEM_HINTS) return "HELPING HANDS";
+        if (selected <= ITEM_CALM_MOTION) return "COMFORT & ACCESS";
+        return "STORY & RESET";
+    }
+
+    /** Vertical centres for the visible rows only. */
     static float[] rowCentres(float top, float bottom) {
         float step = rowStep(top, bottom);
-        float[] centres = new float[ITEM_COUNT];
-        float extra = 0;
-        for (int item = 0; item < ITEM_COUNT; item++) {
-            centres[item] = top + step * (item + .5f) + extra;
-            if (breaksAfter(item)) {
-                extra += step * GROUP_GAP;
-            }
+        float[] centres = new float[VISIBLE_ROWS];
+        for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
+            centres[slot] = top + step * (slot + .5f);
         }
         return centres;
     }
@@ -360,16 +448,7 @@ public final class SettingsScene {
     }
 
     private static float rowStep(float top, float bottom) {
-        return (bottom - top) / (ITEM_COUNT + GROUP_GAP * BREAK_AFTER.length);
-    }
-
-    private static boolean breaksAfter(int item) {
-        for (int at : BREAK_AFTER) {
-            if (at == item) {
-                return true;
-            }
-        }
-        return false;
+        return (bottom - top) / VISIBLE_ROWS;
     }
 
     // ---- Drawing ---------------------------------------------------------------------
@@ -378,42 +457,71 @@ public final class SettingsScene {
         expireDefaults(now);
         boolean bold = ui.highContrastOn;
 
-        // The panel is nearly opaque either way, so this is a small move — but a player who
-        // turns EXTRA CONTRAST on while standing on this screen has to see *something*
-        // happen here, or they learn the setting is broken and never trust it again.
-        draw.panel(canvas, width * .255f, height * Theme.SAFE_AREA, width * .745f,
-                height * (1 - Theme.SAFE_AREA), bold ? 246 : 235);
+        // Same frame as the title screen, so opening the corner does not rebuild the
+        // panel 38 px wider mid-transition. Laid out from measurements the way HomeScene
+        // is: header down from the top margin, footer up from the bottom, rows in what
+        // is left. Fraction-of-height placement is what let the last row and the footer
+        // bleed out of the card on a 5×5, 4K board with larger type.
+        frame.panel(canvas, width, height, bold);
 
-        draw.shadowedText(canvas, "COZY CORNER", width / 2, height * .128f,
-                Theme.textSize(Theme.HEADING), Theme.CREAM, Paint.Align.CENTER, true);
-        draw.text(canvas, subtitle(), width / 2, height * .175f,
-                Theme.textSize(Theme.CAPTION),
+        float top = frame.top(height) + Theme.scale(16);
+        float bottom = frame.bottom(height) - Theme.scale(16);
+
+        float titleSize = Theme.textSize(Theme.HEADING);
+        float titleY = top + titleSize * .70f;
+        draw.shadowedText(canvas, "COZY CORNER", width / 2, titleY, titleSize, Theme.CREAM,
+                Paint.Align.CENTER, true);
+
+        float subSize = Theme.textSize(Theme.CAPTION);
+        float subY = titleY + titleSize * .18f + Theme.scale(10) + subSize * .70f;
+        draw.text(canvas, subtitle(), width / 2, subY, subSize,
                 tidyingPlayer < 0 ? Theme.secondaryText(bold)
                         : Theme.readableOn(Theme.playerColor(tidyingPlayer), Theme.PANEL, 4.5),
                 Paint.Align.CENTER, false);
+        float headerBottom = subY + subSize * .18f + Theme.scale(10);
 
-        // The menu index belongs to the caller, so never trust it to be in range.
+        float capSize = Theme.textSize(Theme.CAPTION);
+        float hintY = bottom - capSize * .18f;
+        float explainSize = Theme.textSize(Theme.BODY);
+        float explainY = hintY - capSize * .70f - Theme.scale(14) - explainSize * .18f;
+        float footerTop = explainY - explainSize * .70f - Theme.scale(10);
+
         int focus = Math.floorMod(ui.menu, ITEM_COUNT);
-        String[] labels = labels();
+        float sectionSize = Theme.textSize(Theme.CAPTION);
+        float sectionY = headerBottom + sectionSize * .70f;
+        float rowLeft = frame.rowLeft(width);
+        float rowRight = frame.rowRight(width);
+        draw.text(canvas, sectionName(focus), rowLeft, sectionY, sectionSize, Theme.GOLD,
+                Paint.Align.LEFT, true);
+        int start = windowStart(focus);
+        String place = (start + 1) + "–" + (start + VISIBLE_ROWS) + "  OF  " + ITEM_COUNT;
+        draw.text(canvas, place, rowRight, sectionY, sectionSize,
+                Theme.secondaryText(bold), Paint.Align.RIGHT, false);
+
+        float rowTop = sectionY + sectionSize * .22f + Theme.scale(10);
+        float rowBottom = Math.max(rowTop + Theme.scale(80), footerTop);
+        String[] labels = labels(ui);
         boolean[] states = states(ui);
-        float[] centres = rowCentres(height * ROWS_TOP, height * ROWS_BOTTOM);
-        float half = rowHalfHeight(height * ROWS_TOP, height * ROWS_BOTTOM);
-        for (int item = 0; item < ITEM_COUNT; item++) {
-            drawRow(canvas, width, centres[item], half, labels[item], states[item],
+        float[] centres = rowCentres(rowTop, rowBottom);
+        float half = rowHalfHeight(rowTop, rowBottom);
+        for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
+            int item = start + slot;
+            drawRow(canvas, width, centres[slot], half, labels[item], states[item],
                     item == focus, item, ui, now);
         }
 
-        drawBottomLine(canvas, width, height, bottomLine(focus, now), bold);
-        drawFooter(canvas, width, height, bold);
+        drawBottomLine(canvas, width, explainY, bottomLine(focus, now, ui), bold);
+        drawFooter(canvas, width, hintY, bold);
     }
 
     private void drawRow(Canvas canvas, float width, float centreY, float half,
                          String label, boolean on, boolean focused, int item, UiState ui,
                          long now) {
-        float left = width * .285f;
-        float right = width * .715f;
+        float left = frame.rowLeft(width);
+        float right = frame.rowRight(width);
         float radius = half * .82f;
-        boolean asking = item == ITEM_DEFAULTS && defaultsArmed();
+        boolean asking = (item == ITEM_DEFAULTS && defaultsArmed())
+                || (item == ITEM_START_STORY && storyRestartArmed());
         int fill = asking ? Theme.CAUTION : Theme.PINK;
 
         drawRowSurface(canvas, left, right, centreY, half, radius, focused, fill,
@@ -450,7 +558,26 @@ public final class SettingsScene {
             draw.text(canvas, stateWord(on), right - edge,
                     centreY + draw.capCentreOffset(stateSize), stateSize, ink,
                     Paint.Align.RIGHT, true);
+        } else {
+            if (focused) {
+                drawActionAccessory(canvas, right - edge, centreY,
+                        item == ITEM_BACK ? "RETURN" : "CHOOSE", stateSize,
+                        Theme.textOn(fill));
+            }
         }
+    }
+
+    private void drawActionAccessory(Canvas canvas, float right, float centreY,
+                                     String label, float size, int textColor) {
+        float labelWidth = draw.measure(label, size, true);
+        float gap = Theme.scale(8);
+        float height = size * 1.05f;
+        String key = HomeScene.confirmName();
+        float width = draw.keycapWidth(key, height);
+        int color = HudScene.remoteOnly() ? Theme.INK : Theme.BUTTON_A;
+        draw.keycap(canvas, right - labelWidth - gap - width, centreY, height, key, color);
+        draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
+                textColor, Paint.Align.RIGHT, true);
     }
 
     /**
@@ -544,7 +671,7 @@ public final class SettingsScene {
     private void drawSwitch(Canvas canvas, float left, float centreY, float width,
                             float height, boolean on, boolean focused, boolean bold) {
         float radius = height / 2;
-        int trackOn = focused ? Theme.INK : Theme.PINK;
+        int trackOn = focused ? Theme.PINK_DARK : Theme.PINK;
         int trackOff = focused ? Draw.withAlpha(Theme.INK, bold ? 130 : 90)
                 : (bold ? Draw.blend(Theme.TOGGLE_OFF, Theme.CREAM, .18f) : Theme.TOGGLE_OFF);
         draw.roundRect(canvas, left, centreY - radius, left + width, centreY + radius,
@@ -561,14 +688,14 @@ public final class SettingsScene {
     }
 
     /** The one line at the bottom, given properly rather than whispered. */
-    private void drawBottomLine(Canvas canvas, float width, float height, String line,
+    private void drawBottomLine(Canvas canvas, float width, float baseline, String line,
                                 boolean bold) {
         if (line.isEmpty()) {
             return;
         }
-        float room = width * .49f - Theme.scale(56);
+        float room = frame.rowRight(width) - frame.rowLeft(width);
         float size = fit(line, room, Theme.textSize(Theme.BODY), false);
-        draw.text(canvas, line, width / 2, height * .868f, size,
+        draw.text(canvas, line, width / 2, baseline, size,
                 Draw.withAlpha(Theme.CREAM, bold ? 255 : 225), Paint.Align.CENTER, false);
     }
 
@@ -581,13 +708,44 @@ public final class SettingsScene {
      * title screen has always asked {@link HomeScene#confirmName()} and the two menus were
      * disagreeing about the name of the same button.
      */
-    private void drawFooter(Canvas canvas, float width, float height, boolean bold) {
-        String footer = "D-pad to move   ·   " + HomeScene.confirmName()
-                + " to change   ·   Back to close";
-        float size = fit(footer, width * .49f - Theme.scale(56),
-                Theme.textSize(Theme.CAPTION), false);
-        draw.text(canvas, footer, width / 2, height * .916f, size,
-                Theme.secondaryText(bold), Paint.Align.CENTER, false);
+    private void drawFooter(Canvas canvas, float width, float baseline, boolean bold) {
+        float left = frame.rowLeft(width);
+        float right = frame.rowRight(width);
+        String confirm = HomeScene.confirmName();
+        String back = HudScene.backName();
+        float size = Theme.textSize(Theme.CAPTION);
+        float gap = Theme.scale(9);
+        float group = Theme.scale(22);
+        float height;
+        float confirmWidth;
+        float backWidth;
+        float total;
+        do {
+            height = size * 1.08f;
+            confirmWidth = draw.keycapWidth(confirm, height);
+            backWidth = draw.keycapWidth(back, height);
+            total = height + gap + draw.measure("Move", size, false) + group
+                    + confirmWidth + gap + draw.measure("Change", size, false) + group
+                    + backWidth + gap + draw.measure("Close", size, false);
+            if (total <= right - left || size <= Theme.scale(20)) break;
+            size = Math.max(Theme.scale(20), size * (right - left) / total);
+        } while (true);
+
+        float centreY = baseline - draw.capCentreOffset(size);
+        float x = (left + right - total) / 2;
+        int text = Theme.secondaryText(bold);
+        draw.dpadKeycap(canvas, x, centreY, height, Theme.SOFT_TEXT);
+        x += height + gap;
+        draw.text(canvas, "Move", x, baseline, size, text, Paint.Align.LEFT, false);
+        x += draw.measure("Move", size, false) + group;
+        int confirmColor = HudScene.remoteOnly() ? Theme.SOFT_TEXT : Theme.BUTTON_A;
+        draw.keycap(canvas, x, centreY, height, confirm, confirmColor);
+        x += confirmWidth + gap;
+        draw.text(canvas, "Change", x, baseline, size, text, Paint.Align.LEFT, false);
+        x += draw.measure("Change", size, false) + group;
+        draw.keycap(canvas, x, centreY, height, back, Theme.SOFT_TEXT);
+        x += backWidth + gap;
+        draw.text(canvas, "Close", x, baseline, size, text, Paint.Align.LEFT, false);
     }
 
     /**

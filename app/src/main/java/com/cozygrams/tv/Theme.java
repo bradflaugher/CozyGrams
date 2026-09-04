@@ -364,6 +364,14 @@ public final class Theme {
     /** The hairline around a resting menu row. */
     public static final int ROW_REST_STROKE = Draw.withAlpha(CREAM, 54);
 
+    /** Familiar Xbox face-button colours, reserved for literal controller prompts. */
+    public static final int BUTTON_A = rgb(16, 124, 16);
+    // Red and blue are one value-step deeper than the plastic reference hues so cream
+    // letters still clear AA contrast from a sofa.
+    public static final int BUTTON_B = rgb(205, 25, 45);
+    public static final int BUTTON_X = rgb(0, 105, 185);
+    public static final int BUTTON_Y = rgb(255, 185, 0);
+
     /** Lamplight along a panel's top edge and its two upper corners. */
     public static final int PANEL_EDGE_LIGHT = Draw.withAlpha(CREAM, 150);
 

@@ -58,6 +58,32 @@ public class HudSceneTest {
         assertEquals("A", HudScene.legendButtons()[0]);
     }
 
+    /**
+     * An Xbox pad's View / Select key is two overlapping squares, and that is Back. The
+     * gamepad legend used to never mention it, so going home looked like a secret.
+     */
+    @Test
+    public void aGamepadLegendNamesTheBackButton() {
+        HudScene.setRemoteOnly(false);
+        boolean named = false;
+        String[] buttons = HudScene.legendButtons();
+        String[] labels = HudScene.legendLabels(new UiState());
+        for (int i = 0; i < buttons.length; i++) {
+            named |= buttons[i].contains("⧉")
+                    && labels[i].toLowerCase(java.util.Locale.US).contains("back");
+        }
+        assertTrue("the gamepad legend never names Back", named);
+        assertEquals("⧉", HudScene.backName());
+        HudScene.setRemoteOnly(true);
+        assertEquals("Back", HudScene.backName());
+        HudScene.setRemoteOnly(false);
+        boolean settings = false;
+        for (String label : HudScene.legendLabels(new UiState())) {
+            settings |= label.toLowerCase(java.util.Locale.US).contains("settings");
+        }
+        assertTrue("the rail still says cozy corner", settings);
+    }
+
     @Test
     public void everyLegendRowHasAButtonAndAnExplanation() {
         UiState ui = new UiState();
@@ -216,6 +242,13 @@ public class HudSceneTest {
         game.solved = 9;
         assertEquals(1, HudScene.legendRows(game, 0));
         assertEquals(1, HudScene.legendRows(game, 900));
+    }
+
+    @Test
+    public void aLegendIsEitherCompleteOrACompactStrip() {
+        assertEquals(5, HudScene.legendMode(5, true));
+        assertEquals(1, HudScene.legendMode(5, false));
+        assertEquals(1, HudScene.legendMode(1, true));
     }
 
     // ---- The ribbon's room -----------------------------------------------------------
@@ -404,8 +437,19 @@ public class HudSceneTest {
         assertEquals("The last chapter", HudScene.tailLine(game));
     }
 
+    @Test
+    public void endlessProgressUsesAStatusInsteadOfMoodCopy() {
+        GameState game = new GameState(7L, 10);
+        HudScene.setPuzzlesBeforeTonight(game.solved);
+        assertEquals("THIS SESSION", HudScene.tailLabel(game));
+        assertEquals("First picture underway", HudScene.tailLine(game));
+        game.solved++;
+        assertEquals("One picture done", HudScene.tailLine(game));
+    }
+
     private static int[] chipColours() {
-        return new int[]{Theme.PINK, Theme.BLUE, Theme.GOLD, Theme.SOFT_TEXT,
+        return new int[]{Theme.BUTTON_A, Theme.BUTTON_B, Theme.BUTTON_X, Theme.BUTTON_Y,
+                Theme.SOFT_TEXT,
                 Theme.playerColor(0), Theme.playerColor(1)};
     }
 

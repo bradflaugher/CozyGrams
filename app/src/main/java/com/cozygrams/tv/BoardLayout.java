@@ -442,15 +442,17 @@ public final class BoardLayout {
     }
 
     /**
-     * Bottom of the rail: the safe edge of the screen.
+     * Bottom of the rail: the paper card's bottom edge, never past the safe line.
      *
-     * <p>The rail may run below the card because the ribbon no longer crosses it — the
-     * ribbon is centred on the card and capped to the card's width, so it stays in the
-     * column the board is in. That extra height is what lets the rail close with a tail
-     * block instead of stopping halfway down the screen.
+     * <p>It used to run to the safe edge of the screen. On a 5x5 the card is cell-capped
+     * and much shorter than the screen, so the legend — Cozy corner, Back home — was drawn
+     * in the empty wallpaper under the puzzle, which reads as bleeding out of the
+     * container. The two big surfaces share a bottom edge again; if the legend cannot fit
+     * inside that, it collapses to chips.
      */
     public float panelBottom() {
-        return screenHeight - screenHeight * Theme.SAFE_AREA;
+        float safe = screenHeight - screenHeight * Theme.SAFE_AREA;
+        return Math.min(cardBottom(), safe);
     }
 
     /** Outer bounds of the paper card behind the board and its clue gutters. */

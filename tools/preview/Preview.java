@@ -282,7 +282,7 @@ public final class Preview {
     private static Frame[] frames() {
         return new Frame[]{
                 new Frame("01-home.png",
-                        "The title screen, CONTINUE focused, Rose alone at the table.",
+                        "The title screen, STORY BOOK focused, Rose alone at the table.",
                         Preview::home),
                 new Frame("02-home-size.png",
                         "The same menu with the board-size stepper focused and both "
@@ -354,6 +354,16 @@ public final class Preview {
                 new Frame("21-game-page-turn.png",
                         "85 ms into the 340 ms wash between one chapter and the next.",
                         Preview::pageTurn),
+                new Frame("sizes/22-settings-bigtext-720p.png",
+                        "The focus-following Cozy Corner at 720p with LARGER TEXT on.",
+                        Preview::settingsBigText, 1280, 720),
+                new Frame("23-win-remote.png",
+                        "A settled win reached with a bare remote, whose prompt must say OK.",
+                        Preview::winRemote),
+                new Frame("24-home-together.png",
+                        "The title screen as a pair sees it: STORY BOOK focused and both "
+                                + "players ready.",
+                        Preview::homeTogether),
                 new Frame("sizes/07-game-20x20-1280x720.png",
                         "Shot 07 at 720p, the smallest panel an Android TV ships with.",
                         Preview::gameTwenty, 1280, 720),
@@ -372,7 +382,7 @@ public final class Preview {
         GameState game = endless(SUBJECT_OWL, 10);
         UiState ui = new UiState();
         ui.screen = UiState.HOME;
-        ui.menu = HomeScene.ITEM_CONTINUE;
+        ui.menu = HomeScene.ITEM_STORY;
         ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
@@ -384,6 +394,18 @@ public final class Preview {
         ui.menu = HomeScene.ITEM_SIZE;
         ui.joined[0] = true;
         ui.joined[1] = true;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void homeTogether(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_SWEETHEART, 10);
+        UiState ui = new UiState();
+        ui.screen = UiState.HOME;
+        ui.menu = HomeScene.ITEM_STORY;
+        ui.joined[0] = true;
+        ui.joined[1] = true;
+        HomeScene.setWelcome("");
+        HomeScene.setPendingChapter(0);
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
 
@@ -591,9 +613,8 @@ public final class Preview {
      * {@code app/build.gradle} sets {@code returnDefaultValues}, so {@code
      * Paint.measureText} returns 0 in tests and every fitting guard passes trivially. The
      * only place a label running through its own value can be caught is a rendered frame,
-     * so this is the frame — the longest label ("START THE STORY AGAIN", or the armed
-     * question), the longest value, a returning-player greeting long enough to need two
-     * lines, and LARGER TEXT on top of all of it.
+     * so this is the frame — the longest home strings, a returning-player greeting long
+     * enough to need two lines, and LARGER TEXT on top of all of it.
      */
     private static void homeWorstCase(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = storyGame(STORY_CHAPTER);
@@ -601,15 +622,13 @@ public final class Preview {
         game.solved = 128;
         UiState ui = new UiState();
         ui.screen = UiState.HOME;
-        ui.menu = HomeScene.ITEM_RESTART;
+        ui.menu = HomeScene.ITEM_STORY;
         ui.bigTextOn = true;
         ui.joined[0] = true;
         ui.joined[1] = true;
         HomeScene.setWelcome("It's been a while — the room kept your seat warm, and the "
                 + "kettle is still on");
-        HomeScene.armRestart(T0);
-        // A size chosen while a chapter was open, which is what puts "next" on the end of
-        // the stepper's value and makes that row's longest string reachable too.
+        HomeScene.setPendingChapter(PuzzleLibrary.count() - 1);
         HomeScene.setPendingSize(GameState.MAX_SIZE);
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
@@ -669,6 +688,24 @@ public final class Preview {
         SettingsScene.armDefaults(T0);
         SettingsScene.setTidyingPlayer(1);
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void settingsBigText(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = new UiState();
+        ui.screen = UiState.SETTINGS;
+        ui.screenBeforeSettings = UiState.GAME;
+        ui.menu = SettingsScene.ITEM_BIG_TEXT;
+        ui.bigTextOn = true;
+        ui.joined[0] = true;
+        ui.joined[1] = true;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void winRemote(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setRemoteOnly(true);
+        drawWin(canvas, renderer, w, h, 2200, false);
+        HudScene.setRemoteOnly(false);
     }
 
     /**
@@ -871,7 +908,7 @@ public final class Preview {
     private static Take homeFocus() {
         Take take = new Take(endless(SUBJECT_OWL, 10));
         take.ui.screen = UiState.HOME;
-        take.ui.menu = HomeScene.ITEM_CONTINUE;
+        take.ui.menu = HomeScene.ITEM_STORY;
         // 260 ms apart, comfortably clear of Theme.MENU_REPEAT_MS, so every press lands.
         take.at(300, (t, now) -> t.stepMenu(1, HomeScene.ITEM_COUNT, now));
         take.at(560, (t, now) -> t.stepMenu(1, HomeScene.ITEM_COUNT, now));
@@ -1071,6 +1108,7 @@ public final class Preview {
     private static GameState storyGame(int chapter) {
         GameState game = endless(SUBJECT_SWEETHEART, 5);
         game.startStory(chapter);
+        game.storyCompleted = GameState.completedPrefix(chapter);
         return game;
     }
 
@@ -1428,6 +1466,7 @@ public final class Preview {
                 return;
             }
             ui.won = true;
+            game.completeCurrentStoryChapter();
             ui.winAt = now;
             if (Comfort.get().calmMotion) {
                 return;
@@ -1768,7 +1807,9 @@ public final class Preview {
         canvas.release();
 
         BufferedImage image = target.image();
-        Provenance.stamp(image);
+        if (!Boolean.getBoolean("cozy.preview.clean")) {
+            Provenance.stamp(image);
+        }
 
         File file = new File(outDir, frame.name);
         File parent = file.getParentFile();
