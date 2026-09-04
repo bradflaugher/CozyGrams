@@ -45,6 +45,7 @@ public class WinSceneTest {
     private static GameState story(int chapterIndex) {
         GameState game = new GameState(7L, 10);
         game.startStory(chapterIndex);
+        game.storyCompleted = GameState.completedPrefix(chapterIndex + 1);
         return game;
     }
 
@@ -478,7 +479,7 @@ public class WinSceneTest {
         // first sentence the book says and it should not be able to change unnoticed.
         assertEquals("The book is open — twenty-three more.",
                 WinScene.journeyLine(game));
-        assertEquals("Press A for the next chapter", WinScene.invite(game));
+        assertEquals("Next chapter", WinScene.invite(game));
     }
 
     @Test
@@ -489,7 +490,7 @@ public class WinSceneTest {
         assertFalse(WinScene.isFinalChapter(game));
         // Fourteen left of twenty-four, where the eighteen-chapter book left eight.
         assertEquals("Fourteen more chapters to come.", WinScene.journeyLine(game));
-        assertEquals("Press A for the next chapter", WinScene.invite(game));
+        assertEquals("Next chapter", WinScene.invite(game));
         // A chapter says its own line rather than drawing from the endless rotation. The
         // twenty-four lines in PuzzleLibrary.LINES had no caller outside these tests, so the
         // warmest writing in the game had never reached a television; this is where it goes.
@@ -540,7 +541,7 @@ public class WinSceneTest {
         assertTrue(WinScene.isFinalChapter(game));
         assertEquals("THE LAST CHAPTER", WinScene.eyebrow(game, true));
         assertEquals("Twenty-four pictures, cover to cover.", WinScene.journeyLine(game));
-        assertEquals("Press A to open the book again", WinScene.invite(game));
+        assertEquals("Open the book again", WinScene.invite(game));
 
         String together = WinScene.message(game, true);
         String alone = WinScene.message(game, false);
@@ -551,6 +552,19 @@ public class WinSceneTest {
             assertFalse(together.equals(WinScene.message(solved, true)));
             assertFalse(alone.equals(WinScene.message(solved, false)));
         }
+    }
+
+    @Test
+    public void openingTheLastChapterFirstDoesNotPretendTheWholeBookIsFinished() {
+        GameState game = new GameState(7L, 10);
+        game.startStory(PuzzleLibrary.count() - 1);
+        game.completeCurrentStoryChapter();
+
+        assertTrue(WinScene.isFinalChapter(game));
+        assertFalse(WinScene.isBookComplete(game));
+        assertFalse(WinScene.journeyLine(game).contains("cover to cover"));
+        assertFalse(WinScene.message(game, true).startsWith("Every page"));
+        assertEquals("Next chapter", WinScene.invite(game));
     }
 
     /** Wrapping past the end of the book restarts it rather than running off the shelf. */
@@ -599,11 +613,21 @@ public class WinSceneTest {
     public void endlessSaysNothingAboutChapters() {
         GameState game = endless(4);
         assertFalse(WinScene.isFinalChapter(game));
-        assertEquals("Press A for another picture", WinScene.invite(game));
+        assertEquals("Another picture", WinScene.invite(game));
         assertFalse(WinScene.eyebrow(game, true).contains("CHAPTER"));
         assertFalse(WinScene.journeyLine(game).toLowerCase(Locale.ROOT)
                 .contains("chapter"));
         assertFalse(WinScene.journeyLine(game).toLowerCase(Locale.ROOT).contains("book"));
+    }
+
+    @Test
+    public void theInvitationNamesTheConfirmButtonThatExists() {
+        GameState game = endless(0);
+        HudScene.setRemoteOnly(false);
+        assertEquals("Another picture", WinScene.invite(game));
+        HudScene.setRemoteOnly(true);
+        assertEquals("Another picture", WinScene.invite(game));
+        HudScene.setRemoteOnly(false);
     }
 
     /**

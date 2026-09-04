@@ -140,7 +140,11 @@ mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR"/*.png
 
 echo "render.sh: rendering"
-"$JAVA" -Djava.awt.headless=true -Dfile.encoding=UTF-8 \
+clean_arg=()
+if [[ "${COZY_CLEAN:-0}" == "1" ]]; then
+  clean_arg=(-Dcozy.preview.clean=true)
+fi
+"$JAVA" -Djava.awt.headless=true -Dfile.encoding=UTF-8 "${clean_arg[@]}" \
   -Dcozy.assets="$ASSET_DIR" -cp "$CLASSES_DIR" Preview "$OUT_DIR" "$WIDTH" "$HEIGHT"
 
 # ---- Report ----------------------------------------------------------------------

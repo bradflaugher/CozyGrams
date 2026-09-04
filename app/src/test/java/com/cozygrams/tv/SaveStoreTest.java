@@ -257,6 +257,10 @@ public class SaveStoreTest {
         assertNotEquals(before, SaveStore.digest(game, ui, journey, 0));
         game.storyFurthest = 0;
 
+        game.storyCompleted = 4;
+        assertNotEquals(before, SaveStore.digest(game, ui, journey, 0));
+        game.storyCompleted = 0;
+
         assertNotEquals("a size waiting for the next picture is a saved field too",
                 before, SaveStore.digest(game, ui, journey, 15));
     }

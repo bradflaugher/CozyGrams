@@ -102,18 +102,8 @@ public final class CozyGameView extends View {
      */
     private final Set<Integer> padsInTheRoom = new HashSet<>();
 
-    /** A board size chosen while a picture was in progress, applied to the next one. */
+    /** A board size chosen on the title screen, applied to the next endless picture. */
     private int nextSize;
-
-    /**
-     * True when the banked {@link #nextSize} is also a way out of the story book. Story
-     * mode used to be a one-way door: {@code changeBoardSize} forced the size to
-     * {@code MIN_SIZE} and then banked it, and {@code nextPuzzle} only ever consumed a
-     * banked size when {@code !storyMode} — so {@code startEndless} was unreachable from
-     * anywhere in the interface once the book was open, and it survived a cold start
-     * because the save file remembers the mode.
-     */
-    private boolean leavingStory;
 
     /** Rotates the line-complete messages so the same words never land twice running. */
     private int lineMessage;
@@ -156,10 +146,6 @@ public final class CozyGameView extends View {
         game = store.loadGame();
         store.loadSettings(ui);
         nextSize = store.pendingSize();
-        // A banked size that survived into story mode can only have come from the one path
-        // that banks one there — the way out of the book — so the flag is reconstructed
-        // rather than stored beside it.
-        leavingStory = game.storyMode && nextSize > 0;
         // A board restored in its finished state has already been celebrated once, so
         // deal the next picture rather than replaying the win on the first keypress.
         if (game.puzzle.complete()) {
@@ -194,6 +180,8 @@ public final class CozyGameView extends View {
     private void forgetTheRoom() {
         HomeScene.disarmRestart();
         HomeScene.setPendingSize(nextSize);
+        HomeScene.setPendingChapter(-1);
+        SettingsScene.disarmStoryRestart();
         HudScene.setRemoteOnly(false);
         SettingsScene.disarmDefaults();
         SettingsScene.setTidyingPlayer(-1);
@@ -329,7 +317,7 @@ public final class CozyGameView extends View {
     private String describeMenu() {
         if (ui.screen == UiState.SETTINGS) {
             int row = Math.floorMod(ui.menu, SettingsScene.ITEM_COUNT);
-            String label = SettingsScene.friendlyName(row);
+            String label = SettingsScene.friendlyName(ui, row);
             return SettingsScene.hasSwitch(row)
                     ? label + ", " + (SettingsScene.states(ui)[row] ? "on" : "off")
                     : label;
@@ -364,8 +352,17 @@ public final class CozyGameView extends View {
     @Override
     public boolean onKeyDown(int key, KeyEvent event) {
         boolean repeat = event.getRepeatCount() > 0;
+        boolean joining = players.slotOf(event.getDeviceId()) < 0;
         int who = registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
+
+        // “Press a button to join” should do exactly one thing. Letting that same press
+        // fall through could start a chapter, flip a setting, or mark a square before the
+        // new player had even seen which seat they claimed.
+        if (joining) {
+            invalidate();
+            return true;
+        }
 
         boolean handled;
         switch (ui.screen) {
@@ -474,13 +471,21 @@ public final class CozyGameView extends View {
             stepMenu(-1, HomeScene.ITEM_COUNT, repeat);
         } else if (key == KeyEvent.KEYCODE_DPAD_DOWN) {
             stepMenu(1, HomeScene.ITEM_COUNT, repeat);
-        } else if (ui.menu == HomeScene.ITEM_SIZE
+        } else if ((ui.menu == HomeScene.ITEM_SIZE || ui.menu == HomeScene.ITEM_STORY)
                 && (key == KeyEvent.KEYCODE_DPAD_LEFT
                 || key == KeyEvent.KEYCODE_DPAD_RIGHT)) {
-            // A stepper with four stops that can deal a whole board must not spin. Held
-            // sideways it is paced exactly like the list it sits in.
+            // Hat-switch motion already stepped this pad; the matching D-pad key would
+            // double the move and skip a chapter or a size.
+            if (players.stickSteppedRecently(event.getDeviceId(), now())) {
+                return true;
+            }
             if (menuStepIsAllowed(repeat)) {
-                changeBoardSize(key == KeyEvent.KEYCODE_DPAD_LEFT ? -5 : 5);
+                int dir = key == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
+                if (ui.menu == HomeScene.ITEM_SIZE) {
+                    nudgeBoardSize(dir * 5);
+                } else {
+                    browseStoryChapter(dir);
+                }
             }
         } else if (PlayerRegistry.isConfirm(key) && !repeat) {
             chooseHomeItem(who);
@@ -526,18 +531,11 @@ public final class CozyGameView extends View {
     }
 
     /**
-     * Steps the endless board size.
-     *
-     * <p>A row with chevrons on it promises a setting, not a restart — so a board with
-     * work on it is never thrown away here. The new size is remembered and takes effect
-     * on the next picture, and the row says so. Only an untouched board is redealt
-     * immediately, because there is nothing to lose and seeing the change is the point.
-     *
-     * <p>This is also the only way out of the story book. It used to force the size to
-     * {@link GameState#MIN_SIZE} in story mode and then bank it against a condition that
-     * could never be true, which made the book a door that locks behind you.
+     * Steps the endless-size picker. Left and right only change the number in the row;
+     * {@link #startEndlessAtSelectedSize} is what actually deals the canvas. Mixing those
+     * two jobs is how a 20×20 could sit in the stepper and never start.
      */
-    private void changeBoardSize(int amount) {
+    private void nudgeBoardSize(int amount) {
         int size = endlessSizeNow() + amount;
         if (size > GameState.MAX_SIZE) {
             size = GameState.MIN_SIZE;
@@ -546,41 +544,45 @@ public final class CozyGameView extends View {
             size = GameState.MAX_SIZE;
         }
         sfx.play(CozySfx.Sound.SELECT);
-
-        boolean chapterInProgress = game.storyMode && game.totalMoves() > 0;
-        if (chapterInProgress) {
-            bankSize(size, true, size + " × " + size + " — a fresh canvas after this chapter");
-            return;
-        }
-        if (!game.storyMode && game.totalMoves() > 0) {
-            bankSize(size, false, size + " × " + size + " — ready for the next picture");
-            return;
-        }
-        dealEndless(size, System.currentTimeMillis(), game.storyMode
-                ? size + " × " + size + " — endless play, a fresh canvas"
-                : size + " × " + size + " — a fresh cozy canvas");
-    }
-
-    /** Remembers a size for the next picture, and whether taking it leaves the book. */
-    private void bankSize(int size, boolean leavesTheStory, String message) {
         nextSize = size;
-        leavingStory = leavesTheStory;
         HomeScene.setPendingSize(size);
         store.setPendingSize(size);
-        tell(message, Theme.BLUE);
         store.save(game, ui);
     }
 
+    /** Opens the chapter the story-book stepper is showing. */
+    private void browseStoryChapter(int delta) {
+        HomeScene.disarmRestart();
+        HomeScene.browseChapter(game, delta);
+        sfx.play(CozySfx.Sound.SELECT);
+        if (speaking()) {
+            announce(describeMenu());
+        }
+    }
+
     /**
-     * Forgets a banked board size, in all four of the places that remember one: this view,
-     * the title screen's row, the save file, and the flag that says taking it would leave
-     * the story book. Spelled out twice — here and at the end of {@link #nextPuzzle} — and
-     * the two copies were identical, which is exactly how three of the four end up being
-     * cleared and the fourth not.
+     * Deals the size the stepper is showing, now, and goes to the board.
+     *
+     * <p>This is the way out of the story book and the way onto a 20×20. Continue resumes
+     * whatever is already on the table, so it cannot be the button that starts a size
+     * sitting in the next-picture row.
+     */
+    private void startEndlessAtSelectedSize() {
+        int size = endlessSizeNow();
+        if (!game.storyMode && game.size == size && !game.puzzle.complete()) {
+            enterGame();
+            return;
+        }
+        dealEndless(size, System.currentTimeMillis(),
+                size + " × " + size + " — a fresh cozy canvas");
+        enterGame();
+    }
+
+    /**
+     * Forgets a banked board size, in the view, the title screen's row and the save file.
      */
     private void clearPendingSize() {
         nextSize = 0;
-        leavingStory = false;
         HomeScene.setPendingSize(0);
         store.setPendingSize(0);
     }
@@ -613,20 +615,14 @@ public final class CozyGameView extends View {
     private void chooseHomeItem(int who) {
         sfx.play(CozySfx.Sound.SELECT);
         switch (ui.menu) {
-            case HomeScene.ITEM_CONTINUE:
-                enterGame();
-                break;
             case HomeScene.ITEM_STORY:
                 openStoryBook();
                 break;
             case HomeScene.ITEM_SIZE:
-                changeBoardSize(5);
+                startEndlessAtSelectedSize();
                 break;
             case HomeScene.ITEM_SETTINGS:
                 openSettings(who);
-                break;
-            case HomeScene.ITEM_RESTART:
-                confirmRestart();
                 break;
             default:
                 break;
@@ -636,35 +632,18 @@ public final class CozyGameView extends View {
     /**
      * Opens the book at the chapter the pair are on.
      *
-     * <p>The row says "STORY BOOK" and "24 little chapters", which promises a table of
-     * contents. It used to call {@code startStory} unconditionally, and
+     * <p>The row is a chapter stepper. It used to call {@code startStory} unconditionally, and
      * {@code PuzzleLibrary.get} builds a brand new {@link Puzzle} every time — so opening
      * the book halfway through chapter four threw chapter four away. Re-entering the
      * chapter you are already on now keeps every mark on it.
      */
     private void openStoryBook() {
-        if (!game.storyMode || game.puzzle.complete()) {
-            game.startStory(game.storyIndex);
+        int chapter = HomeScene.chapterToShow(game);
+        if (!game.storyMode || game.storyIndex != chapter || game.puzzle.complete()) {
+            game.startStory(chapter);
         }
+        HomeScene.setPendingChapter(-1);
         enterGame();
-    }
-
-    /**
-     * Starting the story over throws away everything a pair has made, and the row sits
-     * one press below the settings row — an overshoot must not be able to do it. The
-     * first press asks; only a second press within a few seconds goes through.
-     */
-    private void confirmRestart() {
-        if (HomeScene.restartArmed()) {
-            HomeScene.disarmRestart();
-            game.solved = 0;
-            game.startStory(0);
-            enterGame();
-            return;
-        }
-        HomeScene.armRestart(now());
-        tell("Start the story over from chapter one? Press " + HomeScene.confirmName()
-                + " again to be sure", Theme.CAUTION);
     }
 
     private void enterGame() {
@@ -721,12 +700,28 @@ public final class CozyGameView extends View {
             leaveSettings();
             return;
         }
+        if (SettingsScene.consumeStoryRestart()) {
+            game.solved = 0;
+            game.storyFurthest = 0;
+            game.storyCompleted = 0;
+            game.startStory(0);
+            HomeScene.setPendingChapter(0);
+            leaveSettings();
+            enterGame();
+            return;
+        }
         music.setEnabled(ui.musicOn);
-        sfx.setEnabled(ui.sfxOn);
         // The chime rises for something turned on and falls for something turned off, so
         // the answer is audible even for a row whose effect is on another screen.
-        sfx.select(CozySfx.ROOM, SettingsScene.hasSwitch(row)
-                && SettingsScene.states(ui)[row]);
+        boolean switchedOn = SettingsScene.hasSwitch(row) && SettingsScene.states(ui)[row];
+        if (row == SettingsScene.ITEM_SFX && !ui.sfxOn) {
+            // Say goodbye while the mixer is still listening, then make the room quiet.
+            sfx.select(CozySfx.ROOM, false);
+            sfx.setEnabled(false);
+        } else {
+            sfx.setEnabled(ui.sfxOn);
+            sfx.select(CozySfx.ROOM, switchedOn);
+        }
         announce(SettingsScene.bottomLine(row, now()));
         store.save(game, ui);
     }
@@ -739,16 +734,18 @@ public final class CozyGameView extends View {
         ui.menu = 0;
         SettingsScene.setTidyingPlayer(who);
         SettingsScene.disarmDefaults();
+        SettingsScene.disarmStoryRestart();
         if (speaking()) {
-            announce("Cozy corner. " + describeMenu());
+            announce("Settings. " + describeMenu());
         }
     }
 
-    /** Returns to wherever the cozy corner was opened from. */
+    /** Returns to wherever settings was opened from. */
     private void leaveSettings() {
         ui.screen = ui.screenBeforeSettings;
         ui.menu = ui.menuBeforeSettings;
         SettingsScene.disarmDefaults();
+        SettingsScene.disarmStoryRestart();
         SettingsScene.setTidyingPlayer(-1);
         if (speaking()) {
             announce(ui.screen == UiState.GAME ? "Back to the puzzle" : describeMenu());
@@ -778,16 +775,23 @@ public final class CozyGameView extends View {
 
         switch (key) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                stepCursor(who, -1, 0, repeat);
-                break;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                stepCursor(who, 1, 0, repeat);
-                break;
             case KeyEvent.KEYCODE_DPAD_UP:
-                stepCursor(who, 0, -1, repeat);
-                break;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                stepCursor(who, 0, 1, repeat);
+                // Some pads emit both analog motion and D-pad keys for one stick push.
+                // The analog path already stepped; taking the key too skips a square.
+                if (players.analogSteppedRecently(event.getDeviceId(), now())) {
+                    return true;
+                }
+                if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    stepCursor(who, -1, 0, repeat);
+                } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    stepCursor(who, 1, 0, repeat);
+                } else if (key == KeyEvent.KEYCODE_DPAD_UP) {
+                    stepCursor(who, 0, -1, repeat);
+                } else {
+                    stepCursor(who, 0, 1, repeat);
+                }
                 break;
             default:
                 if (repeat) {
@@ -879,11 +883,10 @@ public final class CozyGameView extends View {
         // Leaving acknowledges the picture too. Anything else leaves ui.won standing, and
         // the next board is dealt underneath a win card showing a solution nobody has
         // found yet — the press that dismisses it then skips that chapter as well.
-        if (settled) {
-            nextPuzzle();
-        } else {
-            clearWin();
-        }
+        // Back is an acknowledgement, not a way to cancel a solved picture. Advancing
+        // here at every point in the entrance keeps a quick Back and a patient Back
+        // identical: both bank the finished picture before returning home.
+        nextPuzzle();
         ui.screen = UiState.HOME;
         ui.menu = 0;
         if (speaking()) {
@@ -1092,6 +1095,12 @@ public final class CozyGameView extends View {
         effects.pulse(clearing ? Effects.Pulse.CLEAR : Effects.Pulse.CROSS, x, y,
                 Theme.playerColor(who), now());
         sfx.play(clearing ? CozySfx.Sound.CLEAR : CozySfx.Sound.CROSS, who);
+        if (!clearing) {
+            // Correcting a mistaken fill to a cross can finish a line just as surely as
+            // placing its last filled square. Give that route the same sweep and the same
+            // automatic crosses instead of making remote play feel second-class.
+            celebrateCompletedLines(who, x, y);
+        }
         afterBoardChanged();
     }
 
@@ -1237,6 +1246,7 @@ public final class CozyGameView extends View {
             return;
         }
         ui.won = true;
+        game.completeCurrentStoryChapter();
         ui.winAt = now();
         sfx.play(CozySfx.Sound.WIN);
         music.celebrate();
@@ -1296,16 +1306,21 @@ public final class CozyGameView extends View {
     /**
      * Whether the next picture should be the banked size rather than simply the next board.
      *
-     * <p>Two ways to earn it: the banked size is the way out of the story book, or endless
-     * play is already running and the size is genuinely different from the one on the table.
-     * A banked size that matches the current board is not a change and must not cost the
-     * pair their place in the deck.
+     * <p>A size sitting in the stepper must never steal the next story chapter. That is
+     * how finishing First Heart dealt a 20×20: the pair had browsed the size row, the
+     * win card's Back called {@link #nextPuzzle}, and the banked canvas jumped the book.
+     * Leaving the story is a menu action now — Play Endless — so a finished chapter
+     * always turns the page.
      */
-    private boolean takesTheBankedSize() {
-        if (nextSize <= 0) {
+    static boolean takesTheBankedSize(boolean storyMode, int bankedSize, int boardSize) {
+        if (bankedSize <= 0 || storyMode) {
             return false;
         }
-        return leavingStory || (!game.storyMode && nextSize != game.size);
+        return bankedSize != boardSize;
+    }
+
+    private boolean takesTheBankedSize() {
+        return takesTheBankedSize(game.storyMode, nextSize, game.size);
     }
 
     /**
@@ -1355,12 +1370,21 @@ public final class CozyGameView extends View {
 
         if (ui.screen == UiState.GAME && !ui.won) {
             moveCursor(who, step[0], step[1]);
-        } else if (step[1] != 0 && ui.screen != UiState.GAME) {
-            // Not while the win card is up: the screen is still GAME there, so a twitch
-            // used to fall through and click the home menu with nothing on screen moving.
-            // PlayerRegistry already paces the stick, so these are never repeats to us.
-            stepMenu(step[1], ui.screen == UiState.SETTINGS
-                    ? SettingsScene.ITEM_COUNT : HomeScene.ITEM_COUNT, false);
+        } else if (ui.screen == UiState.HOME) {
+            // Xbox D-pads report as hat axes, not as KEYCODE_DPAD_LEFT/RIGHT. Vertical
+            // still moves the highlight; horizontal is the story/size stepper — and used
+            // to be swallowed, which is why the chevrons never moved.
+            if (step[1] != 0) {
+                stepMenu(step[1], HomeScene.ITEM_COUNT, false);
+            } else if (step[0] != 0) {
+                if (ui.menu == HomeScene.ITEM_SIZE) {
+                    nudgeBoardSize(step[0] * 5);
+                } else if (ui.menu == HomeScene.ITEM_STORY) {
+                    browseStoryChapter(step[0]);
+                }
+            }
+        } else if (step[1] != 0 && ui.screen == UiState.SETTINGS) {
+            stepMenu(step[1], SettingsScene.ITEM_COUNT, false);
         }
         invalidate();
         return true;

@@ -38,12 +38,10 @@ import android.graphics.Paint;
  */
 public final class HomeScene {
 
-    public static final int ITEM_CONTINUE = 0;
-    public static final int ITEM_STORY = 1;
-    public static final int ITEM_SIZE = 2;
-    public static final int ITEM_SETTINGS = 3;
-    public static final int ITEM_RESTART = 4;
-    public static final int ITEM_COUNT = 5;
+    public static final int ITEM_STORY = 0;
+    public static final int ITEM_SIZE = 1;
+    public static final int ITEM_SETTINGS = 2;
+    public static final int ITEM_COUNT = 3;
 
     /**
      * The returning-player greeting, e.g. "Back after 3 days — 12 pictures finished
@@ -85,6 +83,13 @@ public final class HomeScene {
 
     /** The size the next endless picture will use, when it differs from the current one. */
     private static int pendingSize;
+
+    /**
+     * The chapter the story-book stepper is showing, or {@code -1} to follow
+     * {@link GameState#storyIndex}. Zero is a real chapter, so it cannot be the unset
+     * sentinel the way {@link #pendingSize} uses 0.
+     */
+    private static int pendingChapter = -1;
 
     /** True while START THE STORY AGAIN is waiting for a second, deliberate press. */
     public static boolean restartArmed() {
@@ -129,6 +134,51 @@ public final class HomeScene {
     /** Records a board size chosen while a picture was in progress. 0 clears it. */
     public static void setPendingSize(int size) {
         pendingSize = size;
+    }
+
+    /** The size the stepper is showing, or 0 when it is following the board. */
+    public static int pendingSize() {
+        return pendingSize;
+    }
+
+    /**
+     * The chapter the story-book stepper is showing, or {@code -1} to follow the board.
+     */
+    public static void setPendingChapter(int chapter) {
+        pendingChapter = chapter < 0 ? -1 : chapter;
+    }
+
+    public static int pendingChapter() {
+        return pendingChapter;
+    }
+
+    /**
+     * The furthest chapter the stepper will offer: every chapter, from the jump.
+     *
+     * <p>The book is short and sitting on the sofa. Locking later evenings until earlier
+     * ones are finished made the row look broken — left and right did nothing on chapter
+     * one — so the whole contents are on the table.
+     */
+    public static int furthestPlayable(GameState game) {
+        return Math.max(0, PuzzleLibrary.count() - 1);
+    }
+
+    /** The chapter the story-book row is currently offering. */
+    public static int chapterToShow(GameState game) {
+        int unlocked = furthestPlayable(game);
+        int from = pendingChapter >= 0 ? pendingChapter : game.storyIndex;
+        return Math.max(0, Math.min(unlocked, from));
+    }
+
+    /**
+     * Steps the story-book picker by {@code delta} chapters, wrapping inside the
+     * unlocked range, and remembers the choice.
+     */
+    public static int browseChapter(GameState game, int delta) {
+        int unlocked = furthestPlayable(game);
+        int next = Math.floorMod(chapterToShow(game) + delta, unlocked + 1);
+        pendingChapter = next;
+        return next;
     }
 
     /**
@@ -179,14 +229,10 @@ public final class HomeScene {
      * that is made of words and the value goes back to being a stepper and nothing else.
      */
     public static String[] items(GameState game) {
-        boolean later = pendingSize > 0 && (game.storyMode || pendingSize != game.size);
         return new String[]{
-                "CONTINUE",
-                "STORY BOOK",
-                game.storyMode ? (later ? "NEXT PICTURE" : "ENDLESS PICTURE")
-                        : (later ? "NEXT BOARD SIZE" : "BOARD SIZE"),
-                "COZY CORNER",
-                restartArmed() ? "START AGAIN?" : "START THE STORY AGAIN"
+                "Story Book",
+                "Endless",
+                "Cozy Corner"
         };
     }
 
@@ -200,28 +246,12 @@ public final class HomeScene {
      * {@link #drawRow} is the backstop, not the plan.
      */
     public static String[] values(GameState game) {
-        String mode = game.storyMode
-                ? "Story  " + (game.storyIndex + 1) + " / " + PuzzleLibrary.count()
-                : "Endless  " + game.size + " × " + game.size;
-        // Something earned, taken from the save rather than from a constant: how far into
-        // the book the pair have got. Before the first chapter is finished there is nothing
-        // to report, so the row goes back to saying how much book there is.
-        String book = game.storyFurthest > 0
-                ? (game.storyFurthest + 1) + " of " + PuzzleLibrary.count() + " chapters"
-                : PuzzleLibrary.count() + " little chapters";
-        // Just the stepper. That this size lands on the following picture is said by the
-        // row's own label — see items() — rather than by a third word trailing the value.
+        int chapter = chapterToShow(game);
         int next = endlessSize(game);
-        String sizeValue = "‹  " + next + " × " + next + "  ›";
-        // The restart row says what it would cost, so nobody has to already know.
-        String restartValue = game.storyFurthest > 0
-                ? "on chapter " + (game.storyIndex + 1) : "";
         return new String[]{
-                mode,
-                book,
-                sizeValue,
-                "sound · hints · comfort",
-                restartArmed() ? "cannot be undone" : restartValue
+                "‹  " + (chapter + 1) + " / " + PuzzleLibrary.count() + "  ›",
+                "‹  " + next + " × " + next + "  ›",
+                "Make the room yours"
         };
     }
 
@@ -234,7 +264,7 @@ public final class HomeScene {
      * commentary, and commentary is what gives way when a row runs out of room.
      */
     private static boolean valueIsControl(int item) {
-        return item == ITEM_SIZE;
+        return item == ITEM_SIZE || item == ITEM_STORY;
     }
 
     // ---- The frame the two menus share ----------------------------------------------
@@ -438,21 +468,344 @@ public final class HomeScene {
 
     public void draw(Canvas canvas, float width, float height, GameState game, UiState ui,
                      Effects effects, long now) {
-        expireRestart(now);
-        frame.panel(canvas, width, height, ui.highContrastOn);
-
-        String[] labels = items(game);
-        String[] values = values(game);
-        layOut(width, height);
-
-        drawWordmark(canvas, width, now);
-        drawRows(canvas, width, labels, values, ui, now);
-        drawFooter(canvas, width, ui);
+        drawLanding(canvas, width, height, game, ui, now);
         // Explicitly boardless. The two-argument form means "confine to whatever card I
         // last saw", and this scene has no card: after a game has been drawn and Back
         // pressed, a particle still in the air would have been trimmed and candle-tinted
         // against a paper card that is no longer on screen.
         effects.drawParticles(canvas, draw, (BoardLayout) null, now);
+    }
+
+    // ---- The landing page ------------------------------------------------------------
+
+    /**
+     * A two-card landing page: identity and invitation on the left, choices on the right.
+     * The old home screen put a logo, three equal rows, presence and instructions into one
+     * tall rectangle. Everything was aligned, but nothing was composed. Separating the
+     * emotional promise from the controls makes the first frame read like a finished game
+     * rather than a settings form laid over a lovely painting.
+     */
+    private void drawLanding(Canvas canvas, float width, float height, GameState game,
+                             UiState ui, long now) {
+        float safeX = width * .075f;
+        float top = height * .105f;
+        float bottom = height * .895f;
+        float gap = Theme.scale(22);
+        float centre = width * .5f;
+        float brandLeft = safeX;
+        float brandRight = centre - gap / 2;
+        float menuLeft = centre + gap / 2;
+        float menuRight = width - safeX;
+        int panelAlpha = ui.highContrastOn ? 246 : 228;
+
+        draw.panel(canvas, brandLeft, top, brandRight, bottom, panelAlpha);
+        draw.panel(canvas, menuLeft, top, menuRight, bottom, panelAlpha);
+
+        int selected = Math.floorMod(ui.menu, ITEM_COUNT);
+        drawLandingBrand(canvas, brandLeft, top, brandRight, bottom, game, ui, selected,
+                now);
+        drawLandingMenu(canvas, menuLeft, top, menuRight, bottom, game, ui, selected, now);
+    }
+
+    private void drawLandingBrand(Canvas canvas, float left, float top, float right,
+                                  float bottom, GameState game, UiState ui, int selected,
+                                  long now) {
+        float cx = (left + right) / 2;
+        float pad = Theme.scale(34);
+        float lane = right - left - pad * 2;
+
+        float beat = Comfort.get().calmMotion ? .5f
+                : (float) Math.abs(Math.sin(now / 1700f));
+        float heartRest = Theme.scale(38);
+        float heart = heartRest * (.95f + beat * .10f);
+        float heartY = top + Theme.scale(48);
+        draw.heart(canvas, cx, heartY, heart, Theme.PINK);
+        draw.heart(canvas, cx - heart * .07f, heartY - heart * .07f, heart * .80f,
+                Draw.withAlpha(Draw.blend(Theme.PINK, Theme.CREAM, .35f), 115));
+
+        float titleSize = draw.fit("COZYGRAMS", landingText(Theme.TITLE), lane, true,
+                landingText(Theme.HEADING));
+        // The heart may breathe; the page must not. Keep every text baseline anchored to
+        // its resting size so the decorative pulse never makes the whole card bob.
+        float titleY = heartY + heartRest * .65f + Theme.scale(18)
+                + titleSize * CAP_HEIGHT;
+        draw.tracked(canvas, "COZYGRAMS", cx, titleY, titleSize, Theme.CREAM,
+                TITLE_TRACKING, true);
+
+        float ruleY = titleY + titleSize * DESCENT + Theme.scale(12);
+        draw.roundRect(canvas, cx - Theme.scale(54), ruleY, cx + Theme.scale(54),
+                ruleY + Theme.scale(3), Theme.scale(2), Draw.withAlpha(Theme.PINK, 190));
+
+        float greetingSize = landingText(Theme.CAPTION);
+        String greeting = welcome.isEmpty() ? "Puzzles are better together" : welcome;
+        int greetingCount = wrapGreeting(greeting, greetingSize, lane);
+        float greetingY = ruleY + Theme.scale(18) + greetingSize * CAP_HEIGHT;
+        for (int i = 0; i < greetingCount; i++) {
+            draw.text(canvas, greetingLines[i], cx, greetingY, greetingSize,
+                    welcome.isEmpty() ? Comfort.skyColor() : Theme.GOLD,
+                    Paint.Align.CENTER, false);
+            greetingY += greetingSize * (CAP_HEIGHT + DESCENT);
+        }
+
+        float detailTop = Math.max(top + Theme.scale(250), greetingY + Theme.scale(34));
+        draw.roundRect(canvas, left + pad, detailTop, right - pad,
+                bottom - Theme.scale(105), Theme.scale(Theme.RADIUS_CARD),
+                Draw.withAlpha(Theme.NIGHT, ui.highContrastOn ? 205 : 145));
+        draw.roundRectStroke(canvas, left + pad, detailTop, right - pad,
+                bottom - Theme.scale(105), Theme.scale(Theme.RADIUS_CARD), Theme.keyline(),
+                Draw.withAlpha(Theme.GOLD, 95));
+
+        float textLeft = left + pad + Theme.scale(28);
+        float detailLane = right - pad - Theme.scale(28) - textLeft;
+        float eyebrowSize = landingText(Theme.CAPTION);
+        float eyebrowY = detailTop + Theme.scale(30) + eyebrowSize * CAP_HEIGHT;
+        draw.text(canvas, landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize,
+                Theme.GOLD, Paint.Align.LEFT, true);
+
+        String feature = landingFeature(game, selected);
+        float featureSize = draw.fit(feature, landingText(Theme.HEADING), detailLane,
+                true, landingText(Theme.SUBHEAD));
+        float featureY = eyebrowY + Theme.scale(18) + featureSize * CAP_HEIGHT;
+        draw.text(canvas, feature, textLeft, featureY, featureSize, Theme.CREAM,
+                Paint.Align.LEFT, true);
+
+        float metaSize = landingText(Theme.CAPTION);
+        float metaY = featureY + featureSize * DESCENT + Theme.scale(18)
+                + metaSize * CAP_HEIGHT;
+        draw.text(canvas, landingMeta(game, selected), textLeft, metaY, metaSize,
+                Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, false);
+
+        if (Theme.textScale() <= 1.2f) {
+            float bodySize = landingText(Theme.BODY);
+            float bodyY = metaY + metaSize * DESCENT + Theme.scale(26)
+                    + bodySize * CAP_HEIGHT;
+            float bodyLane = detailLane - Theme.scale(24);
+            draw.text(canvas, landingDescription(selected), textLeft, bodyY,
+                    draw.fit(landingDescription(selected), bodySize, bodyLane, false,
+                            landingText(Theme.CAPTION)), Theme.CREAM, Paint.Align.LEFT, false);
+        }
+
+        drawPresence(canvas, left + pad, right - pad, bottom - Theme.scale(53), ui);
+    }
+
+    private void drawLandingMenu(Canvas canvas, float left, float top, float right,
+                                 float bottom, GameState game, UiState ui, int selected,
+                                 long now) {
+        float pad = Theme.scale(32);
+        float rowLeft = left + pad;
+        float rowRight = right - pad;
+        float heading = landingText(Theme.SUBHEAD);
+        float headingY = top + Theme.scale(42) + heading * CAP_HEIGHT;
+        draw.text(canvas, "Choose how to settle in", rowLeft, headingY, heading, Theme.CREAM,
+                Paint.Align.LEFT, true);
+        float caption = landingText(Theme.CAPTION);
+        String invitation = "A story, a puzzle, or a cozier room";
+        draw.text(canvas, invitation, rowLeft,
+                headingY + Theme.scale(18) + caption * CAP_HEIGHT,
+                draw.fit(invitation, caption, rowRight - rowLeft, false,
+                        landingText(Theme.MIN_PROSE_SP)),
+                Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, false);
+
+        float rowsTop = top + Theme.scale(150);
+        float footerRoom = Theme.scale(92);
+        rowPitch = (bottom - footerRoom - rowsTop) / ITEM_COUNT;
+        rowHalf = Math.min(Theme.scale(52), rowPitch * .39f);
+        for (int item = 0; item < ITEM_COUNT; item++) {
+            rowCentre[item] = rowsTop + rowPitch * (item + .5f);
+        }
+        follow(selected, rowCentre[selected], now);
+
+        for (int item = 0; item < ITEM_COUNT; item++) {
+            drawLandingRowSurface(canvas, rowLeft, rowRight, rowCentre[item], rowHalf,
+                    item, selected, ui.highContrastOn, now);
+        }
+        for (int item = 0; item < ITEM_COUNT; item++) {
+            drawLandingRowCopy(canvas, rowLeft, rowRight, rowCentre[item], game, item,
+                    selected, ui.highContrastOn);
+        }
+
+        drawLandingFooter(canvas, rowLeft, rowRight, bottom - Theme.scale(39), selected,
+                ui.highContrastOn);
+    }
+
+    private void drawLandingRowSurface(Canvas canvas, float left, float right, float centreY,
+                                       float half, int item, int selected,
+                                       boolean highContrast, long now) {
+        float radius = Theme.scale(Theme.RADIUS_CARD);
+        if (item != selected) {
+            draw.roundRect(canvas, left, centreY - half, right, centreY + half, radius,
+                    Draw.withAlpha(Theme.ROW_REST, highContrast ? 92 : 56));
+            draw.roundRectStroke(canvas, left, centreY - half, right, centreY + half,
+                    radius, Theme.keyline(), Draw.withAlpha(Theme.CREAM, 50));
+            return;
+        }
+        float landed = Draw.easeOut(landing(now));
+        float glow = Theme.scale(7) * (.65f + .35f * landed);
+        draw.glow(canvas, left, centreY - half, right, centreY + half, radius,
+                glow, Theme.GOLD, 34);
+        draw.roundRect(canvas, left, centreY - half, right, centreY + half, radius,
+                Theme.GOLD);
+        draw.roundRectStroke(canvas, left, centreY - half, right, centreY + half, radius,
+                Theme.hairline(), Draw.withAlpha(Theme.CREAM, 220));
+    }
+
+    private void drawLandingRowCopy(Canvas canvas, float left, float right, float centreY,
+                                    GameState game, int item, int selected,
+                                    boolean highContrast) {
+        boolean focused = item == selected;
+        int primary = focused ? Theme.INK : Theme.CREAM;
+        int secondary = focused ? Draw.withAlpha(Theme.INK, 205)
+                : Theme.secondaryText(highContrast);
+        float x = left + Theme.scale(26);
+        float labelSize = draw.fit(items(game)[item], landingText(Theme.SUBHEAD),
+                (right - left) * .55f, true, landingText(Theme.BODY));
+        float labelY = centreY - Theme.scale(13) + draw.capCentreOffset(labelSize);
+        draw.text(canvas, items(game)[item], x, labelY, labelSize, primary,
+                Paint.Align.LEFT, true);
+
+        float detailSize = landingText(Theme.CAPTION);
+        String detail = rowDetail(game, item);
+        float detailY = centreY + Theme.scale(20) + draw.capCentreOffset(detailSize);
+        draw.text(canvas, detail, x, detailY, detailSize, secondary,
+                Paint.Align.LEFT, false);
+
+        if (item == ITEM_SETTINGS) {
+            if (focused) {
+                drawLandingConfirm(canvas, right - Theme.scale(24), centreY, "OPEN",
+                        primary);
+            }
+            return;
+        }
+        String action = values(game)[item];
+        float actionSize = draw.fit(action, landingText(Theme.BODY),
+                (right - left) * .42f, false, landingText(Theme.CAPTION));
+        draw.text(canvas, action, right - Theme.scale(24),
+                centreY + draw.capCentreOffset(actionSize), actionSize, primary,
+                Paint.Align.RIGHT, false);
+    }
+
+    private void drawLandingConfirm(Canvas canvas, float right, float centreY,
+                                    String label, int textColor) {
+        float size = landingText(Theme.BODY);
+        float labelWidth = draw.measure(label, size, true);
+        float gap = Theme.scale(9);
+        float chipHeight = size * 1.05f;
+        String key = confirmName();
+        float chipWidth = draw.keycapWidth(key, chipHeight);
+        float chipRight = right - labelWidth - gap;
+        int chipColor = HudScene.remoteOnly() ? Theme.INK : Theme.BUTTON_A;
+
+        draw.keycap(canvas, chipRight - chipWidth, centreY, chipHeight, key, chipColor);
+        draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
+                textColor, Paint.Align.RIGHT, true);
+    }
+
+    private void drawLandingFooter(Canvas canvas, float left, float right, float centreY,
+                                   int selected, boolean highContrast) {
+        int row = Math.floorMod(selected, ITEM_COUNT);
+        String lead = row == ITEM_STORY ? "Pick a chapter"
+                : row == ITEM_SIZE ? "Pick a size" : "Move";
+        String action = row == ITEM_STORY ? "Open"
+                : row == ITEM_SIZE ? "Start" : "Choose";
+        String key = confirmName();
+        float size = landingText(Theme.CAPTION);
+        float gap = Theme.scale(10);
+        float chipHeight;
+        float chipWidth;
+        float total;
+        do {
+            chipHeight = size * 1.08f;
+            chipWidth = draw.keycapWidth(key, chipHeight);
+            total = chipHeight + gap + draw.measure(lead, size, false)
+                    + gap * 2 + chipWidth + gap + draw.measure(action, size, false);
+            if (total <= right - left || size <= Theme.scale(20)) break;
+            size = Math.max(Theme.scale(20), size * (right - left) / total);
+        } while (true);
+
+        int text = Theme.secondaryText(highContrast);
+        float x = (left + right - total) / 2;
+        draw.dpadKeycap(canvas, x, centreY, chipHeight, Theme.SOFT_TEXT);
+        x += chipHeight + gap;
+        draw.text(canvas, lead, x, centreY + draw.capCentreOffset(size), size, text,
+                Paint.Align.LEFT, false);
+        x += draw.measure(lead, size, false) + gap * 2;
+        int chipColor = HudScene.remoteOnly() ? Theme.SOFT_TEXT : Theme.BUTTON_A;
+        draw.keycap(canvas, x, centreY, chipHeight, key, chipColor);
+        x += chipWidth + gap;
+        draw.text(canvas, action, x, centreY + draw.capCentreOffset(size), size, text,
+                Paint.Align.LEFT, false);
+    }
+
+    private void drawPresence(Canvas canvas, float left, float right, float centreY,
+                              UiState ui) {
+        boolean together = ui.joined[1];
+        String line = together ? "Rose and Sky are ready  ♥"
+                : "Sky can join any time — press a button";
+        int accent = together ? Theme.PINK : Comfort.skyColor();
+        float size = draw.fit(line, landingText(Theme.CAPTION), right - left
+                - Theme.scale(34), together, landingText(Theme.MIN_PROSE_SP));
+        float half = size * .95f;
+        draw.roundRect(canvas, left, centreY - half, right, centreY + half, half,
+                Draw.withAlpha(accent, together ? 48 : 28));
+        draw.roundRectStroke(canvas, left, centreY - half, right, centreY + half, half,
+                Theme.keyline(), Draw.withAlpha(accent, 135));
+        draw.text(canvas, line, (left + right) / 2,
+                centreY + draw.capCentreOffset(size), size,
+                together ? Theme.PINK_LIGHT : Theme.CREAM, Paint.Align.CENTER, together);
+    }
+
+    static String landingEyebrow(int item) {
+        switch (Math.floorMod(item, ITEM_COUNT)) {
+            case ITEM_STORY: return "TONIGHT'S STORY";
+            case ITEM_SIZE: return "A FRESH CANVAS";
+            default: return "MAKE IT YOURS";
+        }
+    }
+
+    static String landingFeature(GameState game, int item) {
+        switch (Math.floorMod(item, ITEM_COUNT)) {
+            case ITEM_STORY: return PuzzleLibrary.name(chapterToShow(game));
+            case ITEM_SIZE:
+                int size = endlessSize(game);
+                return size + " × " + size + " picture";
+            default: return "Cozy Corner";
+        }
+    }
+
+    static String landingMeta(GameState game, int item) {
+        switch (Math.floorMod(item, ITEM_COUNT)) {
+            case ITEM_STORY:
+                return "Chapter " + (chapterToShow(game) + 1) + " of "
+                        + PuzzleLibrary.count();
+            case ITEM_SIZE: return "Endless · a new picture every time";
+            default: return "Sound · hints · colors · comfort";
+        }
+    }
+
+    static String landingDescription(int item) {
+        switch (Math.floorMod(item, ITEM_COUNT)) {
+            case ITEM_STORY: return "Open the book and settle in.";
+            case ITEM_SIZE: return "Pick a size, then make it yours.";
+            default: return "Tune the room until it feels just right.";
+        }
+    }
+
+    static String rowDetail(GameState game, int item) {
+        switch (Math.floorMod(item, ITEM_COUNT)) {
+            case ITEM_STORY: return PuzzleLibrary.name(chapterToShow(game));
+            case ITEM_SIZE: return "A new cozy picture";
+            default: return "Sound, hints, and comfort";
+        }
+    }
+
+    /**
+     * The landing page has fixed-height, two-line choices. Let the comfort option make
+     * them appreciably larger, but stop before 150% text turns three tidy cards into six
+     * colliding lines. Long copy still goes through {@link Draw#fit} as a second guard.
+     */
+    private static float landingText(float designPixels) {
+        return Theme.scale(Math.max(Theme.MIN_PROSE_SP, designPixels))
+                * Math.min(Theme.textScale(), 1.2f);
     }
 
     /**
@@ -480,7 +833,7 @@ public final class HomeScene {
         for (int item = 0; item < ITEM_COUNT; item++) {
             rowCentre[item] = y + rowPitch * .5f;
             y += rowPitch;
-            if (item == ITEM_RESTART - 1) {
+            if (item == ITEM_SETTINGS - 1) {
                 y += rowPitch * GROUP_GAP;
             }
         }
@@ -680,19 +1033,6 @@ public final class HomeScene {
         // A brighter halo the instant it arrives, decaying into the resting breath.
         float beat = Math.max(MenuFrame.beat(now), 1 - landed);
         frame.row(canvas, left - bulge, pillCentre, right + bulge, half, true, beat);
-
-        // A question that can throw away an evening does not get to wear Rose's colour
-        // while it is asking; that is what Theme.CAUTION is for, and it is why the old
-        // confirmation borrowing PINK_LIGHT was wrong. Draw.menuRow has no accent
-        // parameter, so the fill and its keyline are repainted over the pill rather than
-        // the recipe being copied — when menuRow takes a colour, these two lines go.
-        if (row == ITEM_RESTART && restartArmed()) {
-            draw.roundRect(canvas, left - bulge, pillCentre - half, right + bulge,
-                    pillCentre + half, half * .7f, Theme.CAUTION);
-            draw.roundRectStroke(canvas, left - bulge, pillCentre - half, right + bulge,
-                    pillCentre + half, half * .7f, Math.max(1.5f, Theme.scale(2.4f)),
-                    Draw.withAlpha(Theme.CREAM, 215));
-        }
     }
 
     /**
@@ -786,8 +1126,7 @@ public final class HomeScene {
         float floor = Theme.textSize(Theme.MIN_PROSE_SP);
 
         boolean control = valueIsControl(item);
-        float labelWanted = item == ITEM_RESTART && !restartArmed()
-                ? Theme.textSize(Theme.CAPTION) : Theme.textSize(Theme.SUBHEAD);
+        float labelWanted = Theme.textSize(Theme.SUBHEAD);
         float valueWanted = control ? labelWanted : Theme.textSize(Theme.CAPTION);
 
         float valueSize = valueWanted;
@@ -822,16 +1161,7 @@ public final class HomeScene {
      * borrow.
      */
     private int restingInk(int item, boolean highContrast, long now) {
-        if (item != ITEM_RESTART) {
-            return Theme.CREAM;
-        }
-        if (!restartArmed()) {
-            return Theme.secondaryText(highContrast);
-        }
-        // A slow throb, so the question is visibly the one thing on screen that is waiting.
-        float beat = Comfort.get().calmMotion ? 1
-                : .78f + .22f * (float) Math.abs(Math.sin(now / 700f));
-        return Draw.blend(Theme.PANEL, Theme.CAUTION, beat);
+        return Theme.CREAM;
     }
 
     // ---- The footer ------------------------------------------------------------------
@@ -878,12 +1208,35 @@ public final class HomeScene {
         // While the question is armed, this line is the answer to it: the row states the
         // cost in the room it has, and how to say yes belongs where a player already looks
         // to find out what the buttons do.
-        String line = restartArmed()
-                ? (restartArmedBy >= 0 ? Theme.playerName(restartArmedBy) + ", press "
-                        : "press ") + confirmName() + " again to start over"
-                : "D-pad to move   ·   " + confirmName() + " to choose";
+        String line = footerHint(ui.menu);
         draw.text(canvas, line, width / 2, hintBaseline, size,
-                restartArmed() ? Theme.CAUTION : Theme.secondaryText(ui.highContrastOn),
-                Paint.Align.CENTER, restartArmed());
+                Theme.secondaryText(ui.highContrastOn), Paint.Align.CENTER, false);
+    }
+
+    /**
+     * How to use the highlighted row. The size and story rows are steppers whose centre
+     * button starts something, and a generic "A to choose" left both of them looking like
+     * they had already been chosen.
+     */
+    static String footerHint(int menu) {
+        int row = Math.floorMod(menu, ITEM_COUNT);
+        if (row == ITEM_STORY) {
+            return "Left and right to pick a chapter   ·   " + confirmName() + " to open it";
+        }
+        if (row == ITEM_SIZE) {
+            return "Left and right to pick a size   ·   " + confirmName() + " to start it";
+        }
+        return "D-pad to move   ·   " + confirmName() + " to choose";
+    }
+
+    static String compactFooterHint(int menu) {
+        int row = Math.floorMod(menu, ITEM_COUNT);
+        if (row == ITEM_STORY) {
+            return "← → Pick chapter   ·   " + confirmName() + " Open";
+        }
+        if (row == ITEM_SIZE) {
+            return "← → Pick size   ·   " + confirmName() + " Start";
+        }
+        return "D-pad Move   ·   " + confirmName() + " Choose";
     }
 }

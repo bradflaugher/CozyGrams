@@ -372,6 +372,11 @@ public final class PuzzleLibrary {
         return ART.length;
     }
 
+    /** The chapter's title, wrapping the same way {@link #get} does. */
+    public static String name(int index) {
+        return NAMES[Math.floorMod(index, NAMES.length)];
+    }
+
     /** The chapter's one line of copy, wrapping the same way {@link #get} does. */
     public static String line(int index) {
         return LINES[Math.floorMod(index, LINES.length)];

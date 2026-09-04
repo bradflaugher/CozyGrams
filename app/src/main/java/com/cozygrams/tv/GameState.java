@@ -45,6 +45,8 @@ public final class GameState {
     public int storyIndex;
     /** Highest story chapter reached, so the book remembers the journey. */
     public int storyFurthest;
+    /** One bit per chapter actually completed; visiting a page is not finishing it. */
+    public long storyCompleted;
 
     public final int[] cursorX = {0, 1};
     public final int[] cursorY = {0, 0};
@@ -268,12 +270,41 @@ public final class GameState {
 
     /** Advances to the next board in whichever mode is running. */
     public void next() {
+        completeCurrentStoryChapter();
         solved++;
         if (storyMode) {
             startStory(storyIndex + 1);
         } else {
             startEndless(seed + SEED_STEP, size);
         }
+    }
+
+    /** Records the current chapter as complete. Safe to call again when leaving its win card. */
+    public void completeCurrentStoryChapter() {
+        if (storyMode && storyIndex >= 0 && storyIndex < Long.SIZE) {
+            storyCompleted |= 1L << storyIndex;
+        }
+    }
+
+    public boolean storyChapterComplete(int chapter) {
+        return chapter >= 0 && chapter < Long.SIZE
+                && (storyCompleted & (1L << chapter)) != 0;
+    }
+
+    public int storyCompleteCount() {
+        long valid = PuzzleLibrary.count() >= Long.SIZE ? -1L
+                : (1L << PuzzleLibrary.count()) - 1;
+        return Long.bitCount(storyCompleted & valid);
+    }
+
+    public boolean storyBookComplete() {
+        return storyCompleteCount() >= PuzzleLibrary.count();
+    }
+
+    /** Migration for saves from before completion had its own field. */
+    public static long completedPrefix(int chapters) {
+        int count = Math.max(0, Math.min(Long.SIZE, chapters));
+        return count == Long.SIZE ? -1L : (1L << count) - 1;
     }
 
     /**

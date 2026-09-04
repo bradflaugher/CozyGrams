@@ -20,7 +20,7 @@ public class SettingsSceneTest {
      * The tightest case we ever draw: the largest text setting, which asks Theme to
      * behave as though the screen were 16% taller than it is.
      */
-    private static final float BIG_TEXT_SCALE = 1.16f;
+    private static final float BIG_TEXT_SCALE = Theme.TEXT_SCALE_BIG;
 
     /** The screen keeps its armed row and its note in statics, so put them back. */
     @Before
@@ -38,7 +38,11 @@ public class SettingsSceneTest {
         assertEquals(SettingsScene.ITEM_COUNT, SettingsScene.states(new UiState()).length);
         for (String label : SettingsScene.labels()) {
             assertFalse(label.trim().isEmpty());
-            assertEquals(label, label.toUpperCase(java.util.Locale.ROOT));
+            assertTrue("labels use calm sentence case: " + label,
+                    Character.isUpperCase(label.charAt(0)));
+            assertFalse("labels should not shout: " + label,
+                    label.length() > 1
+                            && label.equals(label.toUpperCase(java.util.Locale.ROOT)));
         }
         for (String description : SettingsScene.descriptions()) {
             assertFalse(description.trim().isEmpty());
@@ -86,13 +90,14 @@ public class SettingsSceneTest {
     public void theRowsFitInsideTheirBandWithoutOverlapping() {
         for (float height : new float[]{720, 1080, 2160}) {
             for (float textScale : new float[]{1f, BIG_TEXT_SCALE}) {
-                Theme.setScreenHeight(height * textScale);
+                Theme.setScreenHeight(height);
+                Theme.setTextScale(textScale);
                 float top = height * SettingsScene.ROWS_TOP;
                 float bottom = height * SettingsScene.ROWS_BOTTOM;
                 float[] centres = SettingsScene.rowCentres(top, bottom);
                 float half = SettingsScene.rowHalfHeight(top, bottom);
 
-                assertEquals(SettingsScene.ITEM_COUNT, centres.length);
+                assertEquals(SettingsScene.VISIBLE_ROWS, centres.length);
                 assertTrue("first row escapes the panel", centres[0] - half >= top);
                 assertTrue("last row escapes the panel",
                         centres[centres.length - 1] + half <= bottom);
@@ -105,17 +110,25 @@ public class SettingsSceneTest {
                         half * 2 > Theme.textSize(17) * .8f);
             }
         }
+        Theme.setTextScale(1f);
     }
 
     @Test
-    public void groupsAreSeparatedByMoreAirThanRowsWithinAGroup() {
-        Theme.setScreenHeight(1080);
-        float[] centres = SettingsScene.rowCentres(0, 1000);
-        float withinAGroup = centres[SettingsScene.ITEM_BIG_TEXT]
-                - centres[SettingsScene.ITEM_CONTRAST];
-        float acrossAGroup = centres[SettingsScene.ITEM_GENTLE]
-                - centres[SettingsScene.ITEM_SFX];
-        assertTrue(acrossAGroup > Math.abs(withinAGroup));
+    public void theSevenRowWindowFollowsFocusWithoutRunningPastTheList() {
+        assertEquals(0, SettingsScene.windowStart(SettingsScene.ITEM_MUSIC));
+        assertEquals(0, SettingsScene.windowStart(SettingsScene.ITEM_HINTS));
+        assertEquals(2, SettingsScene.windowStart(SettingsScene.ITEM_CONTRAST));
+        assertEquals(SettingsScene.ITEM_COUNT - SettingsScene.VISIBLE_ROWS,
+                SettingsScene.windowStart(SettingsScene.ITEM_BACK));
+    }
+
+    @Test
+    public void everySettingBelongsToAClearGroup() {
+        assertEquals("SOUND", SettingsScene.sectionName(SettingsScene.ITEM_MUSIC));
+        assertEquals("HELPING HANDS", SettingsScene.sectionName(SettingsScene.ITEM_GENTLE));
+        assertEquals("COMFORT & ACCESS",
+                SettingsScene.sectionName(SettingsScene.ITEM_BIG_TEXT));
+        assertEquals("STORY & RESET", SettingsScene.sectionName(SettingsScene.ITEM_DEFAULTS));
     }
 
     // ---- Reachable and changeable with a bare remote ---------------------------------
@@ -191,6 +204,18 @@ public class SettingsSceneTest {
     }
 
     @Test
+    public void startingTheStoryAgainAsksFirst() {
+        assertFalse(SettingsScene.storyRestartArmed());
+        assertTrue(SettingsScene.toggle(new UiState(), SettingsScene.ITEM_START_STORY, 1000));
+        assertTrue(SettingsScene.storyRestartArmed());
+        assertFalse(SettingsScene.consumeStoryRestart());
+        assertTrue(SettingsScene.toggle(new UiState(), SettingsScene.ITEM_START_STORY, 1200));
+        assertFalse(SettingsScene.storyRestartArmed());
+        assertTrue(SettingsScene.consumeStoryRestart());
+        assertFalse("consuming it is a one-shot", SettingsScene.consumeStoryRestart());
+    }
+
+    @Test
     public void theQuestionLapsesRatherThanWaitingForEver() {
         SettingsScene.armDefaults(10_000);
         SettingsScene.expireDefaults(10_000 + SettingsScene.CONFIRM_WINDOW_MS);
@@ -218,6 +243,32 @@ public class SettingsSceneTest {
         assertTrue(SettingsScene.defaultsArmed());
         SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS, 0);
         assertTrue(ui.hintsOn);
+    }
+
+    @Test
+    public void aStaleSecondPressAsksAgainInsteadOfResettingAnything() {
+        UiState ui = new UiState();
+        ui.hintsOn = false;
+        SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS, 1000);
+        SettingsScene.toggle(ui, SettingsScene.ITEM_DEFAULTS,
+                1000 + SettingsScene.CONFIRM_WINDOW_MS + 1);
+        assertFalse("a stale confirmation must not restore defaults", ui.hintsOn);
+        assertTrue("the stale press becomes a fresh first press", SettingsScene.defaultsArmed());
+    }
+
+    @Test
+    public void theBackRowNamesWhereItActuallyReturns() {
+        UiState ui = new UiState();
+        ui.screenBeforeSettings = UiState.HOME;
+        assertEquals("Back to the menu", SettingsScene.labels(ui)[SettingsScene.ITEM_BACK]);
+        assertEquals("back to choosing a picture",
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_BACK]);
+
+        ui.screenBeforeSettings = UiState.GAME;
+        assertEquals("Back to the puzzle",
+                SettingsScene.labels(ui)[SettingsScene.ITEM_BACK]);
+        assertEquals("we'll keep your place",
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_BACK]);
     }
 
     // ---- Saying what happened ---------------------------------------------------------

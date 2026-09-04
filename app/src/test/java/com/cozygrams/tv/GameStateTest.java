@@ -119,6 +119,19 @@ public class GameStateTest {
     }
 
     @Test
+    public void visitingAChapterIsDifferentFromCompletingIt() {
+        GameState game = new GameState(7, 5);
+        game.startStory(PuzzleLibrary.count() - 1);
+        assertEquals(0, game.storyCompleteCount());
+        assertFalse(game.storyBookComplete());
+
+        game.completeCurrentStoryChapter();
+        assertEquals(1, game.storyCompleteCount());
+        assertTrue(game.storyChapterComplete(PuzzleLibrary.count() - 1));
+        assertFalse(game.storyBookComplete());
+    }
+
+    @Test
     public void progressReportsHowMuchOfThePictureIsFound() {
         GameState game = new GameState(7, 5);
         assertEquals(0f, game.pictureProgress(), 1e-6);

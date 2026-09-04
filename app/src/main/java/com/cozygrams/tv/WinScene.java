@@ -456,7 +456,7 @@ public final class WinScene {
         // rings as Theme.GLOW_STEP_ALPHA_MAX demands and cannot band by construction.
         float glow = Draw.easeOut(Draw.clamp01(
                 (elapsed - (REVEAL_AT + REVEAL_SPREAD_MS)) / 500f));
-        boolean grand = isFinalChapter(game);
+        boolean grand = isBookComplete(game);
         draw.glow(canvas, frameLeft, frameTop, frameRight, frameBottom, radius,
                 Theme.scale(grand ? 90 : 52), Theme.GOLD, (grand ? 110 : 62) * glow);
 
@@ -884,7 +884,10 @@ public final class WinScene {
         // and at 240 the celebration drift showed through the panel as dark heart-shaped
         // silhouettes sitting inside the words.
         float slide = (1 - appear) * Theme.scale(20);
-        float edge = Math.max(top + p.padY * 2, top + p.padY + p.unrolled(elapsed));
+        // The centred finished height includes padding on both ends. The old edge stopped
+        // after content, so the return hint landed on the rounded bottom border.
+        float edge = Math.max(top + p.padY * 2,
+                top + p.padY + p.unrolled(elapsed) + p.padY * appear);
         draw.panel(canvas, left, top + slide, right, edge + slide,
                 (int) (255 * beat(elapsed, PLAQUE_AT, PLAQUE_MS * .45f)));
 
@@ -909,7 +912,7 @@ public final class WinScene {
         p.message = message(game, p.together);
         p.journey = journeyLine(game);
         p.invite = invite(game);
-        p.hint = "Back returns to the menu";
+        p.hint = "Return to the menu";
         p.moves = p.together
                 ? game.totalMoves() + " cozy moves, made together"
                 : game.totalMoves() + " cozy moves, start to finish";
@@ -927,9 +930,11 @@ public final class WinScene {
         // padding. It used to be against .84 of the column, a fraction with nothing behind
         // it that happened to leave the longest invitation at 34.9 px — under the prose
         // floor, on the one thing on this screen a player can act on.
-        p.sInvite = fit(p.invite, Theme.textSize(Theme.BODY),
-                p.column - Theme.scale(Theme.PILL_PAD_X), true);
-        p.sHint = fit(p.hint, Theme.textSize(13), p.column, false);
+        p.sInvite = fitControlLine(p.invite, HomeScene.confirmName(),
+                Theme.textSize(Theme.BODY),
+                p.column - Theme.scale(Theme.PILL_PAD_X), true, 1.08f);
+        p.sHint = fitControlLine(p.hint, HudScene.backName(), Theme.textSize(13),
+                p.column, false, 1.02f);
 
         p.rule = Theme.hairline();
         p.pill = p.sInvite * Theme.PILL_HEIGHT_EM;
@@ -1022,10 +1027,9 @@ public final class WinScene {
                 break;
             case ROW_HINT:
             default:
-                draw.text(canvas, p.hint, p.centre, y - p.sHint * .14f, p.sHint,
-                        Draw.withAlpha(Theme.SOFT_TEXT,
-                                beat(elapsed, HINT_AT, HINT_MS) * .78f),
-                        Paint.Align.CENTER, false);
+                drawControlLine(canvas, p.centre, y - p.sHint * .49f, p.sHint,
+                        HudScene.backName(), p.hint, Theme.SOFT_TEXT, Theme.SOFT_TEXT,
+                        beat(elapsed, HINT_AT, HINT_MS) * .78f, false, 1.02f);
                 break;
         }
     }
@@ -1138,8 +1142,7 @@ public final class WinScene {
                               GameState game, float fade, boolean calm) {
         int total = chapterCount();
         int chapter = chapterNumber(game) - 1;
-        int done = Math.max(chapter, Math.min(total - 1, game.storyFurthest)) + 1;
-        boolean finished = isFinalChapter(game);
+        boolean finished = isBookComplete(game);
 
         int lines = chapterLines(column);
         int perLine = perLine(lines);
@@ -1155,7 +1158,7 @@ public final class WinScene {
             float cx = centre - step * (inLine - 1) / 2 + step * (i % perLine);
             float cy = first + line * (lineHeight + lineGap);
 
-            if (i > chapter && i >= done) {
+            if (i != chapter && !game.storyChapterComplete(i)) {
                 draw.heart(canvas, cx, cy, size * PIP_UNVISITED,
                         Draw.withAlpha(Theme.GRID, fade * .55f));
             } else if (i == chapter) {
@@ -1205,7 +1208,9 @@ public final class WinScene {
         float show = Draw.clamp01(fade * 1.8f);
         float pop = calm ? 1f : Draw.lerp(.90f, 1f, Draw.springy(
                 Draw.clamp01((elapsed - INVITE_AT) / (INVITE_MS * 1.6f))));
-        float width = draw.measure(label, size, true) + Theme.scale(Theme.PILL_PAD_X);
+        String key = HomeScene.confirmName();
+        float contentWidth = controlLineWidth(label, key, size, true, 1.08f);
+        float width = contentWidth + Theme.scale(Theme.PILL_PAD_X);
         float radius = (bottom - top) / 2;
         float breath = calm ? 0f : inviteBreath(elapsed);
         float pivotY = (top + bottom) / 2;
@@ -1220,9 +1225,43 @@ public final class WinScene {
                 (28 + 26 * breath) * show);
         draw.roundRect(canvas, centre - width / 2, top, centre + width / 2, bottom, radius,
                 Draw.withAlpha(CTA_FACE, show));
-        draw.text(canvas, label, centre, bottom - radius + size * .35f, size,
-                Draw.withAlpha(Theme.textOn(CTA_FACE), show), Paint.Align.CENTER, true);
+        drawControlLine(canvas, centre, pivotY, size, key, label,
+                Theme.textOn(CTA_FACE),
+                HudScene.remoteOnly() ? Theme.SOFT_TEXT : Theme.BUTTON_A,
+                show, true, 1.08f);
         canvas.restore();
+    }
+
+    private float controlLineWidth(String label, String key, float size, boolean strong,
+                                   float keyHeightEm) {
+        float height = size * keyHeightEm;
+        return draw.keycapWidth(key, height) + Theme.scale(10)
+                + draw.measure(label, size, strong);
+    }
+
+    private float fitControlLine(String label, String key, float preferred, float room,
+                                 boolean strong, float keyHeightEm) {
+        float size = preferred;
+        float width = controlLineWidth(label, key, size, strong, keyHeightEm);
+        if (width > room && width > 0) {
+            size *= room / width;
+        }
+        return Math.max(Theme.textSize(Theme.MIN_PROSE_SP), size);
+    }
+
+    private void drawControlLine(Canvas canvas, float centre, float centreY, float size,
+                                 String key, String label, int textColor, int keyColor,
+                                 float alpha, boolean strong, float keyHeightEm) {
+        float height = size * keyHeightEm;
+        float keyWidth = draw.keycapWidth(key, height);
+        float gap = Theme.scale(10);
+        float total = keyWidth + gap + draw.measure(label, size, strong);
+        float left = centre - total / 2;
+        draw.keycap(canvas, left, centreY, height, key,
+                Draw.withAlpha(keyColor, alpha));
+        draw.text(canvas, label, left + keyWidth + gap,
+                centreY + draw.capCentreOffset(size), size,
+                Draw.withAlpha(textColor, alpha), Paint.Align.LEFT, strong);
     }
 
     /**
@@ -1344,6 +1383,11 @@ public final class WinScene {
         return game.storyMode && chapterNumber(game) >= chapterCount();
     }
 
+    /** True only when every page has really been completed, regardless of visit order. */
+    static boolean isBookComplete(GameState game) {
+        return game.storyMode && game.storyBookComplete();
+    }
+
     /** The small label above the picture's name. */
     static String eyebrow(GameState game, boolean together) {
         if (!game.storyMode) {
@@ -1375,7 +1419,7 @@ public final class WinScene {
      * about the picture.
      */
     static String message(GameState game, boolean together) {
-        if (isFinalChapter(game)) {
+        if (isBookComplete(game)) {
             return together ? "Every page, together, to the very end."
                     : "Every page, to the very end.";
         }
@@ -1417,7 +1461,7 @@ public final class WinScene {
         if (!game.storyMode) {
             return wallLine(game.solved + 1);
         }
-        int left = chapterCount() - chapterNumber(game);
+        int left = chapterCount() - game.storyCompleteCount();
         if (left <= 0) {
             return capitalise(word(chapterCount())) + " pictures, cover to cover.";
         }
@@ -1448,13 +1492,12 @@ public final class WinScene {
         return capitalise(word(pictures)) + " pictures on the wall.";
     }
 
-    /** What the next press of A will do, said plainly. */
+    /** What the next confirm press will do, in the name of the controller in the room. */
     static String invite(GameState game) {
         if (!game.storyMode) {
-            return "Press A for another picture";
+            return "Another picture";
         }
-        return isFinalChapter(game) ? "Press A to open the book again"
-                : "Press A for the next chapter";
+        return isBookComplete(game) ? "Open the book again" : "Next chapter";
     }
 
     /**

@@ -54,17 +54,35 @@ public final class PlayerRegistry {
     public static final int ROSE = 0;
     public static final int SKY = 1;
 
-    /** Analog sticks repeat no faster than this so a held stick is not a machine gun. */
-    private static final long STICK_REPEAT_MS = 165;
     /**
-     * The first repeat waits longer than the rest. Without it a stick pushed once and
-     * released a beat later moves two squares, which is exactly how someone overshoots.
+     * Analog sticks repeat no faster than this so a held stick is not a machine gun.
+     *
+     * <p>165 ms was the D-pad's old living-room rate and is still what a hat switch uses —
+     * a hat is a digital click. An analog stick is not: it sits past the threshold for as
+     * long as a thumb rests on it, and 165 ms turned a tap into two squares and a sweep
+     * into a skip. 240 ms is a step you can still count, and the first repeat waits
+     * {@link #STICK_FIRST_REPEAT_MS} so a push that is let go of a beat later is one cell.
      */
-    private static final long STICK_FIRST_REPEAT_MS = 340;
+    private static final long STICK_REPEAT_MS = 240;
+    /**
+     * The first analog repeat waits longer than the rest. Without it a stick pushed once
+     * and released a beat later moves two squares, which is exactly how someone overshoots.
+     */
+    private static final long STICK_FIRST_REPEAT_MS = 480;
+    /** A hat switch is a digital D-pad, so it may repeat as snappily as one. */
+    private static final long HAT_REPEAT_MS = 165;
+    private static final long HAT_FIRST_REPEAT_MS = 340;
     /** How far a stick must travel before it counts as a direction. */
     private static final float STICK_THRESHOLD = .62f;
-    /** The stick must return inside this before it can fire the same way again. */
-    private static final float STICK_RELEASE = .38f;
+    /**
+     * The stick must return inside this before it can fire the same way again.
+     *
+     * <p>.38 let a noisy axis dip through "centred" mid-hold and immediately fire another
+     * from-rest step, which is how a stick skips a square the D-pad would have landed on.
+     */
+    private static final float STICK_RELEASE = .28f;
+    /** Ignore D-pad keys for this long after an analog step, so a pad that emits both cannot double-move. */
+    static final long ANALOG_DPAD_LOCKOUT_MS = 90;
 
     /** Prefix for devices the platform will not name, so their keys stay distinct. */
     private static final String UNNAMED = "device:";
@@ -153,6 +171,8 @@ public final class PlayerRegistry {
          * when the stick comes back to rest, which is also when it arms.
          */
         boolean stirred;
+        /** True when the last accepted step came from the analog stick, not the hat. */
+        boolean analog;
     }
 
     private final Devices devices;
@@ -358,17 +378,53 @@ public final class PlayerRegistry {
         String name = devices.descriptorOf(deviceId);
         if (name == null || name.isEmpty()) {
             name = UNNAMED + deviceId;
-        } else if (heldByALiveDevice(name, deviceId)) {
-            name = name + "#" + deviceId;
+        } else {
+            String reconnecting = awayNameFor(name);
+            if (reconnecting != null) {
+                name = reconnecting;
+            } else if (needsDistinctName(name, deviceId)) {
+                name = name + "#" + deviceId;
+            }
         }
         nameByDeviceId.put(deviceId, name);
         return name;
     }
 
-    private boolean heldByALiveDevice(String name, int deviceId) {
+    /**
+     * An absent member of a same-descriptor family, ready for a replacement device id.
+     *
+     * <p>The first twin keeps the descriptor itself and later twins carry an id suffix.
+     * {@link #releaseDevice} deliberately preserves both names in {@link #away}, so a twin
+     * that wakes under a new id must reclaim its old suffixed name before it is mistaken for
+     * a third controller. If more than one identical pad is away Android has given us no way
+     * to distinguish the hardware; insertion order still restores the same occupied seats.
+     */
+    private String awayNameFor(String descriptor) {
+        if (away.contains(descriptor)) {
+            return descriptor;
+        }
+        String prefix = descriptor + "#";
+        for (String known : playerByDevice.keySet()) {
+            if (known.startsWith(prefix) && away.contains(known)) {
+                return known;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether another device id already owns this descriptor.
+     *
+     * <p>Some Android TV builds briefly return null for a perfectly live Bluetooth pad
+     * while dispatching another pad's event, so platform enumeration is not evidence of a
+     * reconnect. Two active ids are always two physical inputs and therefore get distinct
+     * names. A real disconnect comes through {@link #releaseDevice}, which removes the old
+     * id before the replacement arrives while keeping the stable descriptor's seat and
+     * stick state ready for it.
+     */
+    private boolean needsDistinctName(String name, int deviceId) {
         for (Map.Entry<Integer, String> entry : nameByDeviceId.entrySet()) {
-            if (entry.getKey() != deviceId && entry.getValue().equals(name)
-                    && devices.isConnected(entry.getKey())) {
+            if (entry.getKey() != deviceId && entry.getValue().equals(name)) {
                 return true;
             }
         }
@@ -411,11 +467,17 @@ public final class PlayerRegistry {
     public int[] stickStep(int deviceId, float stickX, float stickY, float hatX, float hatY,
                            long now) {
         justStirred = false;
-        float x = strongest(stickX, hatX);
-        float y = strongest(stickY, hatY);
+        // A hat switch is a digital D-pad. Prefer it whenever it is actually pressed, so a
+        // drifting analog axis cannot steal a click, and so the analog stick — which is
+        // what overshoots — can be paced on its own slower clock.
+        boolean usingHat = Math.abs(hatX) >= STICK_THRESHOLD
+                || Math.abs(hatY) >= STICK_THRESHOLD;
+        float x = usingHat ? hatX : stickX;
+        float y = usingHat ? hatY : stickY;
         Stick stick = stickFor(deviceId);
 
-        if (Math.abs(x) < STICK_RELEASE && Math.abs(y) < STICK_RELEASE) {
+        if (Math.abs(stickX) < STICK_RELEASE && Math.abs(stickY) < STICK_RELEASE
+                && Math.abs(hatX) < STICK_RELEASE && Math.abs(hatY) < STICK_RELEASE) {
             // At rest: the next push counts immediately, and from now on we know this
             // controller has a centre to come back to.
             stick.armed = true;
@@ -461,8 +523,10 @@ public final class PlayerRegistry {
         boolean fromRest = stick.centred;
         boolean firstEver = stick.repeats == 0;
         boolean turned = dx != stick.dx || dy != stick.dy;
-        long wait = turned ? STICK_REPEAT_MS
-                : (stick.repeats <= 1 ? STICK_FIRST_REPEAT_MS : STICK_REPEAT_MS);
+        long firstWait = usingHat ? HAT_FIRST_REPEAT_MS : STICK_FIRST_REPEAT_MS;
+        long repeatWait = usingHat ? HAT_REPEAT_MS : STICK_REPEAT_MS;
+        long wait = turned ? repeatWait
+                : (stick.repeats <= 1 ? firstWait : repeatWait);
         if (!fromRest && !firstEver && now - stick.lastStepAt < wait) {
             return null;
         }
@@ -470,10 +534,29 @@ public final class PlayerRegistry {
         stick.armed = true;
         stick.centred = false;
         stick.lastStepAt = now;
+        stick.analog = !usingHat;
         stick.repeats = fromRest || turned ? 1 : stick.repeats + 1;
         stick.dx = dx;
         stick.dy = dy;
         return new int[]{dx, dy};
+    }
+
+    /**
+     * True when this device just stepped from its analog stick, so a D-pad key arriving
+     * from the same physical motion must not take a second square.
+     */
+    public boolean analogSteppedRecently(int deviceId, long now) {
+        Stick stick = sticks.get(nameOf(deviceId));
+        return stick != null && stick.analog && now - stick.lastStepAt < ANALOG_DPAD_LOCKOUT_MS;
+    }
+
+    /**
+     * True when this device just produced a hat or stick step, so a matching D-pad key
+     * must not take a second square — or a second chapter on the title screen.
+     */
+    public boolean stickSteppedRecently(int deviceId, long now) {
+        Stick stick = sticks.get(nameOf(deviceId));
+        return stick != null && now - stick.lastStepAt < ANALOG_DPAD_LOCKOUT_MS;
     }
 
     private Stick stickFor(int deviceId) {
@@ -484,10 +567,6 @@ public final class PlayerRegistry {
             sticks.put(name, stick);
         }
         return stick;
-    }
-
-    private static float strongest(float primary, float secondary) {
-        return Math.abs(secondary) > Math.abs(primary) ? secondary : primary;
     }
 
     // ---- Button vocabulary ---------------------------------------------------------
@@ -520,16 +599,20 @@ public final class PlayerRegistry {
                 || key == KeyEvent.KEYCODE_PROG_RED;
     }
 
-    /** Buttons that mean "step back": Back and Escape. */
+    /**
+     * Buttons that mean "step back": Back, Escape, and the gamepad View / Select key —
+     * two overlapping squares on an Xbox pad, which Android TV uses as Back.
+     */
     public static boolean isBack(int key) {
-        return key == KeyEvent.KEYCODE_BACK || key == KeyEvent.KEYCODE_ESCAPE;
+        return key == KeyEvent.KEYCODE_BACK
+                || key == KeyEvent.KEYCODE_ESCAPE
+                || key == KeyEvent.KEYCODE_BUTTON_SELECT;
     }
 
     /** Buttons that open the cozy corner: Start, Menu, and the remote's own Menu key. */
     public static boolean isMenu(int key) {
         return key == KeyEvent.KEYCODE_BUTTON_START
                 || key == KeyEvent.KEYCODE_MENU
-                || key == KeyEvent.KEYCODE_BUTTON_SELECT
                 || key == KeyEvent.KEYCODE_BUTTON_MODE
                 || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
     }

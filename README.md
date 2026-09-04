@@ -3,6 +3,19 @@
 A cozy, endless nonogram game made for the couch. Play solo, or hand someone a second
 controller and solve every picture together with independent Rose and Sky cursors.
 
+![CozyGrams title screen with Rose and Sky ready to play](docs/screenshots/home.webp)
+
+## Made for a cozy evening together
+
+CozyGrams pairs a warm, television-first interface with true local co-op: each controller
+keeps its own player, cursor and colour while both players solve one shared picture. The
+Story Book turns each finished puzzle into a little keepsake and remembers which chapters
+you have completed.
+
+| Solve together | Finish a chapter |
+|---|---|
+| ![Rose and Sky solving a nonogram together](docs/screenshots/gameplay.webp) | ![A completed CozyGrams Story Book chapter](docs/screenshots/story-complete.webp) |
+
 ## Controls
 
 | | gamepad | bare TV remote |
@@ -25,10 +38,10 @@ including across a controller falling asleep and waking up with a new device id.
   so the clues alone are always enough — you never have to guess, and there is never a
   second valid answer to feel cheated by. All 4,608 boards the endless deck can deal and
   all 24 Story Book chapters are checked on every test run.
-- Deterministic endless play from 5×5 to 20×20, with 24 cozy subjects (hearts, sleepy
-  cats, cocoa, moons, rain on the window, teapots, mittens, sleeping foxes, pie…) each
-  drawn in 12 looks: mirrored or not, three poses that change the silhouette, and whether
-  a little star or heart keeps it company.
+- A deterministic Endless deck rather than baked pictures followed by random noise: 24
+  named subjects (hearts, sleepy cats, cocoa, moons, rain on the window, teapots, mittens,
+  sleeping foxes, pie…) are each drawn in 12 silhouette-changing looks at every supported
+  size. Finishing a picture advances the seeded deck; its title names the subject family.
 - **Bigger boards are bigger puzzles.** Subjects are drawn with holes rather than filled
   in — a handle to hook a finger through, two slats of pastry, the middle lifted out of a
   heart — so a 20×20 line averages two clue groups instead of one long run, no row or
@@ -67,7 +80,7 @@ The entire UI is drawn onto one `Canvas`, and the rendering code is deliberately
 desktop JVM, with no emulator:
 
 ```sh
-tools/preview/render.sh [outputDir] [width] [height]     # 23 scenarios, default 1920x1080
+tools/preview/render.sh [outputDir] [width] [height]     # 26 scenarios, default 1920x1080
 ```
 
 It compiles a Java2D-backed set of `android.graphics` stubs together with the app's own
@@ -79,7 +92,7 @@ The set covers both menus, the board at every size it deals, an authored story c
 solo table and a two-player one, the feedback a press produces, the win card early and
 settled, the page turn between chapters, and the layout cases that break things — the
 widest message, Larger Text, Extra Contrast, and one title screen carrying every long
-string at once. Twenty-one of them render at whatever resolution you ask for; `sizes/`
+string at once. Twenty-three of them render at whatever resolution you ask for; `sizes/`
 holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a scaling regression turns
 up as a picture rather than as an argument.
 
