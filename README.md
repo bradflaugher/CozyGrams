@@ -141,10 +141,11 @@ sequences it encodes from, and passing a clip name records just that one.
 
 ## Release
 
-Push a version tag such as `v1.0.0`, or manually run **Latest APK Release** in GitHub
-Actions. The workflow tests the project, builds a release APK, removes older GitHub
-Releases, and publishes a single latest release containing `CozyGrams-latest.apk`. The APK
-is suitable for sideloading on NVIDIA Shield TV Pro (enable installation from unknown
+Every push to `main` is tested and built into a release APK automatically. Releases use
+date-based versions such as `v2026.09.04.42`, where the final number is the GitHub Actions
+run number. After publishing, the workflow removes older GitHub Releases so only the
+latest release remains. It contains `CozyGrams-latest.apk` and its SHA-256 checksum. The
+APK is suitable for sideloading on NVIDIA Shield TV Pro (enable installation from unknown
 sources first).
 
 Release APKs use the project's stable sideloading certificate, so subsequent GitHub

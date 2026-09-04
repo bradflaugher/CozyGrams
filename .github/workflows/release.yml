@@ -1,10 +1,17 @@
 name: Latest APK Release
+
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: write
+
+concurrency:
+  group: latest-apk-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -17,15 +24,13 @@ jobs:
           cache: gradle
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew test lint assembleRelease --stacktrace
-      - name: Keep only the latest GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release list --limit 100 --json tagName --jq '.[].tagName' | xargs -r -n1 gh release delete --yes
       - name: Publish sideloadable APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk CozyGrams-latest.apk
           sha256sum CozyGrams-latest.apk > CozyGrams-latest.apk.sha256
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then RELEASE_TAG="$GITHUB_REF_NAME"; else RELEASE_TAG="v1.0.${GITHUB_RUN_NUMBER}"; fi
+          RELEASE_TAG="v$(date -u +'%Y.%m.%d').${GITHUB_RUN_NUMBER}"
           gh release create "$RELEASE_TAG" CozyGrams-latest.apk CozyGrams-latest.apk.sha256 --target "$GITHUB_SHA" --latest --generate-notes --title "CozyGrams $RELEASE_TAG"
+          gh release list --limit 100 --json tagName --jq ".[] | select(.tagName != \"$RELEASE_TAG\") | .tagName" \
+            | xargs -r -n1 gh release delete --yes
