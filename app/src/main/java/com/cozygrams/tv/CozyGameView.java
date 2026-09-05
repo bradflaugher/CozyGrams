@@ -83,8 +83,16 @@ public final class CozyGameView extends View {
      */
     private final long[] menuPressedAt = {0};
     private final long[] menuSteppedAt = {0};
-    private final long[] cursorPressedAt = {0, 0};
-    private final long[] cursorSteppedAt = {0, 0};
+
+    /**
+     * Software hold-to-repeat, one lane per player on the board and one for the menus.
+     * Lives here rather than on the platform because many pads never send a key-repeat
+     * or a second stick event while the direction stays down.
+     */
+    private final HoldRepeat[] cursorHolds = {new HoldRepeat(), new HoldRepeat()};
+    private final HoldRepeat menuHold = new HoldRepeat();
+    private final Runnable cursorHoldTick = this::tickCursorHolds;
+    private final Runnable menuHoldTick = this::tickMenuHold;
 
     /** When each player's centre press went down, for the hold-to-hint gesture. */
     private final long[] centreDownAt = {0, 0};
@@ -254,6 +262,8 @@ public final class CozyGameView extends View {
     protected void onDetachedFromWindow() {
         music.stop();
         sfx.release();
+        removeCallbacks(cursorHoldTick);
+        removeCallbacks(menuHoldTick);
         super.onDetachedFromWindow();
     }
 
@@ -388,7 +398,16 @@ public final class CozyGameView extends View {
     @Override
     public boolean onKeyUp(int key, KeyEvent event) {
         int who = players.slotOf(event.getDeviceId());
-        if (who < 0 || !PlayerRegistry.isConfirm(key)) {
+        if (who < 0) {
+            return super.onKeyUp(key, event);
+        }
+        if (PlayerRegistry.isDirection(key)) {
+            boolean stickDown = players.stickDeflected(event.getDeviceId());
+            cursorHolds[who].releaseKey(event.getDeviceId(), key, stickDown);
+            menuHold.releaseKey(event.getDeviceId(), key, stickDown);
+            return true;
+        }
+        if (!PlayerRegistry.isConfirm(key)) {
             return super.onKeyUp(key, event);
         }
         boolean held = ui.screen == UiState.GAME && !ui.won && holdWasLongEnough(who);
@@ -460,6 +479,101 @@ public final class CozyGameView extends View {
         return true;
     }
 
+    private void armCursorHold() {
+        removeCallbacks(cursorHoldTick);
+        postDelayed(cursorHoldTick, 16);
+    }
+
+    private void armMenuHold() {
+        removeCallbacks(menuHoldTick);
+        postDelayed(menuHoldTick, 16);
+    }
+
+    /**
+     * Walks every held board direction that is still down. Runs off the view's own
+     * clock so a pad that never sends a second event still crosses the board.
+     */
+    private void tickCursorHolds() {
+        if (ui.screen != UiState.GAME || ui.won) {
+            cursorHolds[0].clear();
+            cursorHolds[1].clear();
+            return;
+        }
+        long moment = now();
+        boolean any = false;
+        for (int who = 0; who < cursorHolds.length; who++) {
+            HoldRepeat hold = cursorHolds[who];
+            if (!hold.active) {
+                continue;
+            }
+            if (hold.keyCode == HoldRepeat.FROM_STICK
+                    && !players.stickDeflected(hold.deviceId)) {
+                hold.clear();
+                continue;
+            }
+            any = true;
+            if (hold.due(moment, Theme.REPEAT_FIRST_MS, Theme.BOARD_REPEAT_MS)) {
+                moveCursor(hold.who, hold.dx, hold.dy);
+            }
+        }
+        if (any) {
+            invalidate();
+            postDelayed(cursorHoldTick, 16);
+        }
+    }
+
+    private void tickMenuHold() {
+        if (!menuHold.active
+                || (ui.screen != UiState.HOME && ui.screen != UiState.SETTINGS)) {
+            menuHold.clear();
+            return;
+        }
+        if (menuHold.keyCode == HoldRepeat.FROM_STICK
+                && !players.stickDeflected(menuHold.deviceId)) {
+            menuHold.clear();
+            return;
+        }
+        long moment = now();
+        if (menuHold.due(moment, Theme.REPEAT_FIRST_MS, Theme.MENU_REPEAT_MS)
+                && menuHold.dy != 0) {
+            int count = ui.screen == UiState.HOME
+                    ? HomeScene.ITEM_COUNT : SettingsScene.ITEM_COUNT;
+            stepMenu(menuHold.dy, count, false);
+        }
+        invalidate();
+        postDelayed(menuHoldTick, 16);
+    }
+
+    /**
+     * Starts travelling in this direction. The opening square is taken here; everything
+     * after that comes from {@link #tickCursorHolds}. A matching hold already in flight
+     * — the D-pad key that follows a hat event, or Android's own key-repeat — is ignored
+     * so the same push cannot take two squares.
+     */
+    private void beginCursorHold(int who, int dx, int dy, int deviceId, int keyCode) {
+        long moment = now();
+        if (cursorHolds[who].matches(who, dx, dy)) {
+            cursorHolds[who].adopt(who, dx, dy, deviceId, keyCode, moment);
+            armCursorHold();
+            return;
+        }
+        cursorHolds[who].adopt(who, dx, dy, deviceId, keyCode, moment);
+        moveCursor(who, dx, dy);
+        armCursorHold();
+    }
+
+    private void beginMenuHold(int who, int dy, int deviceId, int keyCode, int itemCount) {
+        long moment = now();
+        if (menuHold.matches(who, 0, dy)) {
+            menuHold.adopt(who, 0, dy, deviceId, keyCode, moment);
+            armMenuHold();
+            return;
+        }
+        menuHold.adopt(who, 0, dy, deviceId, keyCode, moment);
+        stepMenu(dy, itemCount, false);
+        armMenuHold();
+    }
+
     // ---- Home screen ---------------------------------------------------------------
 
     private boolean handleHomeKey(int key, KeyEvent event, int who, boolean repeat) {
@@ -468,9 +582,9 @@ public final class CozyGameView extends View {
             return super.onKeyDown(key, event);
         }
         if (key == KeyEvent.KEYCODE_DPAD_UP) {
-            stepMenu(-1, HomeScene.ITEM_COUNT, repeat);
+            beginMenuHold(0, -1, event.getDeviceId(), key, HomeScene.ITEM_COUNT);
         } else if (key == KeyEvent.KEYCODE_DPAD_DOWN) {
-            stepMenu(1, HomeScene.ITEM_COUNT, repeat);
+            beginMenuHold(0, 1, event.getDeviceId(), key, HomeScene.ITEM_COUNT);
         } else if ((ui.menu == HomeScene.ITEM_SIZE || ui.menu == HomeScene.ITEM_STORY)
                 && (key == KeyEvent.KEYCODE_DPAD_LEFT
                 || key == KeyEvent.KEYCODE_DPAD_RIGHT)) {
@@ -677,9 +791,9 @@ public final class CozyGameView extends View {
 
     private boolean handleSettingsKey(int key, KeyEvent event, boolean repeat) {
         if (key == KeyEvent.KEYCODE_DPAD_UP) {
-            stepMenu(-1, SettingsScene.ITEM_COUNT, repeat);
+            beginMenuHold(0, -1, event.getDeviceId(), key, SettingsScene.ITEM_COUNT);
         } else if (key == KeyEvent.KEYCODE_DPAD_DOWN) {
-            stepMenu(1, SettingsScene.ITEM_COUNT, repeat);
+            beginMenuHold(0, 1, event.getDeviceId(), key, SettingsScene.ITEM_COUNT);
         } else if (PlayerRegistry.isConfirm(key) && !repeat) {
             chooseSetting();
         } else if (PlayerRegistry.isBack(key) || PlayerRegistry.isCross(key)
@@ -778,19 +892,14 @@ public final class CozyGameView extends View {
             case KeyEvent.KEYCODE_DPAD_RIGHT:
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                // Some pads emit both analog motion and D-pad keys for one stick push.
-                // The analog path already stepped; taking the key too skips a square.
-                if (players.analogSteppedRecently(event.getDeviceId(), now())) {
-                    return true;
-                }
                 if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    stepCursor(who, -1, 0, repeat);
+                    beginCursorHold(who, -1, 0, event.getDeviceId(), key);
                 } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    stepCursor(who, 1, 0, repeat);
+                    beginCursorHold(who, 1, 0, event.getDeviceId(), key);
                 } else if (key == KeyEvent.KEYCODE_DPAD_UP) {
-                    stepCursor(who, 0, -1, repeat);
+                    beginCursorHold(who, 0, -1, event.getDeviceId(), key);
                 } else {
-                    stepCursor(who, 0, 1, repeat);
+                    beginCursorHold(who, 0, 1, event.getDeviceId(), key);
                 }
                 break;
             default:
@@ -925,21 +1034,6 @@ public final class CozyGameView extends View {
         centreDownAt[who] = 0;
         useHint(who);
         checkForWin();
-    }
-
-    /** Moves a cursor, at no more than the shared held-direction cadence. */
-    private void stepCursor(int who, int dx, int dy, boolean repeat) {
-        long moment = now();
-        if (repeat) {
-            if (!heldStepIsDue(cursorPressedAt, cursorSteppedAt, who, moment,
-                    Theme.BOARD_REPEAT_MS)) {
-                return;
-            }
-        } else {
-            cursorPressedAt[who] = moment;
-            cursorSteppedAt[who] = moment;
-        }
-        moveCursor(who, dx, dy);
     }
 
     private void moveCursor(int who, int dx, int dy) {
@@ -1357,6 +1451,7 @@ public final class CozyGameView extends View {
     public boolean onGenericMotionEvent(MotionEvent event) {
         int[] step = players.stickStep(event, now());
         if (step == null) {
+            releaseStickHolds(event.getDeviceId());
             if (players.justStirred()) {
                 // Somebody pushed a stick on a controller that has not joined yet. Nothing
                 // moved, but the empty seat can show that the room noticed.
@@ -1369,13 +1464,15 @@ public final class CozyGameView extends View {
         ui.lastActive[who] = now();
 
         if (ui.screen == UiState.GAME && !ui.won) {
-            moveCursor(who, step[0], step[1]);
+            beginCursorHold(who, step[0], step[1], event.getDeviceId(),
+                    HoldRepeat.FROM_STICK);
         } else if (ui.screen == UiState.HOME) {
             // Xbox D-pads report as hat axes, not as KEYCODE_DPAD_LEFT/RIGHT. Vertical
             // still moves the highlight; horizontal is the story/size stepper — and used
             // to be swallowed, which is why the chevrons never moved.
             if (step[1] != 0) {
-                stepMenu(step[1], HomeScene.ITEM_COUNT, false);
+                beginMenuHold(0, step[1], event.getDeviceId(), HoldRepeat.FROM_STICK,
+                        HomeScene.ITEM_COUNT);
             } else if (step[0] != 0) {
                 if (ui.menu == HomeScene.ITEM_SIZE) {
                     nudgeBoardSize(step[0] * 5);
@@ -1384,10 +1481,21 @@ public final class CozyGameView extends View {
                 }
             }
         } else if (step[1] != 0 && ui.screen == UiState.SETTINGS) {
-            stepMenu(step[1], SettingsScene.ITEM_COUNT, false);
+            beginMenuHold(0, step[1], event.getDeviceId(), HoldRepeat.FROM_STICK,
+                    SettingsScene.ITEM_COUNT);
         }
         invalidate();
         return true;
+    }
+
+    /** A stick or hat that has come back through centre must stop walking. */
+    private void releaseStickHolds(int deviceId) {
+        if (players.stickDeflected(deviceId)) {
+            return;
+        }
+        cursorHolds[0].releaseStick(deviceId);
+        cursorHolds[1].releaseStick(deviceId);
+        menuHold.releaseStick(deviceId);
     }
 
     /** Whichever chair nobody is sitting in, or Sky's when both are taken. */

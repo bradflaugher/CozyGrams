@@ -55,23 +55,15 @@ public final class PlayerRegistry {
     public static final int SKY = 1;
 
     /**
-     * Analog sticks repeat no faster than this so a held stick is not a machine gun.
+     * Analog sticks and hat switches only emit a step when the direction is first
+     * entered or changed. Repeating a held direction is {@link HoldRepeat}'s job,
+     * because a thumb sitting still often produces no further events at all.
      *
-     * <p>165 ms was the D-pad's old living-room rate and is still what a hat switch uses —
-     * a hat is a digital click. An analog stick is not: it sits past the threshold for as
-     * long as a thumb rests on it, and 165 ms turned a tap into two squares and a sweep
-     * into a skip. 240 ms is a step you can still count, and the first repeat waits
-     * {@link #STICK_FIRST_REPEAT_MS} so a push that is let go of a beat later is one cell.
+     * <p>These waits are only for a change of direction while the stick is already
+     * off-centre, so rolling around the rim cannot fire faster than a held D-pad.
      */
     private static final long STICK_REPEAT_MS = 240;
-    /**
-     * The first analog repeat waits longer than the rest. Without it a stick pushed once
-     * and released a beat later moves two squares, which is exactly how someone overshoots.
-     */
-    private static final long STICK_FIRST_REPEAT_MS = 480;
-    /** A hat switch is a digital D-pad, so it may repeat as snappily as one. */
     private static final long HAT_REPEAT_MS = 165;
-    private static final long HAT_FIRST_REPEAT_MS = 340;
     /** How far a stick must travel before it counts as a direction. */
     private static final float STICK_THRESHOLD = .62f;
     /**
@@ -173,6 +165,12 @@ public final class PlayerRegistry {
         boolean stirred;
         /** True when the last accepted step came from the analog stick, not the hat. */
         boolean analog;
+        /**
+         * True while the last event from this device was past the step threshold.
+         * Separate from {@link #centred} because the dead zone between the two radii
+         * is not rest — but it is also not a direction the view should keep walking.
+         */
+        boolean deflected;
     }
 
     private final Devices devices;
@@ -435,7 +433,13 @@ public final class PlayerRegistry {
 
     /**
      * Converts a joystick event into a single step, or null when the stick has not moved
-     * far enough, is repeating too quickly, or has not yet been seen at rest.
+     * far enough, has not changed direction, or has not yet been seen at rest.
+     *
+     * <p>Repeating a held direction is <em>not</em> this method's job. Hat switches and
+     * analog sticks both commonly go quiet while the thumb stays put — one event on the
+     * way out, one on the way back — so a rate limit keyed off incoming events can never
+     * walk a 20-wide board. {@link HoldRepeat} on the view keeps time instead; this only
+     * reports the moment a direction is entered or changed.
      *
      * @return a two element array of {dx, dy}, or null for "no movement this frame"
      */
@@ -486,11 +490,13 @@ public final class PlayerRegistry {
             stick.repeats = 0;
             stick.dx = 0;
             stick.dy = 0;
+            stick.deflected = false;
             return null;
         }
         if (Math.abs(x) < STICK_THRESHOLD && Math.abs(y) < STICK_THRESHOLD) {
             // Between the two radii: deliberately nothing at all, which is what stops a
             // stick resting slightly off centre from stuttering.
+            stick.deflected = false;
             return null;
         }
         if (!stick.armed && !playerByDevice.containsKey(nameOf(deviceId))) {
@@ -518,16 +524,19 @@ public final class PlayerRegistry {
         }
 
         // A push from rest always counts. A change of direction while still held counts
-        // as soon as the ordinary repeat allows, so rolling the stick around its rim
-        // cannot fire faster than holding it in one direction.
+        // as soon as a short turn wait allows, so rolling the stick around its rim
+        // cannot fire faster than holding it in one direction. The same direction held
+        // is left to HoldRepeat — another event here would only double a step the
+        // ticker is already taking, and many pads never send that event anyway.
         boolean fromRest = stick.centred;
         boolean firstEver = stick.repeats == 0;
         boolean turned = dx != stick.dx || dy != stick.dy;
-        long firstWait = usingHat ? HAT_FIRST_REPEAT_MS : STICK_FIRST_REPEAT_MS;
-        long repeatWait = usingHat ? HAT_REPEAT_MS : STICK_REPEAT_MS;
-        long wait = turned ? repeatWait
-                : (stick.repeats <= 1 ? firstWait : repeatWait);
-        if (!fromRest && !firstEver && now - stick.lastStepAt < wait) {
+        stick.deflected = true;
+        if (!fromRest && !firstEver && !turned) {
+            return null;
+        }
+        long turnWait = usingHat ? HAT_REPEAT_MS : STICK_REPEAT_MS;
+        if (turned && !fromRest && !firstEver && now - stick.lastStepAt < turnWait) {
             return null;
         }
 
@@ -559,6 +568,15 @@ public final class PlayerRegistry {
         return stick != null && now - stick.lastStepAt < ANALOG_DPAD_LOCKOUT_MS;
     }
 
+    /**
+     * True while this device's stick or hat is past the step threshold, so a software
+     * hold should keep walking even if no further motion events arrive.
+     */
+    public boolean stickDeflected(int deviceId) {
+        Stick stick = sticks.get(nameOf(deviceId));
+        return stick != null && stick.deflected;
+    }
+
     private Stick stickFor(int deviceId) {
         String name = nameOf(deviceId);
         Stick stick = sticks.get(name);
@@ -576,6 +594,14 @@ public final class PlayerRegistry {
     // bare TV remote with nothing but a D-pad, a centre and Back. The sets below are kept
     // disjoint, because the caller tests them in order and an overlap would silently
     // shadow whichever comes later.
+
+    /** The four direction keys. They steer and never confirm, cross, hint or go back. */
+    public static boolean isDirection(int key) {
+        return key == KeyEvent.KEYCODE_DPAD_UP
+                || key == KeyEvent.KEYCODE_DPAD_DOWN
+                || key == KeyEvent.KEYCODE_DPAD_LEFT
+                || key == KeyEvent.KEYCODE_DPAD_RIGHT;
+    }
 
     /** Buttons that mean "yes, do it": gamepad A, the remote's centre, and Enter. */
     public static boolean isConfirm(int key) {
