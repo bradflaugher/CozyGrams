@@ -47,9 +47,13 @@ public class CozyGameViewTest {
         assertTrue(Theme.REPEAT_FIRST_MS > Theme.MENU_REPEAT_MS);
         // A one-second hold should cross a board, not fly over it: at 300 then 85 that is
         // ten cells, which is half of the widest board.
-        long cells = 1 + (1000 - Theme.REPEAT_FIRST_MS) / Theme.BOARD_REPEAT_MS;
+        long cells = HoldRepeat.stepsDuring(1000, Theme.REPEAT_FIRST_MS,
+                Theme.BOARD_REPEAT_MS);
         assertTrue("a held direction crosses " + cells + " cells a second",
                 cells >= 6 && cells <= 12);
+        // And the same hold kept for two seconds has to reach the far side of a 20.
+        assertTrue(HoldRepeat.stepsDuring(2_000, Theme.REPEAT_FIRST_MS,
+                Theme.BOARD_REPEAT_MS) >= 20);
     }
 
     /**

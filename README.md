@@ -20,7 +20,7 @@ you have completed.
 
 | | gamepad | bare TV remote |
 |---|---|---|
-| move | D-pad or left stick (wraps around) | D-pad |
+| move | D-pad or left stick — hold to keep travelling (wraps around) | D-pad — hold to keep travelling |
 | fill a square | **A** | **OK** cycles fill → cross → clear |
 | cross a square out | **B** or **X** | (part of the OK cycle) |
 | reveal one square | **Y** | hold **OK** |

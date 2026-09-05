@@ -352,26 +352,22 @@ public class PlayerRegistryTest {
     }
 
     @Test
-    public void aHeldStickIsRateLimited() {
+    public void aHeldStickIsNotAMachineGunFromEventsAlone() {
         PlayerRegistry registry = armed(twoPads(), 11);
 
         assertArrayEquals("the push itself", new int[]{1, 0},
                 registry.stickStep(11, 1f, 0, 0, 0, 1000));
-        assertNull("still the same push", registry.stickStep(11, 1f, 0, 0, 0, 1100));
-        assertNull("a tap must not become two squares",
-                registry.stickStep(11, 1f, 0, 0, 0, 1400));
-        assertArrayEquals("the first repeat, once it is clearly a hold",
-                new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1480));
-
-        // From there it repeats at a steady, countable rate rather than a machine gun.
-        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 1600));
-        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1720));
-        assertNull(registry.stickStep(11, 1f, 0, 0, 0, 1840));
-        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1960));
+        for (long now = 1016; now <= 3000; now += 16) {
+            assertNull("the same deflection is the view's job to repeat, not another event",
+                    registry.stickStep(11, 1f, 0, 0, 0, now));
+        }
+        assertTrue("and the stick is still held, so the view may keep walking",
+                registry.stickDeflected(11));
 
         // Letting go and pushing again is immediate, however quickly it is done.
-        assertNull(registry.stickStep(11, 0, 0, 0, 0, 1970));
-        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 1980));
+        assertNull(registry.stickStep(11, 0, 0, 0, 0, 3010));
+        assertFalse(registry.stickDeflected(11));
+        assertArrayEquals(new int[]{1, 0}, registry.stickStep(11, 1f, 0, 0, 0, 3020));
     }
 
     /** Sixty samples a second of a held stick must not become sixty steps. */
@@ -384,8 +380,8 @@ public class PlayerRegistryTest {
                 steps++;
             }
         }
-        assertTrue("a second of holding gave " + steps + " steps", steps >= 3);
-        assertTrue("a second of holding gave " + steps + " steps", steps <= 5);
+        assertEquals("only the moment the stick leaves centre is a step", 1, steps);
+        assertTrue(registry.stickDeflected(11));
     }
 
     @Test
@@ -503,6 +499,7 @@ public class PlayerRegistryTest {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
         };
         for (int key : directions) {
+            assertTrue(PlayerRegistry.isDirection(key));
             assertFalse(PlayerRegistry.isConfirm(key));
             assertFalse(PlayerRegistry.isCross(key));
             assertFalse(PlayerRegistry.isBack(key));
