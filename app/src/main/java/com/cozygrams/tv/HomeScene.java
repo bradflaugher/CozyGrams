@@ -203,9 +203,9 @@ public final class HomeScene {
     static String touchFooter(int row) {
         switch (row) {
             case ITEM_STORY:
-                return "Tap ‹ › for another chapter, or the row to open it";
+                return "Tap ‹ › for chapters, the row to open";
             case ITEM_SIZE:
-                return "Tap ‹ › for another size, or the row to start";
+                return "Tap ‹ › for sizes, the row to start";
             default:
                 return "Tap a row to choose";
         }

@@ -105,7 +105,7 @@ The entire UI is drawn onto one `Canvas`, and the rendering code is deliberately
 desktop JVM, with no emulator:
 
 ```sh
-tools/preview/render.sh [outputDir] [width] [height]     # 44 frames, default 1920x1080
+tools/preview/render.sh [outputDir] [width] [height]     # 50 frames, default 1920x1080
 ```
 
 It compiles a Java2D-backed set of `android.graphics` stubs together with the app's own

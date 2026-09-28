@@ -379,14 +379,32 @@ public final class Preview {
                         "A 5x5 on a phone, the shortest rail: the pad shrinks rather than spills.",
                         Preview::phoneFive, 2400, 1080),
                 new Frame("store/phone-1-game.png",
-                        "Play Store phone shot: a 10x10 in touch mode at 16:9.",
-                        Preview::storeGame, 1920, 1080),
+                        "Play Store phone shot: a 10x10 in touch mode at 18:9, Play's widest allowed.",
+                        Preview::storeGame, 2160, 1080),
                 new Frame("store/phone-2-home.png",
                         "Play Store phone shot: the title screen in touch mode.",
-                        Preview::phoneHome, 1920, 1080),
+                        Preview::phoneHome, 2160, 1080),
                 new Frame("store/phone-3-win.png",
                         "Play Store phone shot: a finished picture.",
-                        Preview::phoneWin, 1920, 1080),
+                        Preview::phoneWin, 2160, 1080),
+                new Frame("store/tablet7-1-game.png",
+                        "Play Store 7-inch tablet shot: a 10x10 at 16:10.",
+                        Preview::storeTabletGame, 1920, 1200),
+                new Frame("store/tablet7-2-home.png",
+                        "Play Store 7-inch tablet shot: the title screen.",
+                        Preview::tabletHome, 1920, 1200),
+                new Frame("store/tablet7-3-win.png",
+                        "Play Store 7-inch tablet shot: a finished picture.",
+                        Preview::storeTabletWin, 1920, 1200),
+                new Frame("store/tablet10-1-game.png",
+                        "Play Store 10-inch tablet shot: a 10x10 at 16:10.",
+                        Preview::storeTabletGame, 2560, 1600),
+                new Frame("store/tablet10-2-home.png",
+                        "Play Store 10-inch tablet shot: the title screen.",
+                        Preview::tabletHome, 2560, 1600),
+                new Frame("store/tablet10-3-win.png",
+                        "Play Store 10-inch tablet shot: a finished picture.",
+                        Preview::storeTabletWin, 2560, 1600),
                 new Frame("phone/30-phone-small.png",
                         "A 16:9 phone at 1920x1080 with a 20x20 board.",
                         Preview::phoneTwenty, 1920, 1080),
@@ -844,6 +862,14 @@ public final class Preview {
 
     private static void storeGame(Canvas canvas, Renderer renderer, int w, int h) {
         asPhone(() -> gameTen(canvas, renderer, w, h));
+    }
+
+    private static void storeTabletGame(Canvas canvas, Renderer renderer, int w, int h) {
+        asTouch(tabletDensity(w, h), () -> gameTen(canvas, renderer, w, h));
+    }
+
+    private static void storeTabletWin(Canvas canvas, Renderer renderer, int w, int h) {
+        asTouch(tabletDensity(w, h), () -> winSettled(canvas, renderer, w, h));
     }
 
     private static void phoneFive(Canvas canvas, Renderer renderer, int w, int h) {
