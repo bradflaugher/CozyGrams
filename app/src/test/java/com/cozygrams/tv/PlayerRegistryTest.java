@@ -507,4 +507,80 @@ public class PlayerRegistryTest {
             assertFalse(PlayerRegistry.isHint(key));
         }
     }
+
+    /**
+     * A keyboard is the fifth controller: WASD steers, X or C crosses, H asks for a hint,
+     * Tab or M opens the cozy corner, and Enter, Space and Escape keep the meanings they
+     * already had.
+     */
+    @Test
+    public void aKeyboardCanPlayToo() {
+        assertEquals(KeyEvent.KEYCODE_DPAD_UP, PlayerRegistry.canonical(KeyEvent.KEYCODE_W));
+        assertEquals(KeyEvent.KEYCODE_DPAD_LEFT, PlayerRegistry.canonical(KeyEvent.KEYCODE_A));
+        assertEquals(KeyEvent.KEYCODE_DPAD_DOWN, PlayerRegistry.canonical(KeyEvent.KEYCODE_S));
+        assertEquals(KeyEvent.KEYCODE_DPAD_RIGHT,
+                PlayerRegistry.canonical(KeyEvent.KEYCODE_D));
+        assertEquals("the gamepad's A is not the letter A", KeyEvent.KEYCODE_BUTTON_A,
+                PlayerRegistry.canonical(KeyEvent.KEYCODE_BUTTON_A));
+        assertEquals(KeyEvent.KEYCODE_DPAD_UP,
+                PlayerRegistry.canonical(KeyEvent.KEYCODE_DPAD_UP));
+
+        assertTrue(PlayerRegistry.isCross(KeyEvent.KEYCODE_X));
+        assertTrue(PlayerRegistry.isCross(KeyEvent.KEYCODE_C));
+        assertTrue(PlayerRegistry.isHint(KeyEvent.KEYCODE_H));
+        assertTrue(PlayerRegistry.isMenu(KeyEvent.KEYCODE_TAB));
+        assertTrue(PlayerRegistry.isMenu(KeyEvent.KEYCODE_M));
+        assertTrue(PlayerRegistry.isConfirm(KeyEvent.KEYCODE_ENTER));
+        assertTrue(PlayerRegistry.isConfirm(KeyEvent.KEYCODE_SPACE));
+        assertTrue(PlayerRegistry.isBack(KeyEvent.KEYCODE_ESCAPE));
+    }
+
+    /**
+     * Everything the game uses is a game key, after WASD has been folded onto the D-pad.
+     * This is the set onKeyDown keeps; anything outside it goes back to the platform.
+     */
+    @Test
+    public void everyKeyTheGameUsesIsAGameKey() {
+        int[] ours = {
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B,
+                KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
+                KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT,
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_D,
+                KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_H, KeyEvent.KEYCODE_TAB,
+        };
+        for (int key : ours) {
+            assertTrue("keycode " + key,
+                    PlayerRegistry.isGameKey(PlayerRegistry.canonical(key)));
+        }
+    }
+
+    /**
+     * The volume, mute and the rest of a remote's system keys are never the game's. They
+     * used to seat a player on a phone's first volume press and do nothing on the menus.
+     */
+    @Test
+    public void theVolumeAndTheSystemKeysAreNeverTheGamesToKeep() {
+        int[] theirs = {
+                KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
+                KeyEvent.KEYCODE_VOLUME_MUTE, KeyEvent.KEYCODE_MUTE,
+                KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_REWIND,
+                KeyEvent.KEYCODE_MEDIA_STOP,
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN,
+                KeyEvent.KEYCODE_CAPTIONS, KeyEvent.KEYCODE_TV_INPUT,
+                KeyEvent.KEYCODE_GUIDE, KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_SEARCH,
+                KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_SETTINGS,
+                KeyEvent.KEYCODE_BRIGHTNESS_UP, KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_9,
+        };
+        for (int key : theirs) {
+            assertFalse("keycode " + key,
+                    PlayerRegistry.isGameKey(PlayerRegistry.canonical(key)));
+        }
+    }
 }

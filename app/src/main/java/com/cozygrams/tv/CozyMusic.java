@@ -25,7 +25,11 @@ final class CozyMusic {
     private final CozyScore score = new CozyScore(CozySynth.SAMPLE_RATE, 0xC0DEBA5EL);
 
     private AudioTrack track;
-    private Thread thread;
+    /**
+     * The render thread in charge, or null. Volatile because the render loop reads it: see
+     * {@link #render}.
+     */
+    private volatile Thread thread;
     private volatile boolean playing;
     private volatile boolean ducked;
     private boolean enabled = true;
@@ -112,7 +116,18 @@ final class CozyMusic {
         }
         try {
             owned.play();
+            Thread self = Thread.currentThread();
             while (true) {
+                // A thread that outlived stop()'s join — a track that stopped draining can
+                // hold a write longer than stop() waits — finds a successor here once it
+                // lets go. {@code playing} is shared and the successor has set it back to
+                // true, so without this the two would render the one score at once, into
+                // two tracks, for the rest of the session. It leaves without its fade:
+                // its track has already been paused and flushed underneath it.
+                Thread owner = thread;
+                if (owner != null && owner != self) {
+                    break;
+                }
                 boolean last = !playing;
                 score.render(mix, 0, BLOCK);
                 double target = ducked ? DUCK_LEVEL : 1;
