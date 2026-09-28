@@ -36,8 +36,12 @@ public final class SettingsScene {
     public static final int ITEM_CALM_MOTION = 8;
     public static final int ITEM_DEFAULTS = 9;
     public static final int ITEM_START_STORY = 10;
-    public static final int ITEM_BACK = 11;
-    public static final int ITEM_COUNT = 12;
+    public static final int ITEM_PRIVACY = 11;
+    public static final int ITEM_BACK = 12;
+    public static final int ITEM_COUNT = 13;
+
+    /** Where the privacy policy lives; shown on the row, because a TV may have no browser. */
+    static final String PRIVACY_URL = "bradflaugher.com/privacy/cozygrams";
 
     /** The last row that carries a switch; everything after it is an action. */
     private static final int LAST_SWITCH = ITEM_CALM_MOTION;
@@ -127,6 +131,7 @@ public final class SettingsScene {
                 "Reduce motion",
                 defaultsArmed() ? "Reset all settings?" : "Reset settings",
                 storyRestartArmed() ? "Start the story over?" : "Start story over",
+                "Privacy policy",
                 ui.screenBeforeSettings == UiState.GAME
                         ? "Back to the puzzle" : "Back to the menu"
         };
@@ -154,6 +159,7 @@ public final class SettingsScene {
                 "fewer sparkles, with no pulsing",
                 "every option back the way it started",
                 "chapter one, a fresh book",
+                PRIVACY_URL,
                 ui.screenBeforeSettings == UiState.GAME
                         ? "we'll keep your place" : "back to choosing a picture"
         };
@@ -171,6 +177,7 @@ public final class SettingsScene {
                 comfort.distinctPlayers,
                 comfort.boldCursor,
                 comfort.calmMotion,
+                false,
                 false,
                 false,
                 false
@@ -234,6 +241,11 @@ public final class SettingsScene {
                 return putEverythingBack(ui, now);
             case ITEM_START_STORY:
                 return askToStartTheStoryAgain(now);
+            case ITEM_PRIVACY:
+                disarmDefaults();
+                disarmStoryRestart();
+                say("Nothing is collected; nothing leaves this TV", now);
+                return true;
             default:
                 return false;
         }
@@ -429,6 +441,7 @@ public final class SettingsScene {
         if (selected <= ITEM_SFX) return "SOUND";
         if (selected <= ITEM_HINTS) return "HELPING HANDS";
         if (selected <= ITEM_CALM_MOTION) return "COMFORT & ACCESS";
+        if (selected == ITEM_PRIVACY) return "ABOUT";
         return "STORY & RESET";
     }
 

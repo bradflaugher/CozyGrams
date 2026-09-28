@@ -357,6 +357,9 @@ public final class Preview {
                 new Frame("sizes/22-settings-bigtext-720p.png",
                         "The focus-following Cozy Corner at 720p with LARGER TEXT on.",
                         Preview::settingsBigText, 1280, 720),
+                new Frame("24-settings-privacy.png",
+                        "The privacy row focused with LARGER TEXT on: the policy's address fits one line.",
+                        Preview::settingsPrivacy),
                 new Frame("23-win-remote.png",
                         "A settled win reached with a bare remote, whose prompt must say OK.",
                         Preview::winRemote),
@@ -687,6 +690,16 @@ public final class Preview {
         ui.joined[1] = true;
         SettingsScene.armDefaults(T0);
         SettingsScene.setTidyingPlayer(1);
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void settingsPrivacy(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = new UiState();
+        ui.screen = UiState.SETTINGS;
+        ui.menu = SettingsScene.ITEM_PRIVACY;
+        ui.bigTextOn = true;
+        ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
 
