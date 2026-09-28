@@ -515,4 +515,143 @@ public class HudSceneTest {
         }
         Theme.setScreenHeight(720);
     }
+
+    // ---- The thumb pad on a real phone ----------------------------------------------
+
+    /**
+     * Every thumb button clears 48dp, however short the rail makes the pad.
+     *
+     * <p>Sized as a share of the screen alone, a 1080 px phone at 3x drew FILL and CROSS
+     * OUT 93 px tall and HINT and MENU 69 px — 31dp and 23dp. The pad is now two rows at the
+     * floor plus one more, and that has to stay true at the smallest fit the rail can ask
+     * for, not only at full size.
+     */
+    @Test
+    public void everyThumbButtonClearsFortyEightDp() {
+        HudScene.setTouch(true);
+        HudScene.setDensity(3f);
+        Theme.setScreenHeight(1080);
+        float floor = 48 * 3f;
+        assertEquals(144f, HudScene.touchMinPx(), .001f);
+        for (float fit : new float[]{1f, .9f, .72f}) {
+            float gaps = Theme.scale(8) * fit * 2;
+            assertTrue("fit " + fit + ": the pad is " + HudScene.touchPadHeight(fit),
+                    HudScene.touchPadHeight(fit) - gaps >= floor * 3 - .01f);
+        }
+        // And a panel where the screen's share is already larger than 48dp keeps it:
+        // a television-sized pad is not flattened to the floor.
+        HudScene.setDensity(1f);
+        assertEquals(Theme.scale(62 * 2 + 46 + 8 * 2), HudScene.touchPadHeight(1f), .01f);
+    }
+
+    /**
+     * With the floor in force, the rail still fits on the phones the game is sold for.
+     *
+     * <p>The 48dp rows take the pad from 279 px to 456 on a 1080 px screen at 3x, so the
+     * rail has to give something up to hold them: the thumb pad's fit, and then the second
+     * line of the picture's name, exactly as it already did on a 5x5. What it can never do
+     * is run the MENU button through the overscan band. Checked at the two shapes phones
+     * come in, every board size, both seats open, with and without Larger Text.
+     */
+    @Test
+    public void theRailStillHoldsTheThumbPadOnAThreeXPhone() {
+        HudScene.setTouch(true);
+        HudScene.setDensity(3f);
+        HudScene hud = new HudScene(new Draw());
+        UiState ui = new UiState();
+        ui.joined[1] = false;
+        float[][] phones = {{2400, 1080}, {1920, 1080}};
+        for (float[] phone : phones) {
+            for (float textScale : new float[]{1f, Theme.TEXT_SCALE_BIG}) {
+                Theme.setScreen(phone[0], phone[1]);
+                Theme.setTextScale(textScale);
+                for (int size = 5; size <= 20; size += 5) {
+                    GameState game = new GameState(7L, size);
+                    BoardLayout board = new BoardLayout(phone[0], phone[1], game.puzzle,
+                            true);
+                    float lane = board.panelRight - board.panelLeft - Theme.scale(14) * 2;
+                    float needed = hud.compactPanelHeight(Theme.unitHeight(), lane, game, ui);
+                    String what = (int) phone[0] + "x" + (int) phone[1] + " " + size
+                            + (textScale > 1 ? " big-text" : "");
+                    assertTrue(what + ": the rail needs " + needed + " of "
+                                    + (board.panelBottom() - board.panelTop()),
+                            needed <= board.panelBottom() - board.panelTop() + .5f);
+                }
+            }
+        }
+        Theme.setTextScale(1f);
+    }
+
+    /**
+     * Under a stacked board the rail's band is tall enough for the pad at full size, so a
+     * portrait tablet never shrinks its buttons at all.
+     */
+    @Test
+    public void aStackedRailHoldsTheWholePad() {
+        HudScene.setTouch(true);
+        HudScene.setDensity(2f);
+        Theme.setScreen(1600, 2560);
+        Puzzle puzzle = PuzzleGenerator.compose(0, 0, 15);
+        BoardLayout board = new BoardLayout(1600, 2560, puzzle, true);
+        assertTrue(board.stacked);
+        assertTrue(board.panelBottom() - board.panelTop()
+                >= HudScene.stackedPadColumnHeight() - .01f);
+    }
+
+    /**
+     * The smallest window the manifest allows (480x360dp) under an ordinary 24dp status bar
+     * and 48dp navigation bar, the split-screen and freeform shape where the bars cannot be
+     * hidden: the compacted rail, MENU row included, still fits between them.
+     */
+    @Test
+    public void theRailFitsTheSmallestDeclaredWindowUnderItsBars() {
+        float density = 2f;
+        float w = 480 * density;
+        float h = 360 * density;
+        HudScene.setTouch(true);
+        HudScene.setDensity(density);
+        HudScene hud = new HudScene(new Draw());
+        UiState ui = new UiState();
+        ui.joined[1] = false;
+        try {
+            Theme.setInsets(0, 24 * density, 0, 48 * density);
+            Theme.setScreen(w, h);
+            for (int size = 5; size <= 20; size += 5) {
+                GameState game = new GameState(7L, size);
+                BoardLayout board = new BoardLayout(w, h, game.puzzle, true);
+                float lane = board.panelRight - board.panelLeft - Theme.scale(14) * 2;
+                float needed = hud.compactPanelHeight(Theme.unitHeight(), lane, game, ui);
+                assertTrue(size + ": the rail needs " + needed + " of "
+                                + (board.panelBottom() - board.panelTop()),
+                        needed <= board.panelBottom() - board.panelTop() + .5f);
+                assertTrue(size + ": the rail runs into the navigation bar",
+                        board.panelBottom() <= h - 48 * density + .01f);
+            }
+        } finally {
+            Theme.setInsets(0, 0, 0, 0);
+        }
+    }
+
+    /**
+     * The message pill clears a navigation bar and a cutout the same way it clears the
+     * overscan band: each edge is whichever of the two is deeper.
+     */
+    @Test
+    public void theMessagePillClearsTheWindowInsets() {
+        try {
+            Theme.setInsets(180, 0, 60, 140);
+            Theme.setScreen(1920, 1080);
+            for (int size = 5; size <= 20; size += 5) {
+                Puzzle puzzle = PuzzleGenerator.compose(0, 0, size);
+                BoardLayout board = new BoardLayout(1920, 1080, puzzle, true);
+                float centre = (board.cardLeft() + board.cardRight()) / 2;
+                float half = HudScene.ribbonLane(1920, board) / 2;
+                assertTrue(size + ": left cap at " + (centre - half), centre - half >= 180);
+                assertTrue(size + ": the pill's bottom sits in the navigation bar",
+                        board.ribbonBottom() <= 1080 - 140 + .01f);
+            }
+        } finally {
+            Theme.setInsets(0, 0, 0, 0);
+        }
+    }
 }

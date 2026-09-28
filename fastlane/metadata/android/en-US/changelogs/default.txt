@@ -1,0 +1,1 @@
+Plays properly on phones, tablets, foldables and Chromebooks as well as Android TV: touch controls sized for thumbs, room left for camera cutouts and system bars, keyboard and mouse support, and Back that steps through the game instead of leaving it. Volume keys work everywhere, and the screen can sleep when nobody is playing.

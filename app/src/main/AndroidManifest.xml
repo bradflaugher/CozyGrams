@@ -1,24 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      appCategory="game" is what Android 16+ reads to keep a game in landscape and full
+      screen on tablets and foldables (isGame is the older spelling some TV launchers still
+      sort by). enableOnBackInvokedCallback="false" keeps Back arriving as KEYCODE_BACK, so
+      it steps back through the game's own screens instead of leaving the app. The save,
+      and nothing else, goes to the player's own device backup.
+    -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <!-- sensorLandscape would otherwise imply landscape is required and filter devices out. -->
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
     <application
         android:allowBackup="true"
+        android:appCategory="game"
         android:banner="@drawable/tv_banner"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="false"
+        android:fullBackupContent="@xml/backup_rules"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
-        android:logo="@drawable/app_icon"
         android:isGame="true"
-        android:label="CozyGrams"
-        android:theme="@style/AppTheme">
+        android:label="@string/app_name"
+        android:logo="@drawable/app_icon"
+        android:theme="@style/AppTheme"
+        tools:targetApi="37">
         <activity
             android:name=".MainActivity"
-            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+            android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|locale|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             tools:ignore="DiscouragedApi">
+            <!--
+              The smallest desktop / ChromeOS window the board and the rail still fit in,
+              with room left over for a status bar and a navigation bar: the fully compacted
+              touch rail needs about 265dp of height between them.
+            -->
+            <layout
+                android:minWidth="480dp"
+                android:minHeight="360dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -1,7 +1,11 @@
 package com.cozygrams.tv;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.hardware.input.InputManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
@@ -28,6 +32,16 @@ import android.view.WindowManager;
  * top boxes never grant focus to anything, and a game that went silent on those would be broken
  * for a reason the player could never discover.
  *
+ * <p>Two more things outrank the game however focus is going. A phone call — or a video call,
+ * which is {@code MODE_IN_COMMUNICATION} — means the music does not start at all, even if a
+ * focus gain arrives in the middle of it. And headphones coming out mean the sound stops there
+ * and then, because the phone's own speaker is the last place anybody on a bus wanted it; the
+ * puzzle is left exactly as it was.
+ *
+ * <p>Focus changes arrive on a binder thread and are posted to the UI thread, so they can land
+ * after {@code onPause}. {@link #resumed} is what stops a late "you can play again" from
+ * starting the music behind whatever the player went off to do.
+ *
  * <h3>Controllers coming and going</h3>
  * A pad's batteries die mid-picture and the platform says so exactly once, here. Without that
  * message {@link PlayerRegistry} keeps the seat filled for ever: Sky's cursor sits on the board
@@ -53,6 +67,13 @@ public final class MainActivity extends Activity {
     private AudioFocusRequest focusRequest;
     private InputManager input;
     private InputManager.InputDeviceListener deviceListener;
+    private BroadcastReceiver noisyReceiver;
+
+    /**
+     * True between {@code onResume} and {@code onPause}. Only ever read and written on the UI
+     * thread; the focus listener's work is posted there before it looks.
+     */
+    private boolean resumed;
 
     @Override
     public void onCreate(Bundle state) {
@@ -132,22 +153,101 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(IMMERSIVE_FLAGS);
     }
 
+    /**
+     * The manifest asks to keep the activity through a text-size change, a new colour mode,
+     * a keyboard folding away and the rest, rather than being torn down and rebuilt around a
+     * half-finished puzzle. Keeping it is only half the job: the view still has to draw the
+     * next frame in the new configuration, and it reads the font scale fresh every frame.
+     * A new density (display size changed, or the window moved to another screen) also
+     * changes what 48dp is, so the view is told to measure its thumb pad again.
+     */
+    @Override
+    public void onConfigurationChanged(Configuration changed) {
+        super.onConfigurationChanged(changed);
+        if (game != null) {
+            game.configurationChanged();
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         requestAudioFocus();
+        listenForHeadphones();
         if (game != null) {
-            game.resume();
+            // The picture is welcome during a call; the music is not. Decided before the
+            // sound is switched on, because a track started and stopped again still gets
+            // its fade-out block to the speaker.
+            game.resume(!inACall());
         }
     }
 
     @Override
     protected void onPause() {
+        resumed = false;
         if (game != null) {
             game.pause();
         }
+        stopListeningForHeadphones();
         abandonAudioFocus();
         super.onPause();
+    }
+
+    // ---- Headphones --------------------------------------------------------------------
+
+    /**
+     * {@code ACTION_AUDIO_BECOMING_NOISY} is Android saying "whatever you are playing is about
+     * to come out of the speaker instead". It cannot be declared in the manifest, and there is
+     * no reason to hear it while nothing is playing, so it is listened for only while the game
+     * is in front. Delivered on the UI thread.
+     */
+    private void listenForHeadphones() {
+        if (noisyReceiver != null) {
+            return;
+        }
+        noisyReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (game != null && intent != null
+                        && AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
+                    game.headphonesOut();
+                }
+            }
+        };
+        try {
+            registerReceiver(noisyReceiver,
+                    new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY));
+        } catch (Throwable ignored) {
+            // A box that will not say so still plays; it has no headphones to pull out.
+            noisyReceiver = null;
+        }
+    }
+
+    private void stopListeningForHeadphones() {
+        if (noisyReceiver == null) {
+            return;
+        }
+        try {
+            unregisterReceiver(noisyReceiver);
+        } catch (Throwable ignored) {
+            // Already gone.
+        }
+        noisyReceiver = null;
+    }
+
+    /** True during a phone call or a voice or video call in another app. */
+    private boolean inACall() {
+        if (audio == null) {
+            return false;
+        }
+        try {
+            int mode = audio.getMode();
+            return mode == AudioManager.MODE_IN_CALL
+                    || mode == AudioManager.MODE_IN_COMMUNICATION;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     // ---- Audio focus -------------------------------------------------------------------
@@ -227,11 +327,16 @@ public final class MainActivity extends Activity {
             public void run() {
                 if (giveWay) {
                     view.pause();
-                } else {
+                } else if (resumed && !inACall()) {
                     // Whatever spoke over us has finished; the score comes back up whether
-                    // it ducked or stopped.
+                    // it ducked or stopped. Only while we are still in front, though: this
+                    // was posted from a binder thread, and if onPause got to the UI thread
+                    // first, resuming here would start the music behind the launcher.
                     view.duck(false);
                     view.resume();
+                } else {
+                    // Undo a duck all the same, so the next real resume starts at full level.
+                    view.duck(false);
                 }
             }
         });

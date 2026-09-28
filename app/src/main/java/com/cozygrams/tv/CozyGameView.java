@@ -1,5 +1,6 @@
 package com.cozygrams.tv;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
@@ -10,6 +11,9 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
 
 import java.util.HashSet;
@@ -104,6 +108,24 @@ public final class CozyGameView extends View {
     private long lastFrameAt;
 
     /**
+     * Whether anybody is still playing, and so how hard the view should work for them. See
+     * {@link IdleWatch} for why this exists at all.
+     */
+    private final IdleWatch idle = new IdleWatch(SystemClock.uptimeMillis());
+
+    /**
+     * The one pending slow frame, while settled. A single named runnable rather than
+     * {@code postInvalidateDelayed}, because every press also invalidates: each of those
+     * frames would otherwise schedule a delayed frame of its own on top of the one already
+     * waiting, and a quiet screen poked a few times would end up redrawing several chains
+     * at once — the opposite of settling.
+     */
+    private final Runnable settledFrame = this::invalidate;
+
+    /** Lets the screen sleep once the room has been quiet for long enough. */
+    private final Runnable dozeCheck = this::checkForDoze;
+
+    /**
      * Every controller in the room that has face buttons of its own.
      *
      * <p>This was a sticky {@code boolean}: once any gamepad had been seen the legend
@@ -182,6 +204,47 @@ public final class CozyGameView extends View {
                 BitmapFactory.decodeResource(getResources(), R.drawable.cozy_room),
                 BitmapFactory.decodeResource(getResources(), R.drawable.moon_garden));
         sfx.setEnabled(ui.sfxOn);
+
+        // The thumb pad's 48dp floor needs to know what a dp is here, and the safe
+        // rectangle needs to know what the window's bars and cutout cover. Both arrive
+        // with the insets, which the system re-sends whenever the window changes shape.
+        HudScene.setDensity(getResources().getDisplayMetrics().density);
+        setOnApplyWindowInsetsListener((view, insets) -> {
+            applyInsets(insets);
+            return insets;
+        });
+    }
+
+    /**
+     * The activity kept itself through a configuration change. A new density moves the
+     * 48dp floor under the thumb pad, and the bars may have moved with it, so the density
+     * is read again and fresh insets are asked for rather than waited for.
+     */
+    public void configurationChanged() {
+        HudScene.setDensity(getResources().getDisplayMetrics().density);
+        requestApplyInsets();
+        invalidate();
+    }
+
+    /**
+     * Hands the window's insets to the renderer as four plain numbers.
+     *
+     * <p>{@code getSystemWindowInset*} rather than {@code getInsets(Type)}, which is API 30,
+     * and without {@code getDisplayCutout()}, which is API 28: this has to run on API 26.
+     * They are deprecated, not broken — on API 30 and up they are the visible system bars
+     * together with the display cutout, which is exactly the rectangle wanted here, and a
+     * window laid out into the short-edge cutout gets its camera reported through them.
+     * The stable insets are deliberately not folded in: they report a bar even while it
+     * is hidden, and on a television or an immersive phone that would give up a status
+     * bar's height of board to a bar nobody can see.
+     */
+    @SuppressWarnings("deprecation")
+    private void applyInsets(WindowInsets insets) {
+        renderer.setInsets(insets.getSystemWindowInsetLeft(),
+                insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(),
+                insets.getSystemWindowInsetBottom());
+        HudScene.setDensity(getResources().getDisplayMetrics().density);
+        invalidate();
     }
 
     /**
@@ -218,8 +281,17 @@ public final class CozyGameView extends View {
     // ---- Lifecycle -----------------------------------------------------------------
 
     public void resume() {
-        music.setEnabled(ui.musicOn);
-        sfx.setEnabled(ui.sfxOn);
+        resume(true);
+    }
+
+    /**
+     * Comes back to the game, with the sound only if {@code withSound}: returning during a
+     * phone call brings back the picture and leaves the music and effects off, without
+     * ever starting a track that would then have to be stopped.
+     */
+    public void resume(boolean withSound) {
+        music.setEnabled(withSound && ui.musicOn);
+        sfx.setEnabled(withSound && ui.sfxOn);
         // Forget the frame we drew before the interruption; the gap since then is however
         // long somebody was away making tea, and it is not a frame time. The same goes for
         // any centre button that was down when we were interrupted: whatever it was doing,
@@ -229,15 +301,46 @@ public final class CozyGameView extends View {
         centreDownAt[1] = 0;
         forgetHeldSquare(0);
         forgetHeldSquare(1);
+        // Coming back to the game is as good as a keypress: whoever opened it is looking.
+        noticeSomebody();
+        armDozeCheck();
         invalidate();
     }
 
     public void pause() {
+        hush();
+        // The doze timer is left running: a permanent loss of audio focus pauses the sound
+        // with the game still in front of somebody, and that screen still deserves to be
+        // allowed to sleep. On a window that is really in the background it is harmless.
+        removeCallbacks(settledFrame);
+        store.flush(game, ui);
+    }
+
+    /**
+     * Silences the music and the effects without leaving the game — for a phone call, or
+     * for headphones pulled out on a bus, where the picture is still wanted but the sound
+     * very much is not. {@link #resume} brings both back.
+     */
+    public void hush() {
         music.stop();
         // The mixer's thread outlives the pause, and a chime arriving over whatever
         // interrupted us is exactly what audio focus asked us not to do.
         sfx.setEnabled(false);
-        store.flush(game, ui);
+    }
+
+    /**
+     * The headphones came out. The sound stops where it is — the phone's speaker is not
+     * where anybody asked for it — and the puzzle carries on, since there is no pause
+     * screen to force on anybody and the board has lost nothing. Sound comes back with the
+     * next resume, or with the Music or Sounds switch in the cozy corner.
+     */
+    public void headphonesOut() {
+        if (!ui.musicOn && !ui.sfxOn) {
+            return;
+        }
+        hush();
+        tell("Headphones out — the sound is resting", Theme.SOFT_TEXT);
+        invalidate();
     }
 
     /** Steps out of the way of something short, without stopping. See {@link CozyMusic#duck}. */
@@ -272,11 +375,69 @@ public final class CozyGameView extends View {
         sfx.release();
         removeCallbacks(cursorHoldTick);
         removeCallbacks(menuHoldTick);
+        removeCallbacks(settledFrame);
+        removeCallbacks(dozeCheck);
         super.onDetachedFromWindow();
     }
 
     private long now() {
         return SystemClock.uptimeMillis();
+    }
+
+    // ---- Winding down --------------------------------------------------------------
+
+    /**
+     * Somebody pressed, touched, scrolled or pushed something. Brings the frame rate
+     * straight back, and if the screen had been allowed to sleep, keeps it awake again.
+     */
+    private void noticeSomebody() {
+        if (idle.noticed(now())) {
+            keepScreenOn(true);
+            armDozeCheck();
+            invalidate();
+        }
+    }
+
+    private void armDozeCheck() {
+        removeCallbacks(dozeCheck);
+        postDelayed(dozeCheck, idle.untilDoze(now()));
+    }
+
+    /**
+     * Runs off its own timer rather than off the frames, because with Calmer Animation on a
+     * quiet screen draws no frames at all — and that is the screen that most needs to be
+     * allowed to sleep.
+     */
+    private void checkForDoze() {
+        long moment = now();
+        if (idle.dozing(moment)) {
+            keepScreenOn(false);
+            return;
+        }
+        if (idle.idleFor(moment) < IdleWatch.DOZE_AFTER_MS) {
+            postDelayed(dozeCheck, idle.untilDoze(moment));
+        }
+    }
+
+    /**
+     * {@code FLAG_KEEP_SCREEN_ON} lives on the activity's window, which is where
+     * {@link MainActivity} set it. Taken away after ten quiet minutes so a phone can sleep and
+     * a television can reach its screensaver; put back on the next press.
+     */
+    private void keepScreenOn(boolean on) {
+        Context context = getContext();
+        if (!(context instanceof Activity)) {
+            return;
+        }
+        Window window = ((Activity) context).getWindow();
+        if (window == null) {
+            return;
+        }
+        if (on) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
     }
 
     // ---- Speaking ------------------------------------------------------------------
@@ -368,10 +529,22 @@ public final class CozyGameView extends View {
     // ---- Input routing -------------------------------------------------------------
 
     @Override
-    public boolean onKeyDown(int key, KeyEvent event) {
-        // A controller picked up on a phone brings back the controller's legend. The back
-        // gesture also arrives as a key, but from no controller, so it changes nothing.
-        if (HudScene.touch() && fromAController(event)) {
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Any key at all — the volume included — is somebody in the room, and is enough to
+        // keep the screen awake and the frame rate up. See IdleWatch.
+        noticeSomebody();
+        int key = PlayerRegistry.canonical(keyCode);
+        if (!PlayerRegistry.isGameKey(key)) {
+            // Volume, mute, the media keys, channel, captions, the input switcher: none of
+            // them are ours, and none of them may seat a player or flip a legend on the way
+            // past. They go back to the platform exactly as they arrived.
+            return super.onKeyDown(keyCode, event);
+        }
+        boolean keyboard = fromAKeyboard(event);
+        // A controller picked up on a phone brings back the controller's legend, and so
+        // does a keyboard on a Chromebook or a tablet in its case. The back gesture also
+        // arrives as a key, but from neither, so it changes nothing.
+        if (HudScene.touch() && (fromAController(event) || keyboard)) {
             HudScene.setTouch(false);
         }
         boolean repeat = event.getRepeatCount() > 0;
@@ -386,7 +559,13 @@ public final class CozyGameView extends View {
         // “Press a button to join” should do exactly one thing. Letting that same press
         // fall through could start a chapter, flip a setting, or mark a square before the
         // new player had even seen which seat they claimed.
-        if (joining) {
+        //
+        // Except on a keyboard. That is somebody at a Chromebook or a tablet who has been
+        // playing all along — with the trackpad, with a finger — and has just started
+        // typing, not a second person picking up a pad across the sofa. Eating their first
+        // arrow key reads as the game ignoring them, so the press takes the seat and then
+        // does what it says.
+        if (joining && !keyboard) {
             invalidate();
             return true;
         }
@@ -413,10 +592,14 @@ public final class CozyGameView extends View {
      * here and nowhere else.
      */
     @Override
-    public boolean onKeyUp(int key, KeyEvent event) {
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        noticeSomebody();
+        int key = PlayerRegistry.canonical(keyCode);
         int who = players.slotOf(event.getDeviceId());
-        if (who < 0) {
-            return super.onKeyUp(key, event);
+        if (who < 0 || !PlayerRegistry.isGameKey(key)) {
+            // The other half of a volume press, or of anything else that is not ours, goes
+            // back the way onKeyDown sent its first half.
+            return super.onKeyUp(keyCode, event);
         }
         if (PlayerRegistry.isDirection(key)) {
             boolean stickDown = players.stickDeflected(event.getDeviceId());
@@ -425,13 +608,13 @@ public final class CozyGameView extends View {
             return true;
         }
         if (!PlayerRegistry.isConfirm(key)) {
-            return super.onKeyUp(key, event);
+            return super.onKeyUp(keyCode, event);
         }
         boolean held = ui.screen == UiState.GAME && !ui.won && holdWasLongEnough(who);
         centreDownAt[who] = 0;
         if (!held) {
             forgetHeldSquare(who);
-            return super.onKeyUp(key, event);
+            return super.onKeyUp(keyCode, event);
         }
         holdForHint(who);
         invalidate();
@@ -530,6 +713,11 @@ public final class CozyGameView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        noticeSomebody();
+        if (secondaryClick(event)) {
+            invalidate();
+            return true;
+        }
         HudScene.setTouch(true);
         // The finger on the glass is Rose. A controller that arrives later takes Sky's seat.
         ui.joined[0] = true;
@@ -565,6 +753,81 @@ public final class CozyGameView extends View {
         return (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
                 || (source & InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD
                 || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+    }
+
+    /**
+     * A real typing keyboard: a Chromebook's own, a tablet's case, a Bluetooth one.
+     *
+     * <p>{@code SOURCE_KEYBOARD} alone proves nothing. Gamepads carry it, the navigation
+     * bar's back gesture carries it, and so do a phone's volume rocker and the on-screen
+     * keyboard. What they do not have is a full set of letters on a physical device, so that
+     * is what is asked — and never of a controller, which answers first.
+     */
+    private static boolean fromAKeyboard(KeyEvent event) {
+        if (fromAController(event)
+                || (event.getSource() & InputDevice.SOURCE_KEYBOARD)
+                != InputDevice.SOURCE_KEYBOARD) {
+            return false;
+        }
+        try {
+            InputDevice device = event.getDevice();
+            return device != null && !device.isVirtual()
+                    && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC;
+        } catch (RuntimeException problem) {
+            return false;
+        }
+    }
+
+    /** True while a mouse's right button is down, so the rest of that press is ignored. */
+    private boolean secondaryDown;
+
+    /**
+     * A mouse's right button crosses out the square under the pointer, the way every
+     * nonogram on a desktop has always worked. The left button already reaches the same
+     * tap-to-fill a finger does, so the two buttons end up meaning fill and cross, and a
+     * trackpad's two-finger click comes along for free.
+     *
+     * <p>Nowhere but the board has a use for it, so on the menus the press is simply
+     * swallowed rather than being taken for a left click on whatever row it landed on.
+     *
+     * @return true when this event belonged to a right-button press
+     */
+    private boolean secondaryClick(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            int buttons = event.getButtonState();
+            secondaryDown = event.isFromSource(InputDevice.SOURCE_MOUSE)
+                    && (buttons & MotionEvent.BUTTON_SECONDARY) != 0
+                    && (buttons & MotionEvent.BUTTON_PRIMARY) == 0;
+            if (secondaryDown) {
+                crossUnderPointer(event.getX(), event.getY());
+            }
+            return secondaryDown;
+        }
+        if (!secondaryDown) {
+            return false;
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            secondaryDown = false;
+        }
+        return true;
+    }
+
+    private void crossUnderPointer(float x, float y) {
+        if (ui.screen != UiState.GAME || ui.won) {
+            return;
+        }
+        ui.joined[0] = true;
+        ui.lastActive[0] = now();
+        BoardLayout board = renderer.board();
+        int column = cellColumn(board, x);
+        int row = cellRow(board, y);
+        if (column < 0 || row < 0) {
+            return;
+        }
+        placeCursor(0, column, row);
+        crossSquare(0);
+        checkForWin();
     }
 
     /** The first time a finger reaches a puzzle, say how the two thumbs split the work. */
@@ -1018,9 +1281,12 @@ public final class CozyGameView extends View {
             }
         } else if (PlayerRegistry.isConfirm(key) && !repeat) {
             chooseHomeItem(who);
-        } else {
-            return true;
         }
+        // Anything else that reaches here is still one of the game's own keys — the router
+        // has already handed the volume and the rest back — and it stays ours even though
+        // this screen has no use for it. Unhandled gamepad buttons come back from the
+        // platform as fallback keys, and B's fallback is BACK: returning false for a cross
+        // press on the title screen would drop the player out to the launcher.
         return true;
     }
 
@@ -1215,6 +1481,8 @@ public final class CozyGameView extends View {
                 || PlayerRegistry.isMenu(key)) {
             leaveSettings();
         }
+        // True for the same reason as the title screen: only the game's own keys get this
+        // far, and an unhandled gamepad button would come back as a fallback BACK.
         return true;
     }
 
@@ -1864,7 +2132,27 @@ public final class CozyGameView extends View {
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
+        if (event.isFromSource(InputDevice.SOURCE_CLASS_POINTER)) {
+            // A mouse or a trackpad. Moving the pointer is somebody being here; the wheel
+            // is the only part of it the game has a use for here.
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_HOVER_MOVE
+                    || action == MotionEvent.ACTION_SCROLL) {
+                noticeSomebody();
+            }
+            if (action == MotionEvent.ACTION_SCROLL
+                    && scrollMenu(event.getAxisValue(MotionEvent.AXIS_VSCROLL))) {
+                invalidate();
+                return true;
+            }
+            return super.onGenericMotionEvent(event);
+        }
         int[] step = players.stickStep(event, now());
+        if (step != null) {
+            // Only a stick that actually produced a step counts as somebody here. A noisy
+            // axis sends events all night, and it must not keep the screen awake with them.
+            noticeSomebody();
+        }
         if (step == null) {
             releaseStickHolds(event.getDeviceId());
             if (players.justStirred()) {
@@ -1903,6 +2191,44 @@ public final class CozyGameView extends View {
         return true;
     }
 
+    /** Wheel travel not yet spent on a row: a trackpad scrolls in fractions of a notch. */
+    private float wheelCarry;
+
+    /**
+     * The wheel moves the highlight on the title screen and in the cozy corner, a row per
+     * notch — wheel up is the row above, as in every list. On the board it does nothing:
+     * there is no single direction a wheel could mean there that would not surprise
+     * somebody.
+     *
+     * @return true when a menu took the scroll
+     */
+    private boolean scrollMenu(float amount) {
+        int count;
+        if (ui.screen == UiState.HOME) {
+            count = HomeScene.ITEM_COUNT;
+        } else if (ui.screen == UiState.SETTINGS) {
+            count = SettingsScene.ITEM_COUNT;
+        } else {
+            wheelCarry = 0;
+            return false;
+        }
+        if (amount == 0) {
+            return true;
+        }
+        if (Math.signum(amount) != Math.signum(wheelCarry)) {
+            // Changing direction starts afresh, so a trackpad's leftover fraction from the
+            // last swipe cannot eat the first part of this one.
+            wheelCarry = 0;
+        }
+        wheelCarry += amount;
+        while (Math.abs(wheelCarry) >= 1) {
+            int direction = wheelCarry > 0 ? -1 : 1;
+            wheelCarry += direction;
+            stepMenu(direction, count, false);
+        }
+        return true;
+    }
+
     /** A stick or hat that has come back through centre must stop walking. */
     private void releaseStickHolds(int deviceId) {
         if (players.stickDeflected(deviceId)) {
@@ -1929,8 +2255,13 @@ public final class CozyGameView extends View {
         ui.animateCursors(game, frameGap(lastFrameAt, now));
         lastFrameAt = now;
         renderer.draw(canvas, getWidth(), getHeight(), game, ui, effects, now);
-        if (renderer.animating(game, ui, effects, now)) {
+        // Whatever this frame does next replaces the slow frame already waiting, if any.
+        removeCallbacks(settledFrame);
+        long next = idle.frameDelay(renderer.animating(game, ui, effects, now), now);
+        if (next == IdleWatch.EVERY_VSYNC) {
             postInvalidateOnAnimation();
+        } else if (next > 0) {
+            postDelayed(settledFrame, next);
         }
     }
 

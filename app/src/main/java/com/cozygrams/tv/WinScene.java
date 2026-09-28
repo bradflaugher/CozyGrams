@@ -369,13 +369,23 @@ public final class WinScene {
         effects.clearReadingColumn();
         effects.drawParticles(canvas, draw, null, now);
 
-        float span = width * COMPOSITION_SPAN;
+        // Centred on the safe rectangle rather than on the window, which on a television is
+        // the same point; a split-screen window's status bar is not something to centre
+        // a keepsake on.
         float left = compositionLeft(width);
+        float span = width * COMPOSITION_SPAN;
+        if (left + span > compositionRight(width) + .5f) {
+            // Only when an inset has actually moved an edge: recomputed from the two
+            // edges, the span came out a float's width short and shifted every pixel of
+            // the composition on a television by a fraction.
+            span = compositionRight(width) - left;
+        }
+        float middle = (Theme.safeTop(height) + Theme.safeBottom(height)) / 2;
         float frame = Math.min(height * HERO_OF_HEIGHT, span * HERO_OF_SPAN);
         float gap = Theme.scale(40);
 
-        drawPicture(canvas, height, left, left + frame, board, game, elapsed, lift, calm);
-        drawPlaque(canvas, left + frame + gap, left + span, height, game, ui, elapsed,
+        drawPicture(canvas, middle, left, left + frame, board, game, elapsed, lift, calm);
+        drawPlaque(canvas, left + frame + gap, left + span, middle, game, ui, elapsed,
                 calm);
     }
 
@@ -408,12 +418,15 @@ public final class WinScene {
 
     /** Left edge of the whole composition — picture and words — at this width. */
     static float compositionLeft(float width) {
-        return width * (1 - COMPOSITION_SPAN) / 2;
+        return Math.max(width * (1 - COMPOSITION_SPAN) / 2, Theme.safeLeft(width));
     }
 
-    /** Right edge of the same. Symmetric about the centre, which is the whole point. */
+    /**
+     * Right edge of the same. Symmetric about the centre, which is the whole point, unless
+     * a cutout or a bar on one side only leaves nothing symmetric to be.
+     */
     static float compositionRight(float width) {
-        return width - compositionLeft(width);
+        return Math.min(width - width * (1 - COMPOSITION_SPAN) / 2, Theme.safeRight(width));
     }
 
     // ---- The picture -----------------------------------------------------------------
@@ -428,11 +441,11 @@ public final class WinScene {
      * picture where it stands. After it the same rectangle is interpolated into the hero
      * frame, so the thing that flies is the finished picture rather than a stand-in for it.
      */
-    private void drawPicture(Canvas canvas, float height, float heroLeft, float heroRight,
+    private void drawPicture(Canvas canvas, float middle, float heroLeft, float heroRight,
                              BoardLayout board, GameState game, float elapsed, float lift,
                              boolean calm) {
         float pad = Theme.scale(22);
-        float heroTop = height / 2 - (heroRight - heroLeft) / 2;
+        float heroTop = middle - (heroRight - heroLeft) / 2;
         float picLeft = Draw.lerp(board.left, heroLeft + pad, lift);
         float picTop = Draw.lerp(board.top, heroTop + pad, lift);
         float picSize = Draw.lerp(board.right - board.left,
@@ -868,11 +881,11 @@ public final class WinScene {
      * panel under two lines of text, which reads as a loading placeholder rather than as
      * choreography.
      */
-    private void drawPlaque(Canvas canvas, float left, float right, float height,
+    private void drawPlaque(Canvas canvas, float left, float right, float middle,
                             GameState game, UiState ui, float elapsed, boolean calm) {
         Plaque p = measurePlaque(left, right, game, ui);
         float content = p.content();
-        float top = height / 2 - (content + p.padY * 2) / 2;
+        float top = middle - (content + p.padY * 2) / 2;
 
         float appear = beat(elapsed, PLAQUE_AT, PLAQUE_MS);
         if (appear <= 0) {

@@ -3,6 +3,7 @@ package com.cozygrams.tv;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -684,5 +685,179 @@ public class BoardLayoutTest {
             }
         }
         return new Puzzle(art, "checkerboard");
+    }
+
+    // ---- Windows that are not a television ---------------------------------------------
+
+    /**
+     * Design pixels are measured against the 16:9 frame the width can hold.
+     *
+     * <p>Every 16:9 panel and every landscape phone — which is wider than 16:9, not
+     * narrower — is measured against its height exactly as before; a portrait or a square
+     * window is measured against its width.
+     */
+    @Test
+    public void designPixelsFollowTheShortSideOfA16by9Frame() {
+        assertEquals(1080f, Theme.unitHeight(1920, 1080), .001f);
+        assertEquals(2160f, Theme.unitHeight(3840, 2160), .001f);
+        assertEquals(1080f, Theme.unitHeight(2400, 1080), .001f);
+        assertEquals(607.5f, Theme.unitHeight(1080, 1920), .001f);
+        assertEquals(900f, Theme.unitHeight(1600, 2560), .001f);
+        assertEquals(675f, Theme.unitHeight(1200, 1200), .001f);
+        assertEquals(450f, Theme.unitHeight(800, 600), .001f);
+    }
+
+    /**
+     * On a portrait window the rail goes under the board, and nothing overlaps or leaves
+     * the safe rectangle.
+     *
+     * <p>At 1600x2560 the rail used to be 853 px of a 1600 px screen: every size was
+     * {@code designPx * height / 720}, so a tall window was treated as an enormous
+     * television and its width was never consulted.
+     */
+    @Test
+    public void aPortraitWindowStacksTheRailUnderTheBoard() {
+        float[][] screens = {{1080, 1920}, {1600, 2560}, {1200, 1600}};
+        for (boolean touch : new boolean[]{false, true}) {
+            HudScene.setTouch(touch);
+            HudScene.setDensity(2f);
+            try {
+                for (float[] screen : screens) {
+                    forEveryBoard(screen[0], screen[1], (w, h, board, what) -> {
+                        what += touch ? " touch" : "";
+                        assertTrue(what + ": not stacked", board.stacked);
+                        assertInsideTheSafeArea(w, h, board, what);
+                        assertTrue(what + ": the rail starts above the card's foot",
+                                board.panelTop() >= board.cardBottom());
+                        assertTrue(what + ": the ribbon sits on the card",
+                                board.ribbonBottom() - HudScene.ribbonHeight(1)
+                                        >= board.cardBottom() - .5f);
+                        assertTrue(what + ": the ribbon sits on the rail",
+                                board.ribbonBottom() <= board.panelTop());
+                        assertTrue(what + ": the rail's band runs past the safe line",
+                                board.panelTop() + BoardLayout.stackedRailHeight()
+                                        <= Theme.safeBottom(h) + .5f);
+                        assertTrue(what + ": the rail leaves the safe area",
+                                board.panelLeft >= Theme.safeLeft(w) - .5f
+                                        && board.panelRight <= Theme.safeRight(w) + .5f);
+                        assertTrue(what + ": the rail is narrower than its card",
+                                board.panelRight - board.panelLeft
+                                        >= Math.min(board.cardRight() - board.cardLeft(),
+                                        Theme.safeRight(w) - Theme.safeLeft(w)) - .5f);
+                        assertTrue(what + ": the rail is too narrow for its three columns",
+                                board.panelRight - board.panelLeft
+                                        >= BoardLayout.dp(BoardLayout.RAIL_WIDTH * 3,
+                                        Theme.unitHeight(w, h)) - .5f);
+                    });
+                }
+            } finally {
+                HudScene.setTouch(false);
+                HudScene.setDensity(1f);
+            }
+        }
+    }
+
+    /**
+     * A square, a 4:3 and a landscape phone keep the rail beside the board, and it fits.
+     *
+     * <p>Only the unit changes for them: 1200x1200 is measured against the 675 px a 16:9
+     * frame of that width would be, so the rail is 225 px rather than the 400 it was.
+     */
+    @Test
+    public void squareAndWideWindowsKeepTheRailBeside() {
+        float[][] screens = {{1200, 1200}, {800, 600}, {2400, 1080}, {1440, 1600}};
+        for (float[] screen : screens) {
+            forEveryBoard(screen[0], screen[1], (w, h, board, what) -> {
+                assertFalse(what + ": stacked", board.stacked);
+                assertInsideTheSafeArea(w, h, board, what);
+                assertTrue(what + ": card overlaps the rail",
+                        board.cardRight() <= board.panelLeft);
+                assertEquals(what + ": rail is not its fixed width",
+                        BoardLayout.dp(BoardLayout.RAIL_WIDTH, Theme.unitHeight(w, h)),
+                        board.panelRight - board.panelLeft, .5f);
+                assertTrue(what + ": rail reported as unusable", board.hasRoomForPanel());
+            });
+        }
+    }
+
+    /**
+     * The row tabs hang off the card's left edge, and they stay out of the overscan band
+     * once the board is bound by the width rather than the height.
+     */
+    @Test
+    public void theRowTabsStayInsideTheSafeAreaOnAWidthBoundBoard() {
+        float[][] screens = {{1080, 1920}, {1200, 1200}, {800, 600}};
+        for (float[] screen : screens) {
+            forEveryBoard(screen[0], screen[1], (w, h, board, what) ->
+                    assertTrue(what + ": the tabs reach " + (board.cardLeft()
+                                    - CursorRenderer.marginBandHeight()),
+                            board.cardLeft() - CursorRenderer.marginBandHeight()
+                                    >= Theme.safeLeft(w) - 1f));
+        }
+    }
+
+    /**
+     * A window's insets are folded into the safe rectangle edge by edge: a status bar, a
+     * navigation bar and a camera cutout deeper than the 5% margin all push the card in,
+     * and a shallow one changes nothing.
+     */
+    @Test
+    public void theCardClearsTheWindowsBarsAndCutout() {
+        try {
+            float[][] screens = {{2400, 1080}, {1920, 1080}, {1600, 2560}};
+            for (float[] screen : screens) {
+                Theme.setInsets(screen[0] * .08f, screen[1] * .07f, 0, screen[1] * .09f);
+                forEveryBoard(screen[0], screen[1], (w, h, board, what) -> {
+                    assertTrue(what + ": card under the cutout",
+                            board.cardLeft() - CursorRenderer.marginBandHeight()
+                                    >= w * .08f - 1f);
+                    assertTrue(what + ": card under the status bar",
+                            board.cardTop() >= h * .07f - .5f);
+                    assertTrue(what + ": card under the navigation bar",
+                            board.cardBottom() <= h - h * .09f + .5f);
+                    assertTrue(what + ": rail under the navigation bar",
+                            board.panelBottom() <= h - h * .09f + .5f);
+                });
+            }
+            // Insets inside the overscan band are already paid for.
+            Theme.setInsets(0, 0, 0, 0);
+            screen(FULL_HD_H, 1f);
+            BoardLayout plain = new BoardLayout(FULL_HD_W, FULL_HD_H, busiestGenerated(20), true);
+            Theme.setInsets(40, 30, 0, 50);
+            BoardLayout shallow = new BoardLayout(FULL_HD_W, FULL_HD_H, busiestGenerated(20),
+                    true);
+            assertEquals(plain.cell, shallow.cell, 0f);
+            assertEquals(plain.left, shallow.left, 0f);
+            assertEquals(plain.top, shallow.top, 0f);
+        } finally {
+            Theme.setInsets(0, 0, 0, 0);
+            screen(FULL_HD_H, 1f);
+        }
+    }
+
+    private static void assertInsideTheSafeArea(float w, float h, BoardLayout board,
+                                                String what) {
+        assertTrue(what + ": card runs off the left (" + board.cardLeft() + ")",
+                board.cardLeft() >= Theme.safeLeft(w) - .5f);
+        assertTrue(what + ": card runs off the top (" + board.cardTop() + ")",
+                board.cardTop() >= Theme.safeTop(h) - .5f);
+        assertTrue(what + ": card runs off the right (" + board.cardRight() + ")",
+                board.cardRight() <= Theme.safeRight(w) + .5f);
+        assertTrue(what + ": card runs off the bottom (" + board.cardBottom() + ")",
+                board.cardBottom() <= Theme.safeBottom(h) + .5f);
+    }
+
+    /** Every board size, the busiest and the alternating load, both text sizes, at one screen. */
+    private void forEveryBoard(float width, float height, Check check) {
+        for (float textScale : new float[]{1f, BIG_TEXT}) {
+            Theme.setScreen(width, height);
+            Theme.setTextScale(textScale);
+            String name = (int) width + "x" + (int) height + (textScale > 1 ? " big-text" : "");
+            for (int size = 5; size <= 20; size++) {
+                check(check, width, height, busiestGenerated(size), name + " endless " + size);
+                check(check, width, height, alternating(size), name + " alternating " + size);
+            }
+        }
+        screen(FULL_HD_H, 1f);
     }
 }

@@ -7,7 +7,9 @@ import android.graphics.Typeface;
  * rate at which the whole interface moves.
  *
  * <p>Every size here is expressed in "design pixels" measured against a 720p reference
- * screen and scaled up by {@link #scale(float)}.
+ * screen and scaled up by {@link #scale(float)} — against the height of a 16:9 frame, which
+ * on a portrait or square window is narrower than the window is tall; see
+ * {@link #REFERENCE_ASPECT}.
  *
  * <h2>How the type scale was chosen</h2>
  *
@@ -460,6 +462,40 @@ public final class Theme {
     public static final float SAFE_AREA = .05f;
 
     /**
+     * The shape of the reference screen: every design pixel is measured against a 16:9
+     * frame, and a window narrower than that is measured against the 16:9 frame that fits
+     * its width rather than against its height.
+     *
+     * <p>Everything used to be {@code designPx * height / 720} and nothing ever looked at
+     * the width, which was true to the television and to a landscape phone and to nothing
+     * else. Android 16 lets a large screen run any app in portrait, split screen or a
+     * freeform window whatever its manifest asks for, and at 1600x2560 the rail alone came
+     * out at 853 px of a 1600 px screen, the title screen's two cards overlapped, and the
+     * cozy corner's labels ran off both sides. Scaling from the 16:9 frame the width can
+     * hold is what makes every horizontal budget in the game true again by construction:
+     * a portrait window gets the same 1280 design pixels of width a television does, and
+     * the height it has left over is spent by the layouts that know how to spend it — see
+     * {@link #tall}.
+     */
+    public static final float REFERENCE_ASPECT = 16f / 9f;
+
+    /**
+     * How much taller than wide a window must be before the board and the title screen
+     * stack their two halves instead of setting them side by side.
+     *
+     * <p>Worked out from the board, which is the one that pays for the choice. Side by side
+     * a square picture shares the width with a 240 design-pixel rail; stacked it has the
+     * whole width and shares the <em>height</em> with the rail instead. Measured on a busy
+     * 20x20 board in a 1600 px wide window, side by side gives 42 px squares at every
+     * shape from 0.9:1 up to this line, and stacked gives 57 px just past it — the rail
+     * stops costing the width the grid is bound by. Near square the two come out about
+     * level, so the line sits far enough above it that a nearly square window — a
+     * 1200x1200 freeform window, a folded-open inner screen — keeps the layout the
+     * television has.
+     */
+    public static final float TALL_RATIO = 1.2f;
+
+    /**
      * The corner ramp, in design pixels: panel 30, card 22, chip 14 — each about .7 of the
      * one above. A pill is not on the ramp; a pill's radius is half its own height, which
      * is what makes it a pill.
@@ -732,6 +768,11 @@ public final class Theme {
     private static Typeface regularFace;
     private static float screenHeight = 720f;
     private static float textScale = 1f;
+    /** What the window's own system bars and cutout cover, in pixels, edge by edge. */
+    private static float insetLeft;
+    private static float insetTop;
+    private static float insetRight;
+    private static float insetBottom;
 
     private Theme() {
     }
@@ -746,9 +787,105 @@ public final class Theme {
         return 0xff000000 | (red << 16) | (green << 8) | blue;
     }
 
-    /** Records the current surface height so {@link #scale(float)} can resolve sizes. */
+    /**
+     * Records the height {@link #scale(float)} resolves sizes against directly. The game
+     * itself goes through {@link #setScreen}; this stays for the tests that pin one
+     * reference height and for the callers that already know it.
+     */
     public static void setScreenHeight(float height) {
         screenHeight = Math.max(1f, height);
+    }
+
+    /** Records the current surface so {@link #scale(float)} can resolve sizes. */
+    public static void setScreen(float width, float height) {
+        setScreenHeight(unitHeight(width, height));
+    }
+
+    /**
+     * The height design pixels are measured against on a {@code width} x {@code height}
+     * surface: the real height, or the height of the 16:9 frame the width can hold if that
+     * is smaller. See {@link #REFERENCE_ASPECT}.
+     *
+     * <p>It is the height, unchanged, on every 16:9 television and on every phone held in
+     * landscape — a 2400x1080 phone is wider than 16:9, not narrower — so nothing the game
+     * already shipped moves by a pixel.
+     */
+    public static float unitHeight(float width, float height) {
+        return Math.max(1f, Math.min(height, width / REFERENCE_ASPECT));
+    }
+
+    /** The height {@link #scale(float)} is currently resolving design pixels against. */
+    public static float unitHeight() {
+        return screenHeight;
+    }
+
+    /** True for a window tall enough to stack instead of sitting side by side. */
+    public static boolean tall(float width, float height) {
+        return height > width * TALL_RATIO;
+    }
+
+    /**
+     * Records what the window's system bars and display cutout cover, in pixels.
+     *
+     * <p>A television hides both and reports nothing, which is why the 5% overscan margin
+     * was all this game ever kept clear. Edge-to-edge is enforced from targetSdk 35, and a
+     * split-screen or freeform window cannot hide its bars at all; a landscape phone has a
+     * camera in one short edge. So each edge of the safe rectangle is now whichever is
+     * larger — the overscan margin or the real inset — and nothing drawn to that rectangle
+     * needs to know which one it got. Pixels, not design pixels, and never negative.
+     *
+     * <p>Plain numbers rather than a {@code WindowInsets}, so this class stays free of the
+     * view system and the preview harness can hand it a pretend status bar.
+     */
+    public static void setInsets(float left, float top, float right, float bottom) {
+        insetLeft = Math.max(0f, left);
+        insetTop = Math.max(0f, top);
+        insetRight = Math.max(0f, right);
+        insetBottom = Math.max(0f, bottom);
+    }
+
+    /** The bottom inset on its own, for the one thing pinned to that edge by its own rule. */
+    public static float insetBottom() {
+        return insetBottom;
+    }
+
+    /** Left edge of the safe rectangle: the overscan margin, or the inset if it is wider. */
+    public static float safeLeft(float width) {
+        return Math.max(width * SAFE_AREA, insetLeft);
+    }
+
+    /** Top edge of the safe rectangle. */
+    public static float safeTop(float height) {
+        return Math.max(height * SAFE_AREA, insetTop);
+    }
+
+    /** Right edge of the safe rectangle, as an x coordinate. */
+    public static float safeRight(float width) {
+        return width - Math.max(width * SAFE_AREA, insetRight);
+    }
+
+    /** Bottom edge of the safe rectangle, as a y coordinate. */
+    public static float safeBottom(float height) {
+        return height - Math.max(height * SAFE_AREA, insetBottom);
+    }
+
+    /**
+     * Top of the stage: the 16:9 band, {@link #unitHeight()} tall, that the two menus and
+     * their fractions of a screen are laid out in, centred in whatever the window really is.
+     *
+     * <p>On a television and a landscape phone it is the whole screen and this is zero.
+     * On a square or a portrait window it letterboxes those screens rather than stretching
+     * them: a menu whose rows are a seventh of the height each grew seven pills a sixth of
+     * a 2560 px screen tall, and the switches inside them — sized from the pill — ran
+     * across their own labels.
+     */
+    public static float stageTop(float height) {
+        return Math.max(0f, (height - screenHeight) / 2);
+    }
+
+    /** Bottom of the stage. See {@link #stageTop}. */
+    public static float stageBottom(float height) {
+        return height - stageTop(height);
     }
 
     /**

@@ -594,6 +594,56 @@ public final class PlayerRegistry {
     // bare TV remote with nothing but a D-pad, a centre and Back. The sets below are kept
     // disjoint, because the caller tests them in order and an overlap would silently
     // shadow whichever comes later.
+    //
+    // A fifth turned up with phones and Chromebooks: a physical keyboard. It has no B, X
+    // or Y, so the platform files it with the remotes, and until it had keys of its own it
+    // could fill and nothing else. It borrows the letters a keyboard player reaches for
+    // first — WASD to steer (through canonical, so every direction test downstream stays
+    // a D-pad test), X or C to cross, H for a hint, Tab or M for the cozy corner — and
+    // keeps Enter, Space and Escape, which were already here.
+    //
+    // Everything else on every device is none of the game's business. See isGameKey.
+
+    /**
+     * The key a press stands for, with a keyboard's WASD folded onto the D-pad.
+     *
+     * <p>Folded once at the door rather than taught to every {@code isDirection} caller:
+     * the screens compare against {@code KEYCODE_DPAD_UP} and friends directly in a dozen
+     * places, and a hold started by W has to be released by W coming back up, which only
+     * works if both halves of the press are spelled the same way.
+     */
+    public static int canonical(int key) {
+        switch (key) {
+            case KeyEvent.KEYCODE_W:
+                return KeyEvent.KEYCODE_DPAD_UP;
+            case KeyEvent.KEYCODE_A:
+                return KeyEvent.KEYCODE_DPAD_LEFT;
+            case KeyEvent.KEYCODE_S:
+                return KeyEvent.KEYCODE_DPAD_DOWN;
+            case KeyEvent.KEYCODE_D:
+                return KeyEvent.KEYCODE_DPAD_RIGHT;
+            default:
+                return key;
+        }
+    }
+
+    /**
+     * True for a key this game has a use for, anywhere; false for the rest of the remote.
+     *
+     * <p>Every key used to be the game's. A press from a device it had not met yet was taken
+     * as somebody sitting down and swallowed, and the title screen and the cozy corner
+     * answered "handled" to anything at all — so on a phone the first volume press seated
+     * Sky and left the volume where it was, on the menus the volume never worked, and on a
+     * television the mute, channel, captions and input keys all quietly died in here.
+     * Anything this says no to goes straight back to the platform, before a seat, a legend
+     * or a screen has heard of it.
+     *
+     * <p>Takes the key after {@link #canonical}.
+     */
+    public static boolean isGameKey(int key) {
+        return isDirection(key) || isConfirm(key) || isCross(key) || isBack(key)
+                || isMenu(key) || isHint(key);
+    }
 
     /** The four direction keys. They steer and never confirm, cross, hint or go back. */
     public static boolean isDirection(int key) {
@@ -615,14 +665,17 @@ public final class PlayerRegistry {
     /**
      * Buttons that mean "cross this out". B and X on a gamepad are the ones on the legend;
      * C and R1 are there for pads that report a third face button of their own, and the
-     * remote's red key for the TV remotes that carry one.
+     * remote's red key for the TV remotes that carry one. On a keyboard it is X — the
+     * mark itself — or C, its neighbour, for a left hand already resting on WASD.
      */
     public static boolean isCross(int key) {
         return key == KeyEvent.KEYCODE_BUTTON_B
                 || key == KeyEvent.KEYCODE_BUTTON_X
                 || key == KeyEvent.KEYCODE_BUTTON_C
                 || key == KeyEvent.KEYCODE_BUTTON_R1
-                || key == KeyEvent.KEYCODE_PROG_RED;
+                || key == KeyEvent.KEYCODE_PROG_RED
+                || key == KeyEvent.KEYCODE_X
+                || key == KeyEvent.KEYCODE_C;
     }
 
     /**
@@ -635,20 +688,27 @@ public final class PlayerRegistry {
                 || key == KeyEvent.KEYCODE_BUTTON_SELECT;
     }
 
-    /** Buttons that open the cozy corner: Start, Menu, and the remote's own Menu key. */
+    /**
+     * Buttons that open the cozy corner: Start, Menu, and the remote's own Menu key — and on
+     * a keyboard Tab or M, since Escape is already Back and a keyboard's own Menu key is
+     * missing from most laptops.
+     */
     public static boolean isMenu(int key) {
         return key == KeyEvent.KEYCODE_BUTTON_START
                 || key == KeyEvent.KEYCODE_MENU
                 || key == KeyEvent.KEYCODE_BUTTON_MODE
-                || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+                || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                || key == KeyEvent.KEYCODE_TAB
+                || key == KeyEvent.KEYCODE_M;
     }
 
     /**
      * Buttons that ask for a hint. A bare remote has neither of these, which is why
      * {@code CozyGameView} also treats a held centre button as a hint — the one spare
-     * gesture a remote-only player has.
+     * gesture a remote-only player has. A keyboard has H.
      */
     public static boolean isHint(int key) {
-        return key == KeyEvent.KEYCODE_BUTTON_Y || key == KeyEvent.KEYCODE_BUTTON_L1;
+        return key == KeyEvent.KEYCODE_BUTTON_Y || key == KeyEvent.KEYCODE_BUTTON_L1
+                || key == KeyEvent.KEYCODE_H;
     }
 }

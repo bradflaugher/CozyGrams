@@ -34,8 +34,26 @@ public final class Renderer {
     private Puzzle lastPuzzle;
     private long handoverAt;
 
+    /** The window's system bars and cutout, as the view last heard of them. */
+    private float insetLeft;
+    private float insetTop;
+    private float insetRight;
+    private float insetBottom;
+
     public void setScenes(Bitmap room, Bitmap garden) {
         backdrop.setScenes(room, garden);
+    }
+
+    /**
+     * What the window's system bars and display cutout cover, in pixels. The view hears
+     * about them and says so here, and every frame hands them to {@link Theme} with the
+     * screen size, so the renderer never has to ask a {@code View} anything.
+     */
+    public void setInsets(float left, float top, float right, float bottom) {
+        insetLeft = left;
+        insetTop = top;
+        insetRight = right;
+        insetBottom = bottom;
     }
 
     /** Geometry from the most recent frame, for effects that need board coordinates. */
@@ -61,7 +79,12 @@ public final class Renderer {
         // the board smaller: measured at 1920x1080, the 15x15 cell went 43 px to 42 and its
         // clue ink 31.8 px to 31.1. An accessibility setting that shrinks the numbers is the
         // setting failing at the one job it is named for.
-        Theme.setScreenHeight(height);
+        //
+        // And the screen is the 16:9 frame the width can hold, not simply the height: see
+        // Theme.REFERENCE_ASPECT for what measuring everything against the height alone did
+        // to a portrait tablet.
+        Theme.setScreen(width, height);
+        Theme.setInsets(insetLeft, insetTop, insetRight, insetBottom);
         Theme.setTextScale(ui.textScale());
         backdrop.draw(canvas, width, height, ui, game);
 

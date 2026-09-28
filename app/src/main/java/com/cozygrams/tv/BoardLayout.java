@@ -175,6 +175,32 @@ public final class BoardLayout {
     /** Air between the paper card and the rail, in design pixels. */
     private static final float RAIL_GAP = 40f;
 
+    /**
+     * The narrowest the rail is allowed to be once it moves under the board, in design
+     * pixels: three of its side-by-side widths. Below the board it is laid out as three
+     * columns rather than as one tall stack (see {@code HudScene.drawStackedPanel}), and
+     * each column has to hold what the whole side rail holds — "press any button" under an
+     * open seat, the legend's longest label — so a 5x5 card, far narrower than that, gets
+     * a rail wider than itself. Twice the side width was tried first, and "WHO'S HERE" ran
+     * into the picture's name.
+     */
+    private static final float STACKED_RAIL_MIN = RAIL_WIDTH * 3;
+
+    /**
+     * The height the rail is given under the board, in design pixels.
+     *
+     * <p>Measured rather than rounded: the tallest of its three columns is the two seats
+     * with both invitations under them — 28 of padding, a 37 px eyebrow, two 52 px cards
+     * and the 10 between them, and two 32 px lines of invitation — which is 244. The
+     * column holding the picture's name is 219 with a two-line name and the progress bar,
+     * and the legend's is 218. A phone's thumb pad can ask for more than this once its
+     * 48dp floor binds, and {@link #stackedRailHeight} takes whichever is taller.
+     */
+    static final float STACKED_RAIL = 250f;
+
+    /** Air above and below the message ribbon when it sits between the board and the rail. */
+    private static final float STACK_AIR = 14f;
+
     /** Largest clue text we ever draw, in design pixels. */
     private static final float CLUE_MAX = 32f;
     /** Tallest a clue may be relative to the row it labels. */
@@ -232,9 +258,22 @@ public final class BoardLayout {
     public final float clueTextSize;
     public final int size;
 
-    /** The side rail's edges. Fixed width, anchored to the safe right edge. */
+    /**
+     * The side rail's edges. Fixed width, anchored to the safe right edge — or, on a
+     * {@link #stacked} board, centred under the card and at least as wide as it.
+     */
     public final float panelLeft;
     public final float panelRight;
+
+    /**
+     * True when the rail sits under the board rather than beside it.
+     *
+     * <p>A portrait window has width to spare on neither side of a square picture, and
+     * all of it in height, so side by side it could only give the grid what was left of
+     * the width after a 240 design-pixel rail. See {@link Theme#TALL_RATIO} for where the
+     * line is drawn.
+     */
+    public final boolean stacked;
 
     /** How many clue groups the busiest row / column of this puzzle holds. */
     public final int rowClueLanes;
@@ -248,6 +287,11 @@ public final class BoardLayout {
 
     private final float cardPad;
     private final float screenHeight;
+    /** The height design pixels are measured against; see {@link Theme#unitHeight}. */
+    private final float unit;
+    /** Where a stacked rail's band starts, just under the ribbon. Unused side by side. */
+    private final float stackTop;
+    private final float stackBand;
     /** Width of each row-clue lane, index 0 nearest the grid. */
     private final float[] rowLanePitch;
     /** Distance from the inner edge of the gutter out to the far side of each lane. */
@@ -255,6 +299,8 @@ public final class BoardLayout {
 
     public BoardLayout(float width, float height, Puzzle puzzle, boolean hasSidePanel) {
         this.screenHeight = height;
+        this.unit = Theme.unitHeight(width, height);
+        this.stacked = hasSidePanel && Theme.tall(width, height);
         this.size = puzzle.size;
         this.rowClueLanes = Math.max(1, puzzle.widestRowClue());
         this.colClueLanes = Math.max(1, puzzle.tallestColClue());
@@ -266,16 +312,29 @@ public final class BoardLayout {
         // gutter permanently empty.
         int[] laneDigits = rowLaneDigits(puzzle, rowClueLanes);
 
-        float safeX = width * Theme.SAFE_AREA;
-        float safeY = height * Theme.SAFE_AREA;
+        // Each edge on its own, because a window's insets are not symmetric: a status bar
+        // is on one edge only, and a landscape phone's camera is in one short side.
+        float safeLeft = Theme.safeLeft(width);
+        float safeRight = Theme.safeRight(width);
+        float safeTop = Theme.safeTop(height);
+        float safeBottom = Theme.safeBottom(height);
         this.cardPad = Theme.scale(12);
         float headerHeight = headerHeight();
-        float footerHeight = footerHeight(height);
-        float sidePanelWidth = hasSidePanel ? railWidth(height) : 0;
-        float panelGap = hasSidePanel ? dp(RAIL_GAP, height) : 0;
+        float footerHeight = stacked ? stackedFooterHeight() : footerHeight(height);
+        float sidePanelWidth = hasSidePanel && !stacked ? railWidth(unit) : 0;
+        float panelGap = hasSidePanel && !stacked ? dp(RAIL_GAP, unit) : 0;
+        this.stackBand = stacked ? stackedRailHeight() : 0;
+        // The row tabs hang off the card's left edge the way the column tabs hang off its
+        // top, and only the top had a reserve. Nobody noticed on a television, where the
+        // board is height-bound and has hundreds of pixels of width to spare; a portrait
+        // board is width-bound, and its tabs were painted into the overscan band. Charged
+        // to the width budget only, so it binds exactly where the width does.
+        float tabBand = CursorRenderer.marginBandHeight();
 
-        float spentX = safeX * 2 + cardPad * 2 + sidePanelWidth + panelGap;
-        float spentY = safeY * 2 + headerHeight + footerHeight;
+        float spentX = safeLeft + (width - safeRight) + cardPad * 2 + sidePanelWidth
+                + panelGap + tabBand;
+        float spentY = safeTop + (height - safeBottom) + headerHeight + footerHeight
+                + stackBand;
 
         float text = solveClueTextSize(width, height, spentX, spentY, laneDigits,
                 colClueLanes, clueDigits, size);
@@ -300,30 +359,79 @@ public final class BoardLayout {
         // pixel is a whole pixel of square, and the settled clue size was then sized for a
         // cell the board did not have.
         cell = cellFor(boardSpan(width, height, spentX, spentY, text, laneDigits,
-                colClueLanes), size, height);
+                colClueLanes), size, unit);
         float boardSize = cell * size;
 
         // Centre the board plus its gutter inside the space left of the side panel. The
         // header and footer reserves already contain the card's own padding, so it is not
         // charged twice here.
-        float regionLeft = safeX + cardPad + clueWidth;
-        float regionRight = width - safeX - sidePanelWidth - panelGap - cardPad;
-        float regionTop = safeY + headerHeight + clueHeight;
-        float regionBottom = height - safeY - footerHeight;
+        float regionLeft = safeLeft + cardPad + clueWidth;
+        float regionRight = safeRight - sidePanelWidth - panelGap - cardPad;
+        float regionTop = safeTop + headerHeight + clueHeight;
+        float regionBottom = safeBottom - footerHeight - stackBand;
         float availableWidth = regionRight - regionLeft;
         float availableHeight = regionBottom - regionTop;
 
         // Whole pixels, so every rule in the grid lands on the same anti-alias phase. See
-        // cellFor for what the fractional version cost.
-        left = Math.round(regionLeft + Math.max(0, (availableWidth - boardSize) * .5f));
+        // cellFor for what the fractional version cost. Centred as before, and then kept
+        // clear of the row tabs' band — which only ever moves a width-bound board, because
+        // spentX already paid for the band.
+        // The last clamp is rounding's: a whole-pixel left edge pushed up past the tab band
+        // must not carry the grid a pixel over the right-hand wall.
+        left = Math.min(Math.max(
+                        Math.round(regionLeft + Math.max(0, (availableWidth - boardSize) * .5f)),
+                        (float) Math.ceil(regionLeft + tabBand)),
+                (float) Math.floor(regionRight - boardSize));
         top = Math.round(regionTop + Math.max(0, (availableHeight - boardSize) * .5f));
         right = left + boardSize;
         bottom = top + boardSize;
 
+        if (stacked) {
+            // The rail follows the board down rather than being pinned to the foot of the
+            // screen, so a width-bound board's spare height is split above the card and
+            // below the rail and the two read as one composition. The ribbon lives in the
+            // band between them.
+            stackTop = bottom + footerHeight;
+            float centre = (cardLeft() + cardRight()) / 2;
+            float half = Math.max(cardRight() - cardLeft(), dp(STACKED_RAIL_MIN, unit)) / 2;
+            panelLeft = Math.max(safeLeft, centre - half);
+            panelRight = Math.min(safeRight, centre + half);
+            return;
+        }
+        stackTop = 0;
         // Anchored, not derived. Deriving it from the board's right edge is what let the
         // rail swallow the board's leftover width and shift by 58 px between puzzles.
-        panelRight = width - safeX;
+        panelRight = safeRight;
         panelLeft = panelRight - sidePanelWidth;
+    }
+
+    /**
+     * The band a stacked rail is given: {@link #STACKED_RAIL}, or the phone's thumb pad
+     * and its padding if the pad's 48dp floor asks for more.
+     */
+    static float stackedRailHeight() {
+        float rail = Theme.scale(STACKED_RAIL);
+        return HudScene.touch() ? Math.max(rail, HudScene.stackedPadColumnHeight()) : rail;
+    }
+
+    /**
+     * The band between a stacked board's card and its rail: the card's own padding, and
+     * one line of ribbon with air either side of it.
+     */
+    static float stackedFooterHeight() {
+        return Theme.scale(12) + HudScene.ribbonHeight(HudScene.RIBBON_MAX_LINES)
+                + Theme.scale(STACK_AIR) * 2;
+    }
+
+    /**
+     * Where the message ribbon's bottom edge goes: on the safe line under a board with its
+     * rail beside it, and in the air above the rail when the rail is underneath.
+     */
+    public float ribbonBottom() {
+        if (stacked) {
+            return stackTop - Theme.scale(STACK_AIR);
+        }
+        return screenHeight - HudScene.ribbonInset(screenHeight);
     }
 
     /**
@@ -433,15 +541,18 @@ public final class BoardLayout {
 
     /** True when there is enough width to show the "playing together" side rail. */
     public boolean hasRoomForPanel() {
-        return panelRight - panelLeft >= dp(200, screenHeight);
+        return panelRight - panelLeft >= dp(200, unit);
     }
 
     /** Top of the rail: level with the paper card, under the title line. */
     public float panelTop() {
+        if (stacked) {
+            return stackTop;
+        }
         // On a phone the rail holds the thumb buttons, which are worth more than lining
         // up with a small board's card: it runs the full safe height instead.
         if (HudScene.touch()) {
-            return Math.min(cardTop(), screenHeight * Theme.SAFE_AREA);
+            return Math.min(cardTop(), Theme.safeTop(screenHeight));
         }
         return cardTop();
     }
@@ -456,7 +567,12 @@ public final class BoardLayout {
      * inside that, it collapses to chips.
      */
     public float panelBottom() {
-        float safe = screenHeight - screenHeight * Theme.SAFE_AREA;
+        float safe = Theme.safeBottom(screenHeight);
+        if (stacked) {
+            // Its own band, and whatever spare height the board left below it: the columns
+            // are drawn only as tall as they need, so this is a limit rather than a size.
+            return Math.max(stackTop + stackBand, safe);
+        }
         if (HudScene.touch()) {
             return safe;
         }
@@ -555,12 +671,13 @@ public final class BoardLayout {
         // reach it: with LARGER TEXT on a 5x5 board wants CLUE_MAX * clueScale, and a
         // bisection bracketed at plain CLUE_MAX would have converged on 48 px and reported
         // the setting as having done nothing.
+        float unit = Theme.unitHeight(width, height);
         float low = Theme.scale(1);
         float high = Theme.scale(CLUE_MAX) * Theme.clueScale();
         for (int pass = 0; pass < 24; pass++) {
             float mid = (low + high) * .5f;
             float fits = clueSize(cellFor(boardSpan(width, height, spentX, spentY, mid,
-                    laneDigits, colLanes), size, height), digits);
+                    laneDigits, colLanes), size, unit), digits);
             if (fits >= mid) {
                 low = mid;
             } else {
@@ -702,7 +819,8 @@ public final class BoardLayout {
         float ribbonTop = HudScene.ribbonInset(screenHeight)
                 + HudScene.ribbonHeight(HudScene.RIBBON_MAX_LINES)
                 + Theme.scale(HudScene.RIBBON_GAP) + Theme.scale(12);
-        return Math.max(Theme.scale(24), ribbonTop - screenHeight * Theme.SAFE_AREA);
+        return Math.max(Theme.scale(24),
+                ribbonTop - (screenHeight - Theme.safeBottom(screenHeight)));
     }
 
     /**
