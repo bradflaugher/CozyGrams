@@ -109,6 +109,13 @@ final class CozySfx {
     private volatile Thread mixer;
     private volatile AudioTrack sink;
 
+    /**
+     * Guards the hand-over between one mixer thread and the next. See {@link #ownsTheMixer}.
+     * Deliberately not {@code this}: {@link #shutdown} joins the mixer while holding that
+     * monitor, and a mixer that needed it to finish would turn every clean stop into a timeout.
+     */
+    private final Object handover = new Object();
+
     /** Ring cursors. Only callers advance {@code head}; only the mixer advances {@code tail}. */
     private volatile int head;
     private volatile int tail;
@@ -344,8 +351,31 @@ final class CozySfx {
             }
         }, "cozy-sfx");
         worker.setDaemon(true);
-        mixer = worker;
+        synchronized (handover) {
+            mixer = worker;
+        }
         worker.start();
+    }
+
+    /**
+     * Whether the calling mixer thread is still the one in charge of the shared state — the
+     * voices, the banks, the room, {@link #sink} and {@link #mixer} itself.
+     *
+     * <p>A mixer can outlive its own shutdown. {@link #shutdown} waits 650 ms at most, and a
+     * track that has stopped draining can hold a blocking write for longer than that; by the
+     * time it lets go, {@link #mixer} may already name a successor that {@link #startMixer}
+     * built on the next resume. The old thread's cleanup used to run regardless: it set
+     * {@code sink} to null over the new thread's live track, emptied the voices the new thread
+     * was playing, and on its own failure path nulled {@code mixer} so the next resume started
+     * a third. It now tidies only what is still its own, and releases only its own track.
+     *
+     * <p>Null counts as ours: that is an ordinary stop, with no successor, and the state still
+     * wants putting back. Callers hold {@link #handover} across the check and the tidying, so
+     * a successor cannot be installed half way through it.
+     */
+    private boolean ownsTheMixer(Thread self) {
+        Thread current = mixer;
+        return current == null || current == self;
     }
 
     private void shutdown() {
@@ -391,19 +421,33 @@ final class CozySfx {
         } catch (Throwable ignored) {
             // Priority is a nicety; a TV that refuses it still gets sound.
         }
+        Thread self = Thread.currentThread();
         AudioTrack track = build();
         if (track == null) {
-            audioBroken = true;
-            running = false;
-            mixer = null;
+            synchronized (handover) {
+                if (ownsTheMixer(self)) {
+                    audioBroken = true;
+                    running = false;
+                    mixer = null;
+                }
+            }
             return;
         }
-        sink = track;
+        synchronized (handover) {
+            if (mixer != self) {
+                // Stopped, or replaced, before the track even existed.
+                track.release();
+                return;
+            }
+            sink = track;
+        }
         prepareBanks();
         try {
             boolean streaming = false;
             long idleSince = System.nanoTime();
-            while (running) {
+            // Leaves as soon as a successor exists, as well as on a stop: {@code running} is
+            // shared, and the successor setting it back to true must not revive this one.
+            while (running && mixer == self) {
                 drain();
                 if (!anyVoiceActive() && tail == head) {
                     if (streaming && System.nanoTime() - idleSince >= IDLE_PARK_NS) {
@@ -431,17 +475,23 @@ final class CozySfx {
         } catch (Throwable ignored) {
             // Losing the audio device mid-session should never take the game with it.
         } finally {
-            sink = null;
-            for (Voice voice : voices) {
-                voice.active = false;
-                voice.release = 0;
-                voice.pendingRequest = -1;
-                voice.buffer = EMPTY;
-                voice.shared = false;
+            synchronized (handover) {
+                if (ownsTheMixer(self)) {
+                    if (sink == track) {
+                        sink = null;
+                    }
+                    for (Voice voice : voices) {
+                        voice.active = false;
+                        voice.release = 0;
+                        voice.pendingRequest = -1;
+                        voice.buffer = EMPTY;
+                        voice.shared = false;
+                    }
+                    winBank = null;
+                    joinBank = null;
+                    room.clear();
+                }
             }
-            winBank = null;
-            joinBank = null;
-            room.clear();
             try {
                 track.pause();
                 track.flush();
