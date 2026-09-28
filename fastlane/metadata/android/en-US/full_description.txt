@@ -27,7 +27,7 @@ THE ROOM
 • The score is synthesized as you play: a 3.5-minute evolving music box in F pentatonic, five layers that fade between sections, ten synthesized sound effects, and a 12-voice mixer so both players are always heard.
 
 COMFORT
-• Larger text, extra contrast, color-blind-friendly player identity, bolder cursors, calmer animation, gentle mistake checking, and put everything back.
+• Larger text, extra contrast, color-blind-friendly player identity, bolder cursors, calmer animation, gentle mistake checking, and one choice that puts everything back the way it was.
 • Progress is a versioned save with a fingerprint of the hidden picture. A stale or mismatched save deals a fresh board instead of corrupting one.
 
 NO NONSENSE

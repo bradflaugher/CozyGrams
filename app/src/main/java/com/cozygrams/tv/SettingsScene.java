@@ -244,7 +244,7 @@ public final class SettingsScene {
             case ITEM_PRIVACY:
                 disarmDefaults();
                 disarmStoryRestart();
-                say("Nothing is collected; nothing leaves this TV", now);
+                say("Nothing is collected; nothing is sent anywhere", now);
                 return true;
             default:
                 return false;

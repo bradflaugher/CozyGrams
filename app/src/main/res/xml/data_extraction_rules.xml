@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+: the save (Story Book progress, the board in hand, the comfort settings) is
+  the one thing worth carrying to a new phone or a replacement TV, so it and only it goes
+  to the player's own Google backup and across a device-to-device transfer.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="save.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="save.xml" />
+    </device-transfer>
+</data-extraction-rules>

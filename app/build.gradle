@@ -32,7 +32,6 @@ android {
         targetSdk 37
         versionCode versionCodeFromEnvironment.toInteger()
         versionName System.getenv('COZYGRAMS_VERSION_NAME') ?: 'dev'
-        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
 
     signingConfigs {
@@ -55,6 +54,8 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    // The game is written in English only; say so, so Play lists exactly one language.
+    androidResources { localeFilters += ['en'] }
     testOptions { unitTests.returnDefaultValues = true }
 }
 
