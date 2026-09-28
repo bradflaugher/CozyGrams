@@ -1,30 +1,55 @@
 plugins { id 'com.android.application' }
 
+// CI passes the run number and a date-labelled name; local builds get 1 / "dev".
+def versionCodeFromEnvironment = System.getenv('COZYGRAMS_VERSION_CODE') ?: '1'
+if (!(versionCodeFromEnvironment ==~ /[1-9]\d*/)) {
+    throw new GradleException('COZYGRAMS_VERSION_CODE must be a positive integer')
+}
+
+// Release signing is all-or-nothing and comes only from the environment, so the key
+// never lives in the repository. Without it the release build is unsigned.
+def signingEnvironmentVariables = [
+        'COZYGRAMS_KEYSTORE_PATH',
+        'COZYGRAMS_STORE_PASSWORD',
+        'COZYGRAMS_KEY_ALIAS',
+        'COZYGRAMS_KEY_PASSWORD'
+]
+def configuredSigningVariables = signingEnvironmentVariables.findAll { System.getenv(it) }
+if (!configuredSigningVariables.isEmpty() && configuredSigningVariables.size() != signingEnvironmentVariables.size()) {
+    def missingSigningVariables = signingEnvironmentVariables - configuredSigningVariables
+    throw new GradleException("Release signing is partially configured. Missing: ${missingSigningVariables.join(', ')}")
+}
+def releaseSigningEnabled = configuredSigningVariables.size() == signingEnvironmentVariables.size()
+
 android {
     namespace 'com.cozygrams.tv'
-    compileSdk 35
+    compileSdk 37
 
     defaultConfig {
         applicationId 'com.cozygrams.tv'
-        minSdk 23
-        targetSdk 35
-        versionCode 8
-        versionName '2.2.2'
+        // Android 8 (API 26): the oldest TV the code runs on without version checks.
+        minSdk 26
+        targetSdk 37
+        versionCode versionCodeFromEnvironment.toInteger()
+        versionName System.getenv('COZYGRAMS_VERSION_NAME') ?: 'dev'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
 
     signingConfigs {
-        release {
-            storeFile file('keystore/cozygrams-release.jks')
-            storePassword 'cozygrams-release'
-            keyAlias 'cozygrams'
-            keyPassword 'cozygrams-release'
+        if (releaseSigningEnabled) {
+            release {
+                storeFile file(System.getenv('COZYGRAMS_KEYSTORE_PATH'))
+                storePassword System.getenv('COZYGRAMS_STORE_PASSWORD')
+                keyAlias System.getenv('COZYGRAMS_KEY_ALIAS')
+                keyPassword System.getenv('COZYGRAMS_KEY_PASSWORD')
+            }
         }
     }
     buildTypes {
         release {
-            // Stable project signing makes every GitHub APK an in-place upgrade.
-            signingConfig signingConfigs.release
+            if (releaseSigningEnabled) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

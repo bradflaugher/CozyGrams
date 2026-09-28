@@ -6,7 +6,6 @@ import android.hardware.input.InputManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -51,7 +50,7 @@ public final class MainActivity extends Activity {
     private CozyGameView game;
     private AudioManager audio;
     private AudioManager.OnAudioFocusChangeListener focusListener;
-    private Object focusRequest;
+    private AudioFocusRequest focusRequest;
     private InputManager input;
     private InputManager.InputDeviceListener deviceListener;
 
@@ -169,22 +168,17 @@ public final class MainActivity extends Activity {
             };
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (focusRequest == null) {
-                    focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                            .setAudioAttributes(new AudioAttributes.Builder()
-                                    .setUsage(AudioAttributes.USAGE_GAME)
-                                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                                    .build())
-                            .setOnAudioFocusChangeListener(focusListener)
-                            .setWillPauseWhenDucked(false)
-                            .build();
-                }
-                audio.requestAudioFocus((AudioFocusRequest) focusRequest);
-            } else {
-                audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
-                        AudioManager.AUDIOFOCUS_GAIN);
+            if (focusRequest == null) {
+                focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_GAME)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .build())
+                        .setOnAudioFocusChangeListener(focusListener)
+                        .setWillPauseWhenDucked(false)
+                        .build();
             }
+            audio.requestAudioFocus(focusRequest);
         } catch (Throwable ignored) {
             // A box that will not talk about focus still gets to play the game.
         }
@@ -195,10 +189,8 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusRequest != null) {
-                audio.abandonAudioFocusRequest((AudioFocusRequest) focusRequest);
-            } else if (focusListener != null) {
-                audio.abandonAudioFocus(focusListener);
+            if (focusRequest != null) {
+                audio.abandonAudioFocusRequest(focusRequest);
             }
         } catch (Throwable ignored) {
             // Best effort.

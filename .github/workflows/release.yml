@@ -1,36 +1,169 @@
-name: Latest APK Release
+name: Build and release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
+# One release pipeline at a time; never cancel a run that may be
+# mid-way through replacing the published release.
 concurrency:
-  group: latest-apk-release
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.keystore.outputs.signed }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Date-labeled versions: 2026.09.27.<run>. The run number keeps the
+      # versionCode increasing, so sideloaded updates install over the old APK
+      # and every bundle is a valid Google Play upload.
+      - name: Compute version
+        id: version
+        run: |
+          version="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'COZYGRAMS_VERSION_NAME=%s\nCOZYGRAMS_VERSION_CODE=%s\n' "$version" "$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: '17'
-          cache: gradle
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew test lint assembleRelease --stacktrace
-      - name: Publish sideloadable APK
+          java-version: '21'
+
+      # API 37 platforms install as platforms;android-37.0 (not android-37).
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          validate-wrappers: true
+
+      # Signing is optional until the repository secrets exist: without them
+      # the build and tests still run, but nothing is published (Android
+      # won't install an unsigned APK).
+      # Secrets only ever reach builds of main (never PRs or a manual
+      # dispatch of another branch), so branch build logic can't read them.
+      - name: Restore signing keystore
+        id: keystore
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          COZYGRAMS_KEYSTORE_BASE64: ${{ secrets.COZYGRAMS_KEYSTORE_BASE64 }}
+          COZYGRAMS_STORE_PASSWORD: ${{ secrets.COZYGRAMS_STORE_PASSWORD }}
+          COZYGRAMS_KEY_ALIAS: ${{ secrets.COZYGRAMS_KEY_ALIAS }}
+          COZYGRAMS_KEY_PASSWORD: ${{ secrets.COZYGRAMS_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for variable in COZYGRAMS_KEYSTORE_BASE64 COZYGRAMS_STORE_PASSWORD COZYGRAMS_KEY_ALIAS COZYGRAMS_KEY_PASSWORD; do
+            if [ -z "${!variable:-}" ]; then
+              missing+=("$variable")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 4 ]; then
+            printf '::warning title=Release skipped::No signing secrets configured (COZYGRAMS_KEYSTORE_BASE64, COZYGRAMS_STORE_PASSWORD, COZYGRAMS_KEY_ALIAS, COZYGRAMS_KEY_PASSWORD). Building unsigned; no release will be published.\n'
+            printf 'signed=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${#missing[@]}" -ne 0 ]; then
+            printf 'Signing secrets are partially configured. Missing: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          keystore_path="$RUNNER_TEMP/cozygrams-release.jks"
+          printf '%s' "$COZYGRAMS_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          if [ ! -s "$keystore_path" ]; then
+            printf 'The restored signing keystore is empty\n' >&2
+            exit 1
+          fi
+          printf 'COZYGRAMS_KEYSTORE_PATH=%s\n' "$keystore_path" >> "$GITHUB_ENV"
+          printf 'signed=true\n' >> "$GITHUB_OUTPUT"
+
+      # Signing is all-or-nothing in app/build.gradle. Anything but a
+      # signed main build gets no signing variables and builds unsigned.
+      - name: Lint, test, and build release APK and bundle
+        env:
+          COZYGRAMS_STORE_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.COZYGRAMS_STORE_PASSWORD || '' }}
+          COZYGRAMS_KEY_ALIAS: ${{ steps.keystore.outputs.signed == 'true' && secrets.COZYGRAMS_KEY_ALIAS || '' }}
+          COZYGRAMS_KEY_PASSWORD: ${{ steps.keystore.outputs.signed == 'true' && secrets.COZYGRAMS_KEY_PASSWORD || '' }}
+        run: |
+          ./gradlew lint test assembleRelease bundleRelease
+          "$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging app/build/outputs/apk/release/*.apk | grep -q leanback-launchable-activity
+
+      # The APK is for sideloading; the bundle (.aab) is what Google Play takes.
+      # The R8 mapping goes to Play Console too, to deobfuscate crash reports.
+      - name: Collect APK, bundle and mapping
+        run: |
+          mkdir -p dist
+          mv "$(ls app/build/outputs/apk/release/*.apk | head -1)" dist/CozyGrams.apk
+          mv "$(ls app/build/outputs/bundle/release/*.aab | head -1)" dist/CozyGrams.aab
+          cp app/build/outputs/mapping/release/mapping.txt dist/mapping.txt
+
+      - name: Upload APK and bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: CozyGrams-${{ steps.version.outputs.version }}
+          path: |
+            dist/CozyGrams.apk
+            dist/CozyGrams.aab
+            dist/mapping.txt
+          if-no-files-found: error
+
+  release:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signed APK and bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: CozyGrams-${{ needs.build.outputs.version }}
+          path: release-apk
+
+      # Exactly one release lives at a time: publish the new date-labeled
+      # release, then delete every other release and its tag.
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk CozyGrams-latest.apk
-          sha256sum CozyGrams-latest.apk > CozyGrams-latest.apk.sha256
-          RELEASE_TAG="v$(date -u +'%Y.%m.%d').${GITHUB_RUN_NUMBER}"
-          gh release create "$RELEASE_TAG" CozyGrams-latest.apk CozyGrams-latest.apk.sha256 --target "$GITHUB_SHA" --latest --generate-notes --title "CozyGrams $RELEASE_TAG"
-          gh release list --limit 100 --json tagName --jq ".[] | select(.tagName != \"$RELEASE_TAG\") | .tagName" \
-            | xargs -r -n1 gh release delete --yes
+          tag="v${VERSION}"
+          cd release-apk
+          sha256sum CozyGrams.apk | tee CozyGrams.apk.sha256
+
+          gh release create "$tag" CozyGrams.apk CozyGrams.apk.sha256 \
+            CozyGrams.aab mapping.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "CozyGrams ${VERSION}" \
+            --notes "Signed build of ${GITHUB_SHA} from $(date -u +%Y-%m-%d). Sideload CozyGrams.apk on the TV; verify with CozyGrams.apk.sha256. CozyGrams.aab and mapping.txt are for Google Play." \
+            --latest
+
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' |
+          while read -r old_tag; do
+            if [ "$old_tag" != "$tag" ]; then
+              gh release delete "$old_tag" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY"
+            fi
+          done
