@@ -64,14 +64,17 @@ including across a controller falling asleep and waking up with a new device id.
 
 ## Build and test
 
-Install JDK 17 and the Android SDK, then run:
+Install JDK 21 and the Android SDK, then run:
 
 ```sh
 ./gradlew test lint assembleDebug
 ```
 
 The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs
-tests, lint and a complete debug build on every push and pull request.
+tests, lint and a complete release build on every push and pull request.
+
+CozyGrams runs on Android TV 8.0 (API 26) and up and targets the latest Android. The code
+carries no version checks: if a feature needs a newer API, raise `minSdk` instead.
 
 ## Previewing the interface without a device
 
@@ -141,14 +144,19 @@ sequences it encodes from, and passing a clip name records just that one.
 
 ## Release
 
-Every push to `main` is tested and built into a release APK automatically. Releases use
+Every push to `main` is tested and built into a signed release automatically. Releases use
 date-based versions such as `v2026.09.04.42`, where the final number is the GitHub Actions
-run number. After publishing, the workflow removes older GitHub Releases so only the
-latest release remains. It contains `CozyGrams-latest.apk` and its SHA-256 checksum. The
-APK is suitable for sideloading on NVIDIA Shield TV Pro (enable installation from unknown
-sources first).
+run number and the `versionCode`. After publishing, the workflow removes older GitHub
+Releases so only the latest release remains. It contains:
 
-Release APKs use the project's stable sideloading certificate, so subsequent GitHub
-Releases install as in-place upgrades. The bundled certificate is intentionally for this
-open-source personal game — not for Play Store identity or security-sensitive
-distribution.
+| File | For |
+|---|---|
+| `CozyGrams.apk` (and `.sha256`) | Sideloading on a TV such as the NVIDIA Shield (enable installation from unknown sources first) |
+| `CozyGrams.aab` | Google Play upload |
+| `mapping.txt` | Play Console deobfuscation file for crash reports |
+
+The release key lives only in the repository secrets `COZYGRAMS_KEYSTORE_BASE64`,
+`COZYGRAMS_STORE_PASSWORD`, `COZYGRAMS_KEY_ALIAS` and `COZYGRAMS_KEY_PASSWORD`. Without
+them the build still runs, unsigned, and nothing is published. The key was replaced in
+September 2026 (the old one was public), so a CozyGrams sideloaded before then has to be
+uninstalled once before the new APK will install.
