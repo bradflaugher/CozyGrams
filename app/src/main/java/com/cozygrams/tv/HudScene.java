@@ -289,6 +289,8 @@ public final class HudScene {
         touchFit = 1f;
         touchHeld = -1;
         touchRectsDrawn = false;
+        density = 1f;
+        headEyebrow = true;
     }
 
     /** Tells the legend what the players are holding. See the notes on the field. */
@@ -326,8 +328,38 @@ public final class HudScene {
     private static final float TOUCH_SMALL = 46f;
     private static final float TOUCH_GAP = 8f;
 
+    /**
+     * The shortest a thumb button may be, in density-independent pixels.
+     *
+     * <p>Design pixels are a fraction of the screen, and a screen's pixels are not a
+     * fingertip's. On a 1080 px phone at 3x the pad came out at 93 px for FILL and CROSS
+     * OUT and 69 for HINT and MENU — 31dp and 23dp, against the 48dp every touch target on
+     * Android is asked to clear and the 7-10 mm a thumb actually covers. So each row is
+     * whichever is taller, the screen's share or 48dp; the pad pays for it out of
+     * {@link #touchFit} and, failing that, out of the second line of the picture's name,
+     * which is exactly the order {@link #drawSidePanel} already gives things up in.
+     */
+    static final float TOUCH_MIN_DP = 48f;
+
+    /** Pixels per dp on the panel in front of us; set by the view, 1 until it says. */
+    private static float density = 1f;
+
     public static void setTouch(boolean on) {
         touch = on;
+    }
+
+    /**
+     * How many pixels a dp is on this panel. The view reads it off its own display
+     * metrics, the same place its millimetre conversion comes from, and hands the number
+     * over so this class never has to hold a {@code Context}.
+     */
+    public static void setDensity(float pixelsPerDp) {
+        density = pixelsPerDp > 0 ? pixelsPerDp : 1f;
+    }
+
+    /** {@link #TOUCH_MIN_DP} in pixels on this panel. */
+    static float touchMinPx() {
+        return TOUCH_MIN_DP * density;
     }
 
     public static boolean touch() {
@@ -370,7 +402,27 @@ public final class HudScene {
 
     /** The whole pad's height: two thumb rows and a row of smaller buttons. */
     static float touchPadHeight() {
-        return Theme.scale(TOUCH_BIG * 2 + TOUCH_SMALL + TOUCH_GAP * 2) * touchFit;
+        return touchPadHeight(touchFit);
+    }
+
+    /** The pad's height at a given fit, with every row held to {@link #TOUCH_MIN_DP}. */
+    static float touchPadHeight(float fit) {
+        return touchRow(TOUCH_BIG, fit) * 2 + touchRow(TOUCH_SMALL, fit)
+                + Theme.scale(TOUCH_GAP) * fit * 2;
+    }
+
+    /** One row of the pad: its share of the screen at this fit, never under 48dp. */
+    private static float touchRow(float designPixels, float fit) {
+        return Math.max(Theme.scale(designPixels) * fit, touchMinPx());
+    }
+
+    /**
+     * The column a stacked rail keeps its thumb pad in, padding and all, at full size.
+     * {@code BoardLayout} reserves at least this much under a stacked board, so the pad
+     * never has to shrink there at all.
+     */
+    static float stackedPadColumnHeight() {
+        return Theme.scale(PANEL_PAD) * 2 + touchPadHeight(1f);
     }
 
     /**
@@ -380,6 +432,12 @@ public final class HudScene {
      */
     private static float touchFit = 1f;
     private static final float TOUCH_MIN_FIT = .72f;
+
+    /**
+     * Whether the head of the rail carries its deck-and-size eyebrow this frame. Only a
+     * phone's rail ever gives it up; see {@link #drawSidePanel}.
+     */
+    private static boolean headEyebrow = true;
 
     /** Tonight's baseline for the pictures counter. See the notes on the field. */
     public static void setPuzzlesBeforeTonight(int finishedAtLaunch) {
@@ -460,7 +518,9 @@ public final class HudScene {
      * area is set. Everything else about the ribbon hangs off this number.
      */
     static float ribbonInset(float screenHeight) {
-        return screenHeight * Math.max(Theme.SAFE_AREA, RIBBON_SAFE) * RIBBON_LIFT;
+        // And never inside a navigation bar: the window's own inset wins when it is taller.
+        return Math.max(screenHeight * Math.max(Theme.SAFE_AREA, RIBBON_SAFE) * RIBBON_LIFT,
+                screenHeight - Theme.safeBottom(screenHeight));
     }
 
     /**
@@ -520,8 +580,13 @@ public final class HudScene {
     public void draw(Canvas canvas, float width, float height, BoardLayout board,
                      GameState game, UiState ui, long now) {
         touchRectsDrawn = false;
-        if (board.hasRoomForPanel()) {
-            drawSidePanel(canvas, height, board, game, ui, now);
+        // Every floor the rail measures in design pixels is measured against the height
+        // Theme is scaling by, which on a portrait window is not the window's height.
+        float unit = Theme.unitHeight();
+        if (board.stacked) {
+            drawStackedPanel(canvas, unit, board, game, ui, now);
+        } else if (board.hasRoomForPanel()) {
+            drawSidePanel(canvas, unit, board, game, ui, now);
         }
         // The win card is about to cover everything with a scrim and say the picture is
         // finished. A ribbon underneath it would be a second, quieter voice saying
@@ -569,11 +634,13 @@ public final class HudScene {
         float lane = right - left;
         float y = top;
 
-        String eyebrow = whereWeAre(game);
-        float label = labelSize();
-        draw.text(canvas, eyebrow, left, y + label * 1.28f, eyebrowSize(eyebrow, lane),
-                Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
-        y += label * 1.9f;
+        if (headEyebrow) {
+            String eyebrow = whereWeAre(game);
+            float label = labelSize();
+            draw.text(canvas, eyebrow, left, y + label * 1.28f, eyebrowSize(eyebrow, lane),
+                    Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+            y += label * 1.9f;
+        }
 
         for (String line : name.lines) {
             draw.text(canvas, line, left, y + name.size, name.size, Theme.CREAM,
@@ -614,7 +681,7 @@ public final class HudScene {
      * how the rail's last legend row came to be clipped once already.
      */
     private float headBlockHeight(Wrapped name) {
-        return labelSize() * 1.9f
+        return (headEyebrow ? labelSize() * 1.9f : 0)
                 + name.lines.length * name.size * 1.16f
                 + Theme.scale(HEAD_GAP) * 2
                 + railRule();
@@ -704,6 +771,26 @@ public final class HudScene {
                 + (touch ? touchPadHeight()                 // a phone's buttons, or
                         : legendStep() * legendRows)        // rows centred in a step
                 + Theme.scale(PANEL_PAD);                   // bottom inset
+    }
+
+    /**
+     * The shortest a side rail can be made: the legend as one strip, the thumb pad at
+     * {@link #TOUCH_MIN_FIT} or its 48dp floor, the picture's name on one line and, on a
+     * phone, no eyebrow over it — the
+     * state {@link #drawSidePanel} ends up in once it has given everything up that it can.
+     * Package-private so a test can hold it to the rail it has to fit in without a canvas.
+     */
+    float compactPanelHeight(float screenHeight, float lane, GameState game, UiState ui) {
+        float savedFit = touchFit;
+        boolean savedEyebrow = headEyebrow;
+        touchFit = TOUCH_MIN_FIT;
+        headEyebrow = !touch;
+        try {
+            return panelHeight(game, ui, nameBlock(screenHeight, lane, game, 1), 1);
+        } finally {
+            touchFit = savedFit;
+            headEyebrow = savedEyebrow;
+        }
     }
 
     /**
@@ -818,12 +905,22 @@ public final class HudScene {
         float available = board.panelBottom() - top;
         Wrapped name = nameBlock(screenHeight, lane, game, NAME_MAX_LINES);
         touchFit = 1f;
-        if (touch) {
-            float over = panelHeight(game, ui, name, 1) - available;
-            if (over > 0) {
-                float full = touchPadHeight();
-                touchFit = Math.max(TOUCH_MIN_FIT, (full - over) / full);
+        headEyebrow = true;
+        if (touch && panelHeight(game, ui, name, 1) > available) {
+            // Searched rather than solved: with rows held to 48dp the pad no longer
+            // shrinks in proportion to its fit, so the old one-line division could land a
+            // fit that still overhung the panel.
+            float low = TOUCH_MIN_FIT;
+            float high = 1f;
+            for (int pass = 0; pass < 16; pass++) {
+                touchFit = (low + high) / 2;
+                if (panelHeight(game, ui, name, 1) > available) {
+                    high = touchFit;
+                } else {
+                    low = touchFit;
+                }
             }
+            touchFit = low;
         }
         int legendRows = legendRowsThatFit(game, ui, name, legendRows(game, now),
                 available);
@@ -836,6 +933,13 @@ public final class HudScene {
             // name is either a player's identity or the shared bar; the name is the only
             // thing here that can yield without something going missing.
             name = nameBlock(screenHeight, lane, game, 1);
+        }
+        if (touch && panelHeight(game, ui, name, legendRows) > available) {
+            // And past even that, which only a phone reaches: a 5x5 at 3x with Larger
+            // Text, where the thumb pad's 48dp rows are 456 px of a 972 px rail. The
+            // deck-and-size eyebrow goes, because a 5x5 on a phone says its own size and
+            // the picture's name under it is the part worth keeping.
+            headEyebrow = false;
         }
         float needed = panelHeight(game, ui, name, legendRows);
 
@@ -886,6 +990,98 @@ public final class HudScene {
             float tailTop = bottom - pad - tailBlockHeight(closing, showPips ? pips : 0);
             drawTail(canvas, left + pad, tailTop, right - pad, game, ui, closing, showPips);
         }
+    }
+
+    /**
+     * The rail laid out under a portrait board: the same blocks, in three columns.
+     *
+     * <p>One tall stack under the board would have cost the grid six hundred design pixels
+     * of the height it is now bound by, to leave the width either side of a 240 px column
+     * empty. Laid across the width instead it is as tall as its tallest block: where we
+     * are and how far along on the left, the two seats in the middle, and the legend — or a
+     * phone's thumb pad, under the right thumb — on the right. The closing block is the one
+     * thing that does not come along; it is what the side rail draws with height it has
+     * left over, and here there is none that the board would not rather have.
+     *
+     * <p>It gives things up in the same order the side rail does: the spelled-out legend
+     * first, then the pad's spare height, then the second line of the picture's name.
+     */
+    private void drawStackedPanel(Canvas canvas, float screenHeight, BoardLayout board,
+                                  GameState game, UiState ui, long now) {
+        float left = board.panelLeft;
+        float right = board.panelRight;
+        float top = board.panelTop();
+        float pad = Theme.scale(PANEL_PAD);
+        float gutter = pad * 2;
+        float available = board.panelBottom() - top;
+        float column = (right - left - pad * 2 - gutter * 2) / 3;
+        if (column <= 0) {
+            return;
+        }
+        float aLeft = left + pad;
+        float bLeft = aLeft + column + gutter;
+        float cLeft = bLeft + column + gutter;
+
+        touchFit = 1f;
+        headEyebrow = true;
+        Wrapped name = nameBlock(screenHeight, column, game, NAME_MAX_LINES);
+        int legendRows = legendRows(game, now);
+        if (stackedHeight(game, ui, name, legendRows) > available) {
+            legendRows = legendMode(legendRows, false);
+        }
+        if (touch && stackedHeight(game, ui, name, legendRows) > available) {
+            float low = TOUCH_MIN_FIT;
+            float high = 1f;
+            for (int pass = 0; pass < 16; pass++) {
+                touchFit = (low + high) / 2;
+                if (stackedHeight(game, ui, name, legendRows) > available) {
+                    high = touchFit;
+                } else {
+                    low = touchFit;
+                }
+            }
+            touchFit = low;
+        }
+        if (stackedHeight(game, ui, name, legendRows) > available) {
+            name = nameBlock(screenHeight, column, game, 1);
+        }
+        float bottom = top + Math.min(available, stackedHeight(game, ui, name, legendRows));
+
+        draw.panel(canvas, left, top, right, bottom, ui.highContrastOn ? 246 : 228);
+
+        float y = drawWhereWeAre(canvas, aLeft, top + pad, aLeft + column, game, ui, name);
+        drawProgress(canvas, screenHeight, aLeft, y, aLeft + column, game, ui);
+
+        y = top + pad;
+        if (!touch) {
+            float label = labelSize();
+            String seatsEyebrow = seatsEyebrow(ui);
+            draw.text(canvas, seatsEyebrow, bLeft, y + label * 1.28f,
+                    eyebrowSize(seatsEyebrow, column),
+                    Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+        }
+        y += seatsEyebrowHeight();
+        drawSeats(canvas, screenHeight, bLeft, y, bLeft + column, game, ui, now);
+
+        if (touch) {
+            drawTouchPad(canvas, cLeft, top + pad, cLeft + column, ui);
+        } else {
+            drawLegend(canvas, screenHeight, cLeft, top + pad, cLeft + column, ui,
+                    legendRows);
+        }
+    }
+
+    /**
+     * How tall {@link #drawStackedPanel} comes out: its padding and its tallest column,
+     * each column measured term for term the way it is drawn.
+     */
+    private float stackedHeight(GameState game, UiState ui, Wrapped name, int legendRows) {
+        float where = headBlockHeight(name) + progressHeight();
+        float seats = seatsEyebrowHeight()
+                + Theme.scale(CARD_HEIGHT) * 2 + Theme.scale(CARD_GAP)
+                + (touch ? 0 : openSeats(ui) * inviteHeight());
+        float controls = touch ? touchPadHeight() : legendStep() * legendRows;
+        return Theme.scale(PANEL_PAD) * 2 + Math.max(where, Math.max(seats, controls));
     }
 
     /**
@@ -1260,8 +1456,8 @@ public final class HudScene {
      * a cross — drawn with the board's own marks, so the button and its result look alike.
      */
     private void drawTouchPad(Canvas canvas, float left, float top, float right, UiState ui) {
-        float big = Theme.scale(TOUCH_BIG) * touchFit;
-        float small = Theme.scale(TOUCH_SMALL) * touchFit;
+        float big = touchRow(TOUCH_BIG, touchFit);
+        float small = touchRow(TOUCH_SMALL, touchFit);
         float gap = Theme.scale(TOUCH_GAP) * touchFit;
         float y = top;
         touchButton(canvas, TOUCH_FILL, left, y, right, y + big, "FILL", Theme.PINK, true);
@@ -1523,8 +1719,11 @@ public final class HudScene {
      */
     static float ribbonLane(float screenWidth, BoardLayout board) {
         float centre = (board.cardLeft() + board.cardRight()) / 2;
-        float toSafeEdge = centre - screenWidth * Theme.SAFE_AREA;
-        float toRail = board.panelLeft - Theme.scale(24) - centre;
+        float toSafeEdge = centre - Theme.safeLeft(screenWidth);
+        // Under a stacked board the rail is below the ribbon rather than beside it, so the
+        // wall on the right is the safe edge too.
+        float toRail = board.stacked ? Theme.safeRight(screenWidth) - centre
+                : board.panelLeft - Theme.scale(24) - centre;
         return 2 * Math.max(0, Math.min(toSafeEdge, toRail));
     }
 
@@ -1569,7 +1768,7 @@ public final class HudScene {
         float pad = Theme.scale(26);
         float widest = ribbonLane(screenWidth, board);
         Wrapped message = wrapToFit(ui.toast, widest - pad * 2, ribbonTextSize(),
-                BoardLayout.dp(Theme.MIN_PROSE_SP, screenHeight), RIBBON_MAX_LINES);
+                BoardLayout.dp(Theme.MIN_PROSE_SP, Theme.unitHeight()), RIBBON_MAX_LINES);
         String[] lines = message.lines;
         float size = message.size;
 
@@ -1583,8 +1782,7 @@ public final class HudScene {
         // x=68 against a safe edge of 96, with 5 px of amber ink outside it.
         float text = widestLine(lines, size);
         float half = Math.min(widest, text + pad * 2) / 2;
-        float bottom = screenHeight - ribbonInset(screenHeight)
-                - (1 - appear) * Theme.scale(14);
+        float bottom = board.ribbonBottom() - (1 - appear) * Theme.scale(14);
         float top = bottom - ribbonHeight(lines.length);
         float radius = Math.min((bottom - top) / 2, half);
 

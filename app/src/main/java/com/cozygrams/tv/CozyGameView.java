@@ -12,6 +12,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
 
@@ -203,6 +204,36 @@ public final class CozyGameView extends View {
                 BitmapFactory.decodeResource(getResources(), R.drawable.cozy_room),
                 BitmapFactory.decodeResource(getResources(), R.drawable.moon_garden));
         sfx.setEnabled(ui.sfxOn);
+
+        // The thumb pad's 48dp floor needs to know what a dp is here, and the safe
+        // rectangle needs to know what the window's bars and cutout cover. Both arrive
+        // with the insets, which the system re-sends whenever the window changes shape.
+        HudScene.setDensity(getResources().getDisplayMetrics().density);
+        setOnApplyWindowInsetsListener((view, insets) -> {
+            applyInsets(insets);
+            return insets;
+        });
+    }
+
+    /**
+     * Hands the window's insets to the renderer as four plain numbers.
+     *
+     * <p>{@code getSystemWindowInset*} rather than {@code getInsets(Type)}, which is API 30,
+     * and without {@code getDisplayCutout()}, which is API 28: this has to run on API 26.
+     * They are deprecated, not broken — on API 30 and up they are the visible system bars
+     * together with the display cutout, which is exactly the rectangle wanted here, and a
+     * window laid out into the short-edge cutout gets its camera reported through them.
+     * The stable insets are deliberately not folded in: they report a bar even while it
+     * is hidden, and on a television or an immersive phone that would give up a status
+     * bar's height of board to a bar nobody can see.
+     */
+    @SuppressWarnings("deprecation")
+    private void applyInsets(WindowInsets insets) {
+        renderer.setInsets(insets.getSystemWindowInsetLeft(),
+                insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(),
+                insets.getSystemWindowInsetBottom());
+        HudScene.setDensity(getResources().getDisplayMetrics().density);
+        invalidate();
     }
 
     /**

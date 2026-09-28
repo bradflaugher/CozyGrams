@@ -403,6 +403,30 @@ public final class Preview {
                 new Frame("sizes/07-game-20x20-3840x2160.png",
                         "Shot 07 at 4K, where every scaled dimension is doubled.",
                         Preview::gameTwenty, 3840, 2160),
+                new Frame("32-touch-game.png",
+                        "A tablet in touch mode at whatever size was asked for: portrait "
+                                + "stacks the rail under the board.",
+                        Preview::tabletGame),
+                new Frame("33-touch-home.png",
+                        "The title screen on a touch tablet: portrait stacks the two cards.",
+                        Preview::tabletHome),
+                new Frame("34-game-insets.png",
+                        "Shot 05 under a status bar, a navigation bar and a camera cutout "
+                                + "wider than the overscan margin.",
+                        Preview::gameInsets),
+                new Frame("35-home-insets.png",
+                        "The title screen under the same bars and cutout.",
+                        Preview::homeInsets),
+                new Frame("sizes/32-touch-game-1600x2560.png",
+                        "Shot 32 on a portrait tablet, 1600x2560 at 2x.",
+                        Preview::tabletGame, 1600, 2560),
+                new Frame("sizes/36-touch-game-5x5-1080x1920.png",
+                        "A 5x5 in touch mode on a 1080x1920 portrait window, the "
+                                + "narrowest card under the widest rail.",
+                        Preview::tabletFive, 1080, 1920),
+                new Frame("sizes/33-touch-home-1600x2560.png",
+                        "Shot 33 on a portrait tablet.",
+                        Preview::tabletHome, 1600, 2560),
         };
     }
 
@@ -723,15 +747,76 @@ public final class Preview {
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
 
-    /** Draws one frame as a phone sees it: touch on, and put back afterwards. */
+    /**
+     * Draws one frame as a phone sees it: touch on, and put back afterwards.
+     *
+     * <p>At 3x on a 1080 px short side, which is the densest common phone and so the one
+     * where the thumb pad's 48dp floor asks the most of the rail.
+     */
     private static void asPhone(Runnable frame) {
+        asTouch(3f, frame);
+    }
+
+    /** The same at a stated density, for a tablet. */
+    private static void asTouch(float density, Runnable frame) {
         HudScene.setTouch(true);
+        HudScene.setDensity(density);
         try {
             frame.run();
         } finally {
             HudScene.setTouch(false);
             HudScene.setTouchHeld(-1);
+            HudScene.setDensity(1f);
         }
+    }
+
+    /**
+     * A tablet's density for a frame of this size: 2x on a 1600 px short side, which is
+     * what an 800dp-wide tablet is, and never below 1x.
+     */
+    private static float tabletDensity(int w, int h) {
+        return Math.max(1f, Math.min(w, h) / 800f);
+    }
+
+    private static void tabletGame(Canvas canvas, Renderer renderer, int w, int h) {
+        asTouch(tabletDensity(w, h), () -> gameFifteen(canvas, renderer, w, h));
+    }
+
+    private static void tabletFive(Canvas canvas, Renderer renderer, int w, int h) {
+        asTouch(tabletDensity(w, h), () -> gameFresh(canvas, renderer, w, h));
+    }
+
+    private static void tabletHome(Canvas canvas, Renderer renderer, int w, int h) {
+        asTouch(tabletDensity(w, h), () -> home(canvas, renderer, w, h));
+    }
+
+    /**
+     * A split-screen window's furniture: a status bar along the top, a navigation bar
+     * along the bottom and a camera in the left edge, each deeper than the 5% overscan
+     * margin so the frame shows the insets winning. The bars are then painted over the
+     * frame the way the system paints them over the app, so anything the layout failed to
+     * keep clear is visibly underneath one.
+     */
+    private static void withInsets(Canvas canvas, Renderer renderer, int w, int h,
+                                   Runnable frame) {
+        float left = Math.round(w * .075f);
+        float top = Math.round(h * .07f);
+        float bottom = Math.round(h * .085f);
+        renderer.setInsets(left, top, 0, bottom);
+        frame.run();
+        Paint bar = new Paint();
+        bar.setColor(0xC0000000);
+        canvas.drawRect(0, 0, w, top, bar);
+        canvas.drawRect(0, h - bottom, w, h, bar);
+        canvas.drawRect(0, top, left, h - bottom, bar);
+    }
+
+    private static void gameInsets(Canvas canvas, Renderer renderer, int w, int h) {
+        withInsets(canvas, renderer, w, h, () -> gameTen(canvas, renderer, w, h));
+    }
+
+    private static void homeInsets(Canvas canvas, Renderer renderer, int w, int h) {
+        withInsets(canvas, renderer, w, h, () -> home(canvas, renderer, w, h));
     }
 
     private static void phoneGame(Canvas canvas, Renderer renderer, int w, int h) {

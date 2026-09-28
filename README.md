@@ -105,7 +105,7 @@ The entire UI is drawn onto one `Canvas`, and the rendering code is deliberately
 desktop JVM, with no emulator:
 
 ```sh
-tools/preview/render.sh [outputDir] [width] [height]     # 26 scenarios, default 1920x1080
+tools/preview/render.sh [outputDir] [width] [height]     # 44 frames, default 1920x1080
 ```
 
 It compiles a Java2D-backed set of `android.graphics` stubs together with the app's own
@@ -117,9 +117,12 @@ The set covers both menus, the board at every size it deals, an authored story c
 solo table and a two-player one, the feedback a press produces, the win card early and
 settled, the page turn between chapters, and the layout cases that break things — the
 widest message, Larger Text, Extra Contrast, and one title screen carrying every long
-string at once. Twenty-three of them render at whatever resolution you ask for; `sizes/`
-holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a scaling regression turns
-up as a picture rather than as an argument.
+string at once — plus a touch tablet, and a window under a status bar, a navigation bar and
+a camera cutout, which are the frames to read at portrait, square and 4:3 sizes such as
+`1600 2560`, `1200 1200` or `800 600`. Twenty-eight of them render at whatever resolution
+you ask for; `sizes/` holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a
+scaling regression turns up as a picture rather than as an argument, and a portrait tablet
+pinned at 1600×2560; `phone/` and `store/` pin the phone shapes.
 
 Nothing in the set is posed. The frames that show the game reacting — the particles, the
 win — press the button and let the same calls the real input path makes decide what comes

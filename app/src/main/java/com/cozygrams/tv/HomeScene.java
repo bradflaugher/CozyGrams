@@ -374,19 +374,28 @@ public final class HomeScene {
         }
 
         public float left(float width) {
-            return width * Theme.MENU_PANEL_LEFT;
+            return Math.max(width * Theme.MENU_PANEL_LEFT, Theme.safeLeft(width));
         }
 
         public float right(float width) {
-            return width * Theme.MENU_PANEL_RIGHT;
+            return Math.min(width * Theme.MENU_PANEL_RIGHT, Theme.safeRight(width));
         }
 
+        /**
+         * The panel's top: the overscan line of the 16:9 stage, not of the window. On a
+         * television the two are the same line; on a portrait window the stage is the band
+         * {@link Theme#stageTop} letterboxes, because rows sized as a seventh of the whole
+         * height each grew into pills a sixth of the screen tall. And never above the
+         * window's own inset, whichever of the two is lower.
+         */
         public float top(float height) {
-            return height * Theme.SAFE_AREA;
+            return Math.max(Theme.stageTop(height) + Theme.unitHeight() * Theme.SAFE_AREA,
+                    Theme.safeTop(height));
         }
 
         public float bottom(float height) {
-            return height * (1 - Theme.SAFE_AREA);
+            return Math.min(Theme.stageBottom(height) - Theme.unitHeight() * Theme.SAFE_AREA,
+                    Theme.safeBottom(height));
         }
 
         /** How far a row is inset from the panel's own edge. */
@@ -451,6 +460,13 @@ public final class HomeScene {
 
     /** Air between the header, the row band and the footer, in design pixels. */
     private static final float BAND_GAP = 20f;
+
+    /**
+     * The widest a stacked landing card grows, in design pixels: about one and a half of
+     * a television's cards. The right-hand copy of a row is pinned to its right edge, and
+     * past this the gap between a row's name and its value is wider than either.
+     */
+    private static final float STACKED_CARD_WIDTH = 820f;
 
     /** The heart above the wordmark, in design pixels. */
     private static final float HEART_SIZE = 42f;
@@ -540,24 +556,74 @@ public final class HomeScene {
      */
     private void drawLanding(Canvas canvas, float width, float height, GameState game,
                              UiState ui, long now) {
-        float safeX = width * .075f;
-        float top = height * .105f;
-        float bottom = height * .895f;
+        // The fractions are of the 16:9 stage rather than of the window, so a square or a
+        // tall window letterboxes this screen instead of stretching both cards down it,
+        // and each edge also clears whatever the window's own bars and cutout cover.
+        float stage = Theme.unitHeight();
+        float stageTop = Theme.stageTop(height);
+        float top = Math.max(stageTop + stage * .105f, Theme.safeTop(height));
+        float bottom = Math.min(stageTop + stage * .895f, Theme.safeBottom(height));
+        float left = Math.max(width * .075f, Theme.safeLeft(width));
+        float right = Math.min(width * .925f, Theme.safeRight(width));
         float gap = Theme.scale(22);
-        float centre = width * .5f;
-        float brandLeft = safeX;
+        int panelAlpha = ui.highContrastOn ? 246 : 228;
+        int selected = Math.floorMod(ui.menu, ITEM_COUNT);
+
+        if (Theme.tall(width, height)) {
+            drawStackedLanding(canvas, width, height, left, right, gap, game, ui, selected,
+                    panelAlpha, now);
+            return;
+        }
+
+        float centre = (left + right) * .5f;
+        float brandLeft = left;
         float brandRight = centre - gap / 2;
         float menuLeft = centre + gap / 2;
-        float menuRight = width - safeX;
-        int panelAlpha = ui.highContrastOn ? 246 : 228;
+        float menuRight = right;
 
         draw.panel(canvas, brandLeft, top, brandRight, bottom, panelAlpha);
         draw.panel(canvas, menuLeft, top, menuRight, bottom, panelAlpha);
 
-        int selected = Math.floorMod(ui.menu, ITEM_COUNT);
         drawLandingBrand(canvas, brandLeft, top, brandRight, bottom, game, ui, selected,
                 now);
         drawLandingMenu(canvas, menuLeft, top, menuRight, bottom, game, ui, selected, now);
+    }
+
+    /**
+     * The two cards of the landing page, one above the other, for a window taller than it
+     * is wide.
+     *
+     * <p>Side by side on a portrait tablet the cards were each half of 85% of the width
+     * and 79% of the height — two tall slots a fifth as wide as they were high, with the
+     * wordmark running out of the left one and every row's copy out of the right. Stacked,
+     * each card is exactly as tall as it is on a television, so everything inside it lands
+     * where it was designed to; the pair is centred in the safe height, and each is as
+     * wide as the safe width allows up to {@link #STACKED_CARD_WIDTH}, past which rows
+     * stop reading as rows.
+     */
+    private void drawStackedLanding(Canvas canvas, float width, float height, float left,
+                                    float right, float gap, GameState game, UiState ui,
+                                    int selected, int panelAlpha, long now) {
+        float cardHeight = Theme.unitHeight() * .79f;
+        float safeTop = Theme.safeTop(height);
+        float safeBottom = Theme.safeBottom(height);
+        float total = cardHeight * 2 + gap;
+        float top = Math.max(safeTop, (safeTop + safeBottom - total) / 2);
+        float centre = (left + right) / 2;
+        float half = Math.min(right - left, Theme.scale(STACKED_CARD_WIDTH)) / 2;
+        float cardLeft = centre - half;
+        float cardRight = centre + half;
+        float brandBottom = top + cardHeight;
+        float menuTop = brandBottom + gap;
+        float menuBottom = Math.min(safeBottom, menuTop + cardHeight);
+
+        draw.panel(canvas, cardLeft, top, cardRight, brandBottom, panelAlpha);
+        draw.panel(canvas, cardLeft, menuTop, cardRight, menuBottom, panelAlpha);
+
+        drawLandingBrand(canvas, cardLeft, top, cardRight, brandBottom, game, ui, selected,
+                now);
+        drawLandingMenu(canvas, cardLeft, menuTop, cardRight, menuBottom, game, ui,
+                selected, now);
     }
 
     private void drawLandingBrand(Canvas canvas, float left, float top, float right,
