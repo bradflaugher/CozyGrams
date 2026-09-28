@@ -43,6 +43,16 @@ public final class Renderer {
         return lastBoard;
     }
 
+    /** The title screen as last drawn, so a tap can be matched to the row under it. */
+    public HomeScene home() {
+        return home;
+    }
+
+    /** The cozy corner as last drawn, for the same reason. */
+    public SettingsScene settings() {
+        return settings;
+    }
+
     public void draw(Canvas canvas, float width, float height, GameState game, UiState ui,
                      Effects effects, long now) {
         // LARGER TEXT is a setting about type, so it is applied to type. It used to be

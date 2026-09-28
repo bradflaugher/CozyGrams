@@ -1,7 +1,9 @@
-# CozyGrams for Android TV
+# CozyGrams
 
 A cozy, endless nonogram game made for the couch. Play solo, or hand someone a second
-controller and solve every picture together with independent Rose and Sky cursors.
+controller and solve every picture together with independent Rose and Sky cursors. One
+app for Android TV and for phones and tablets: a television gets the ten-foot interface
+and controllers, a phone gets the same game with touch controls built for two thumbs.
 
 ![CozyGrams title screen with Rose and Sky ready to play](docs/screenshots/home.webp)
 
@@ -28,7 +30,26 @@ you have completed.
 | back | **B** in menus, **Back** | **Back** |
 
 A remote has no face buttons, so the centre key does more work there and the on-screen
-legend changes to match whatever is actually in the room. The first controller to send
+legend changes to match whatever is actually in the room.
+
+### On a phone or tablet
+
+The phone is held in landscape and played with two thumbs, the way a gamepad is. Rose is
+the finger on the glass; a controller paired to the phone can still take Sky's seat.
+
+| | touch |
+|---|---|
+| aim | tap a square to put the cursor there, or slide to move it like a trackpad |
+| fill a square | tap it (on boards whose squares are big enough to hit), tap the cursor's square again, or **FILL** |
+| cross a square out | hold on it, or **CROSS OUT** |
+| paint a line | hold **FILL** or **CROSS OUT** with one thumb and slide the other |
+| reveal one square | **HINT** |
+| cozy corner | **MENU** |
+| back | the system back gesture |
+
+The rail's legend becomes those four buttons, sized for a thumb, and every screen names
+taps instead of buttons. Small boards grow to fill the phone. Picking up a controller brings
+the controller legend back; touching the screen again brings the buttons back. The first controller to send
 input becomes Rose, the second becomes Sky, and both keep their identity for the session —
 including across a controller falling asleep and waking up with a new device id.
 
@@ -60,7 +81,8 @@ including across a controller falling asleep and waking up with a new device id.
   bolder cursors, calmer animation, gentle mistake checking, and put-everything-back.
 - Progress that survives anything — a versioned save with a fingerprint of the hidden
   picture, so a stale or mismatched save deals a fresh board instead of corrupting one.
-- Native landscape TV interface. No touchscreen required, nothing below the safe area.
+- Native landscape interface for the TV (no touchscreen required, nothing below the safe
+  area) and touch controls on phones and tablets from the same app.
 
 ## Build and test
 

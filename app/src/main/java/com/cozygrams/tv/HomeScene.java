@@ -199,7 +199,54 @@ public final class HomeScene {
     }
 
     /** The name of the confirm button on whatever is actually in the player's hands. */
+    /** What the footer says on a touchscreen, where rows are tapped rather than chosen. */
+    static String touchFooter(int row) {
+        switch (row) {
+            case ITEM_STORY:
+                return "Tap ‹ › for another chapter, or the row to open it";
+            case ITEM_SIZE:
+                return "Tap ‹ › for another size, or the row to start";
+            default:
+                return "Tap a row to choose";
+        }
+    }
+
+    /** The row under a point, or -1. Only rows that have actually been drawn answer. */
+    public int itemAt(float x, float y) {
+        if (!rowsDrawn || x < rowsLeft || x > rowsRight) {
+            return -1;
+        }
+        for (int item = 0; item < ITEM_COUNT; item++) {
+            // The whole pitch, not just the painted pill: the air between two rows belongs
+            // to one of them, so a thumb that lands between them still chooses something.
+            if (Math.abs(y - rowCentre[item]) <= rowPitch / 2) {
+                return item;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Which way a tap on a stepper's value turns it: -1 for the ‹ half, 1 for the › half,
+     * 0 when the tap was elsewhere on the row (which opens it instead). The target is
+     * padded out to the row's full height and a thumb's width either side, because the
+     * chevrons themselves are only as big as a letter.
+     */
+    public int stepAt(int item, float x) {
+        if (!rowsDrawn || !valueIsControl(item)) {
+            return 0;
+        }
+        float pad = Theme.scale(28);
+        if (x < valueLeft[item] - pad || x > valueRight[item] + pad) {
+            return 0;
+        }
+        return x < (valueLeft[item] + valueRight[item]) / 2 ? -1 : 1;
+    }
+
     public static String confirmName() {
+        if (HudScene.touch()) {
+            return "TAP";
+        }
         return HudScene.remoteOnly() ? "OK" : "A";
     }
 
@@ -427,6 +474,12 @@ public final class HomeScene {
 
     /** Where everything goes this frame, worked out in {@link #layOut}. */
     private final float[] rowCentre = new float[ITEM_COUNT];
+    /** Where the rows and the steppers' values were last drawn, for a finger to find. */
+    private float rowsLeft;
+    private float rowsRight;
+    private final float[] valueLeft = new float[ITEM_COUNT];
+    private final float[] valueRight = new float[ITEM_COUNT];
+    private boolean rowsDrawn;
     private final String[] greetingLines = new String[2];
     private float rowHalf;
     private float rowPitch;
@@ -613,6 +666,9 @@ public final class HomeScene {
         for (int item = 0; item < ITEM_COUNT; item++) {
             rowCentre[item] = rowsTop + rowPitch * (item + .5f);
         }
+        rowsLeft = rowLeft;
+        rowsRight = rowRight;
+        rowsDrawn = true;
         follow(selected, rowCentre[selected], now);
 
         for (int item = 0; item < ITEM_COUNT; item++) {
@@ -679,6 +735,8 @@ public final class HomeScene {
         String action = values(game)[item];
         float actionSize = draw.fit(action, landingText(Theme.BODY),
                 (right - left) * .42f, false, landingText(Theme.CAPTION));
+        valueRight[item] = right - Theme.scale(24);
+        valueLeft[item] = valueRight[item] - draw.measure(action, actionSize, false);
         draw.text(canvas, action, right - Theme.scale(24),
                 centreY + draw.capCentreOffset(actionSize), actionSize, primary,
                 Paint.Align.RIGHT, false);
@@ -687,6 +745,12 @@ public final class HomeScene {
     private void drawLandingConfirm(Canvas canvas, float right, float centreY,
                                     String label, int textColor) {
         float size = landingText(Theme.BODY);
+        if (HudScene.touch()) {
+            // A finger has no A button; the row itself is what it presses.
+            draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
+                    textColor, Paint.Align.RIGHT, true);
+            return;
+        }
         float labelWidth = draw.measure(label, size, true);
         float gap = Theme.scale(9);
         float chipHeight = size * 1.05f;
@@ -703,6 +767,14 @@ public final class HomeScene {
     private void drawLandingFooter(Canvas canvas, float left, float right, float centreY,
                                    int selected, boolean highContrast) {
         int row = Math.floorMod(selected, ITEM_COUNT);
+        if (HudScene.touch()) {
+            String line = touchFooter(row);
+            float size = draw.fit(line, landingText(Theme.CAPTION), right - left, false,
+                    landingText(Theme.MIN_PROSE_SP));
+            draw.text(canvas, line, (left + right) / 2, centreY + draw.capCentreOffset(size),
+                    size, Theme.secondaryText(highContrast), Paint.Align.CENTER, false);
+            return;
+        }
         String lead = row == ITEM_STORY ? "Pick a chapter"
                 : row == ITEM_SIZE ? "Pick a size" : "Move";
         String action = row == ITEM_STORY ? "Open"
@@ -740,6 +812,7 @@ public final class HomeScene {
                               UiState ui) {
         boolean together = ui.joined[1];
         String line = together ? "Rose and Sky are ready  ♥"
+                : HudScene.touch() ? "Sky can join any time on a controller"
                 : "Sky can join any time — press a button";
         int accent = together ? Theme.PINK : Comfort.skyColor();
         float size = draw.fit(line, landingText(Theme.CAPTION), right - left
@@ -1181,6 +1254,7 @@ public final class HomeScene {
     private void drawFooter(Canvas canvas, float width, UiState ui) {
         boolean together = ui.joined[1];
         String hint = together ? "Rose and Sky are both here"
+                : HudScene.touch() ? "Sky can join any time on a controller"
                 : "Sky can join any time — press a button";
         int accent = together ? Theme.PINK : Comfort.skyColor();
 

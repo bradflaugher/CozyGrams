@@ -285,6 +285,10 @@ public final class HudScene {
         seatStirredAt[1] = 0;
         puzzlesBeforeTonight = -1;
         remoteOnly = false;
+        touch = false;
+        touchFit = 1f;
+        touchHeld = -1;
+        touchRectsDrawn = false;
     }
 
     /** Tells the legend what the players are holding. See the notes on the field. */
@@ -295,6 +299,87 @@ public final class HudScene {
     public static boolean remoteOnly() {
         return remoteOnly;
     }
+
+    // ---- The touch pad: a phone's thumb buttons --------------------------------------
+
+    /**
+     * True once the game has been touched. A phone has no face buttons, so the rail's
+     * reference card of button names becomes the buttons themselves: FILL and CROSS OUT
+     * sized for a thumb, with HINT and MENU beneath them. The other thumb aims on the board.
+     */
+    private static boolean touch;
+
+    public static final int TOUCH_FILL = 0;
+    public static final int TOUCH_CROSS = 1;
+    public static final int TOUCH_HINT = 2;
+    public static final int TOUCH_MENU = 3;
+
+    /** Where each touch button was last drawn: left, top, right, bottom. */
+    private static final float[][] touchRects = new float[4][4];
+    private static boolean touchRectsDrawn;
+    /** The button a finger is on right now, drawn pressed; -1 for none. */
+    private static int touchHeld = -1;
+
+    /** A thumb button's height, in design pixels. The pad as a whole stays inside the
+     *  five-row legend's 190 px so the rail never has to squeeze the picture's name. */
+    private static final float TOUCH_BIG = 62f;
+    private static final float TOUCH_SMALL = 46f;
+    private static final float TOUCH_GAP = 8f;
+
+    public static void setTouch(boolean on) {
+        touch = on;
+    }
+
+    public static boolean touch() {
+        return touch;
+    }
+
+    public static void setTouchHeld(int button) {
+        touchHeld = button;
+    }
+
+    /**
+     * The touch button under a point, or -1. Only buttons actually on screen answer: the
+     * rects are forgotten whenever the rail is not drawn, so a stale rectangle can never
+     * turn a tap on the board into a hint.
+     */
+    public static int touchButtonAt(float x, float y) {
+        if (!touch || !touchRectsDrawn) {
+            return -1;
+        }
+        // Forgiving by a few pixels either way: a thumb lands a little low and outside.
+        float slop = Theme.scale(6);
+        for (int button = 0; button < touchRects.length; button++) {
+            float[] r = touchRects[button];
+            if (x >= r[0] - slop && x <= r[2] + slop && y >= r[1] - slop
+                    && y <= r[3] + slop) {
+                return button;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * The eyebrow over the seats. A phone gives its height to the thumb buttons instead:
+     * the ROSE and SKY cards already say who is playing, and without the room the rail
+     * falls back to a one-line picture name, which is the thing it can least spare.
+     */
+    private static float seatsEyebrowHeight() {
+        return touch ? Theme.scale(4) : labelSize() * 1.9f;
+    }
+
+    /** The whole pad's height: two thumb rows and a row of smaller buttons. */
+    static float touchPadHeight() {
+        return Theme.scale(TOUCH_BIG * 2 + TOUCH_SMALL + TOUCH_GAP * 2) * touchFit;
+    }
+
+    /**
+     * How much of its full size the pad is drawn at. A 5x5 card is short and the rail with
+     * it, so there the buttons give up a little height rather than hang out of the panel;
+     * never below {@link #TOUCH_MIN_FIT}, because a button too small to press is no button.
+     */
+    private static float touchFit = 1f;
+    private static final float TOUCH_MIN_FIT = .72f;
 
     /** Tonight's baseline for the pictures counter. See the notes on the field. */
     public static void setPuzzlesBeforeTonight(int finishedAtLaunch) {
@@ -320,6 +405,9 @@ public final class HudScene {
      * glyph. A bare remote just says BACK.
      */
     public static String backName() {
+        if (touch) {
+            return "BACK";
+        }
         return remoteOnly ? "Back" : "⧉";
     }
 
@@ -431,6 +519,7 @@ public final class HudScene {
 
     public void draw(Canvas canvas, float width, float height, BoardLayout board,
                      GameState game, UiState ui, long now) {
+        touchRectsDrawn = false;
         if (board.hasRoomForPanel()) {
             drawSidePanel(canvas, height, board, game, ui, now);
         }
@@ -605,14 +694,15 @@ public final class HudScene {
     private float panelHeight(GameState game, UiState ui, Wrapped name, int legendRows) {
         return Theme.scale(PANEL_PAD)                       // top inset
                 + headBlockHeight(name)                     // where we are, and its name
-                + labelSize() * 1.9f                        // "PLAYING TOGETHER"
+                + seatsEyebrowHeight()                      // "PLAYING TOGETHER"
                 + Theme.scale(CARD_HEIGHT) * 2 + Theme.scale(CARD_GAP)
-                + openSeats(ui) * inviteHeight()
+                + (touch ? 0 : openSeats(ui) * inviteHeight())
                 + Theme.scale(PROGRESS_GAP) + progressHeight()
                 + Theme.scale(LEGEND_GAP)
                 // Counted, not assumed: the remote-only legend need not be four rows
                 // forever, and a hard-coded count is exactly what clipped the last one.
-                + legendStep() * legendRows                 // rows are centred in a step
+                + (touch ? touchPadHeight()                 // a phone's buttons, or
+                        : legendStep() * legendRows)        // rows centred in a step
                 + Theme.scale(PANEL_PAD);                   // bottom inset
     }
 
@@ -727,6 +817,14 @@ public final class HudScene {
         float lane = (right - pad) - (left + pad);
         float available = board.panelBottom() - top;
         Wrapped name = nameBlock(screenHeight, lane, game, NAME_MAX_LINES);
+        touchFit = 1f;
+        if (touch) {
+            float over = panelHeight(game, ui, name, 1) - available;
+            if (over > 0) {
+                float full = touchPadHeight();
+                touchFit = Math.max(TOUCH_MIN_FIT, (full - over) / full);
+            }
+        }
         int legendRows = legendRowsThatFit(game, ui, name, legendRows(game, now),
                 available);
         if (panelHeight(game, ui, name, legendRows) > available) {
@@ -757,12 +855,14 @@ public final class HudScene {
         float y = drawWhereWeAre(canvas, left + pad, top + pad, right - pad, game, ui,
                 name);
 
-        float label = labelSize();
-        String seatsEyebrow = seatsEyebrow(ui);
-        draw.text(canvas, seatsEyebrow, left + pad, y + label * 1.28f,
-                eyebrowSize(seatsEyebrow, lane),
-                Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
-        y += label * 1.9f;
+        if (!touch) {
+            float label = labelSize();
+            String seatsEyebrow = seatsEyebrow(ui);
+            draw.text(canvas, seatsEyebrow, left + pad, y + label * 1.28f,
+                    eyebrowSize(seatsEyebrow, lane),
+                    Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+        }
+        y += seatsEyebrowHeight();
 
         y = drawSeats(canvas, screenHeight, left + pad, y, right - pad, game, ui, now);
 
@@ -770,8 +870,13 @@ public final class HudScene {
         drawProgress(canvas, screenHeight, left + pad, y, right - pad, game, ui);
         y += progressHeight() + Theme.scale(LEGEND_GAP);
 
-        drawLegend(canvas, screenHeight, left + pad, y, right - pad, ui, legendRows);
-        y += legendStep() * legendRows;
+        if (touch) {
+            drawTouchPad(canvas, left + pad, y, right - pad, ui);
+            y += touchPadHeight();
+        } else {
+            drawLegend(canvas, screenHeight, left + pad, y, right - pad, ui, legendRows);
+            y += legendStep() * legendRows;
+        }
 
         if (showTail) {
             // Anchored to the foot of the rail rather than stacked under the legend. The
@@ -798,10 +903,11 @@ public final class HudScene {
         for (int player = 0; player < 2; player++) {
             drawSeat(canvas, left, y, right, player, game, ui, now);
             y += Theme.scale(CARD_HEIGHT);
-            if (!ui.joined[player]) {
+            if (!ui.joined[player] && !touch) {
                 float textLeft = left + Theme.scale(22);
-                draw.text(canvas, "press any button", textLeft, y + railTextSize(),
-                        fitRail("press any button", right - textLeft, screenHeight),
+                String invite = inviteLine();
+                draw.text(canvas, invite, textLeft, y + railTextSize(),
+                        fitRail(invite, right - textLeft, screenHeight),
                         Theme.SOFT_TEXT, Paint.Align.LEFT, false);
                 y += inviteHeight();
             }
@@ -1135,6 +1241,93 @@ public final class HudScene {
         draw.text(canvas, label, textLeft, centreY + draw.capCentreOffset(labelSize),
                 fit(label, right - textLeft, labelSize, floor, false), text,
                 Paint.Align.LEFT, false);
+    }
+
+    /**
+     * What an empty seat says. On a phone the second player still arrives on a controller,
+     * so the line names the controller rather than a button nobody on a touchscreen has.
+     */
+    static String inviteLine() {
+        return touch ? "join with a controller" : "press any button";
+    }
+
+    /**
+     * The phone's buttons, in the slot the legend has on a television.
+     *
+     * <p>FILL and CROSS OUT run the full width of the rail, one above the other, because
+     * they are what the right thumb presses a hundred times a picture; HINT and MENU share
+     * a smaller row under them. Each carries a picture of what it does — a filled square,
+     * a cross — drawn with the board's own marks, so the button and its result look alike.
+     */
+    private void drawTouchPad(Canvas canvas, float left, float top, float right, UiState ui) {
+        float big = Theme.scale(TOUCH_BIG) * touchFit;
+        float small = Theme.scale(TOUCH_SMALL) * touchFit;
+        float gap = Theme.scale(TOUCH_GAP) * touchFit;
+        float y = top;
+        touchButton(canvas, TOUCH_FILL, left, y, right, y + big, "FILL", Theme.PINK, true);
+        y += big + gap;
+        touchButton(canvas, TOUCH_CROSS, left, y, right, y + big, "CROSS OUT", Theme.GOLD,
+                true);
+        y += big + gap;
+        float mid = (left + right) / 2;
+        touchButton(canvas, TOUCH_HINT, left, y, mid - gap / 2, y + small,
+                ui.hintsOn ? "HINT" : "RESTING", Theme.BUTTON_Y, ui.hintsOn);
+        touchButton(canvas, TOUCH_MENU, mid + gap / 2, y, right, y + small, "MENU",
+                Theme.SOFT_TEXT, true);
+        touchRectsDrawn = true;
+    }
+
+    private void touchButton(Canvas canvas, int button, float left, float top, float right,
+                             float bottom, String label, int color, boolean active) {
+        touchRects[button][0] = left;
+        touchRects[button][1] = top;
+        touchRects[button][2] = right;
+        touchRects[button][3] = bottom;
+        boolean held = touchHeld == button;
+        int fill = !active ? Draw.blend(Theme.PANEL, color, .34f)
+                : held ? Draw.blend(color, Theme.INK, .22f) : color;
+        float radius = (bottom - top) / 2;
+        // A pressed button sinks by a couple of pixels and loses its lift, which is the
+        // only feedback a thumb that is covering it can still see the edges of.
+        float sink = held ? Theme.scale(2) : 0;
+        if (!held && active) {
+            draw.roundRect(canvas, left, top + Theme.scale(3), right, bottom + Theme.scale(3),
+                    radius, Draw.withAlpha(Theme.INK, 90));
+        }
+        draw.roundRect(canvas, left, top + sink, right, bottom + sink, radius, fill);
+        int ink = Theme.textOn(fill);
+        float centreY = (top + bottom) / 2 + sink;
+        float size = Math.min(railTextSize(), (bottom - top) * .42f);
+        boolean glyph = button == TOUCH_FILL || button == TOUCH_CROSS;
+        float glyphSize = (bottom - top) * .34f;
+        float glyphGap = Theme.scale(10);
+        float room = right - left - radius * 1.2f - (glyph ? glyphSize + glyphGap : 0);
+        size = fit(label, room, size, size * .7f, true);
+        float textWidth = draw.measure(label, size, true);
+        float x = (left + right) / 2 - (textWidth + (glyph ? glyphSize + glyphGap : 0)) / 2;
+        if (glyph) {
+            drawTouchGlyph(canvas, button, x, centreY, glyphSize, ink);
+            x += glyphSize + glyphGap;
+        }
+        draw.text(canvas, label, x, centreY + draw.capCentreOffset(size), size, ink,
+                Paint.Align.LEFT, true);
+    }
+
+    /** A filled square or a cross, the size of a cap height, left edge at {@code left}. */
+    private void drawTouchGlyph(Canvas canvas, int button, float left, float centreY,
+                                float size, int ink) {
+        float half = size / 2;
+        if (button == TOUCH_FILL) {
+            draw.roundRect(canvas, left, centreY - half, left + size, centreY + half,
+                    size * .22f, ink);
+            return;
+        }
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(ink);
+        paint.setStrokeWidth(size * .2f);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        canvas.drawLine(left, centreY - half, left + size, centreY + half, paint);
+        canvas.drawLine(left + size, centreY - half, left, centreY + half, paint);
     }
 
     // ---- The tail: what the rail says when there is room to say it --------------------

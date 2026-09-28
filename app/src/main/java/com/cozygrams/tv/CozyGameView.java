@@ -1,9 +1,12 @@
 package com.cozygrams.tv;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.os.SystemClock;
+import android.view.HapticFeedbackConstants;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -146,6 +149,11 @@ public final class CozyGameView extends View {
         setFocusableInTouchMode(true);
         requestFocus();
         setContentDescription("CozyGrams puzzle board");
+        // A phone or tablet starts in touch mode, so its first screen already talks about
+        // tapping; a television never does. After that, whichever was used last wins.
+        PackageManager pm = context.getPackageManager();
+        HudScene.setTouch(pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+                && !pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK));
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         talkback = (AccessibilityManager) context.getSystemService(
                 Context.ACCESSIBILITY_SERVICE);
@@ -361,9 +369,18 @@ public final class CozyGameView extends View {
 
     @Override
     public boolean onKeyDown(int key, KeyEvent event) {
+        // A controller picked up on a phone brings back the controller's legend. The back
+        // gesture also arrives as a key, but from no controller, so it changes nothing.
+        if (HudScene.touch() && fromAController(event)) {
+            HudScene.setTouch(false);
+        }
         boolean repeat = event.getRepeatCount() > 0;
-        boolean joining = players.slotOf(event.getDeviceId()) < 0;
-        int who = registerDevice(event.getDeviceId());
+        // The back gesture on a phone arrives as a key from no controller at all. It is
+        // Rose's Back, straight away: it must not be taken for somebody sitting down, which
+        // swallowed the first swipe and would have handed a seat to the navigation bar.
+        boolean gesture = PlayerRegistry.isBack(key) && !fromAController(event);
+        boolean joining = !gesture && players.slotOf(event.getDeviceId()) < 0;
+        int who = gesture ? 0 : registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
 
         // “Press a button to join” should do exactly one thing. Letting that same press
@@ -452,6 +469,404 @@ public final class CozyGameView extends View {
             tell("Playing as " + Theme.playerName(who) + " too", Theme.playerColor(who));
         }
         return who;
+    }
+
+    // ---- Touch -----------------------------------------------------------------------
+
+    /*
+     * A phone is played with two thumbs, the way a gamepad is. The left thumb aims: a tap
+     * on a square puts Rose's cursor there, and sliding moves it like a trackpad, one
+     * square for every square's width of travel (never less than TOUCH_STEP_MM, so even a
+     * 20x20 board can be walked a square at a time). The right thumb marks, on the FILL
+     * and CROSS OUT buttons in the rail; holding one while the left thumb slides paints
+     * every square the cursor passes. Where the squares are big enough to hit reliably
+     * (TOUCH_DIRECT_MM and up) a tap fills the square under the finger straight away and
+     * a long press crosses it, like any nonogram on a phone.
+     *
+     * Every gesture ends in the same fillSquare / crossSquare / useHint the buttons call,
+     * so gentle checking, hints, line sweeps, sounds and TalkBack all behave exactly as
+     * they do on a television.
+     */
+
+    /** The smallest trackpad step, so tiny squares can still be walked one at a time. */
+    private static final float TOUCH_STEP_MM = 4.5f;
+    /** Squares at least this big are tapped directly; smaller ones are aimed at first. */
+    private static final float TOUCH_DIRECT_MM = 5.5f;
+    /** How long a finger rests on a square before that means "cross it out". */
+    private static final long TOUCH_LONG_PRESS_MS = 380;
+
+    private int aimPointer = -1;
+    private float aimDownX;
+    private float aimDownY;
+    private float aimLastX;
+    private float aimLastY;
+    private float aimCarryX;
+    private float aimCarryY;
+    private boolean aimMoved;
+    private boolean aimLongPressed;
+    private int aimCellX = -1;
+    private int aimCellY = -1;
+
+    private int buttonPointer = -1;
+    private int buttonHeld = -1;
+    /** What the held button found under the cursor, so painting only repeats that change. */
+    private byte paintFrom;
+
+    private int menuPointer = -1;
+    private float menuDownY;
+    private float menuCarry;
+    private boolean menuMoved;
+
+    private final Runnable aimLongPress = this::longPressSquare;
+    private boolean taughtTouch;
+
+    private float mm(float millimetres) {
+        return millimetres * getResources().getDisplayMetrics().xdpi / 25.4f;
+    }
+
+    private float touchSlop() {
+        return mm(1.6f);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        HudScene.setTouch(true);
+        // The finger on the glass is Rose. A controller that arrives later takes Sky's seat.
+        ui.joined[0] = true;
+        ui.lastActive[0] = now();
+        int action = event.getActionMasked();
+        int index = event.getActionIndex();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN:
+                touchDown(event.getPointerId(index), event.getX(index), event.getY(index));
+                break;
+            case MotionEvent.ACTION_MOVE:
+                for (int i = 0; i < event.getPointerCount(); i++) {
+                    touchMove(event.getPointerId(i), event.getX(i), event.getY(i));
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_POINTER_UP:
+                touchUp(event.getPointerId(index), event.getX(index), event.getY(index));
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                releaseAllTouches();
+                break;
+            default:
+                break;
+        }
+        invalidate();
+        return true;
+    }
+
+    private static boolean fromAController(KeyEvent event) {
+        int source = event.getSource();
+        return (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+                || (source & InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD
+                || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+    }
+
+    /** The first time a finger reaches a puzzle, say how the two thumbs split the work. */
+    private void teachTouch() {
+        tell(squaresAreDirect()
+                        ? "Tap to fill · hold to cross out · or use the buttons"
+                        : "Tap or slide to aim, tap again to fill · hold to cross out",
+                Theme.CREAM);
+    }
+
+    private boolean squaresAreDirect() {
+        BoardLayout board = renderer.board();
+        return board != null && board.cell >= mm(TOUCH_DIRECT_MM);
+    }
+
+    private void touchDown(int pointer, float x, float y) {
+        if (ui.screen != UiState.GAME || ui.won) {
+            if (menuPointer < 0) {
+                menuPointer = pointer;
+                menuDownY = y;
+                menuCarry = 0;
+                menuMoved = false;
+            }
+            return;
+        }
+        int button = HudScene.touchButtonAt(x, y);
+        if (button >= 0) {
+            if (buttonPointer < 0) {
+                buttonPointer = pointer;
+                pressTouchButton(button);
+            }
+            return;
+        }
+        if (aimPointer >= 0) {
+            return;
+        }
+        if (!taughtTouch) {
+            taughtTouch = true;
+            teachTouch();
+        }
+        aimPointer = pointer;
+        aimDownX = aimLastX = x;
+        aimDownY = aimLastY = y;
+        aimCarryX = aimCarryY = 0;
+        aimMoved = false;
+        aimLongPressed = false;
+        BoardLayout board = renderer.board();
+        aimCellX = cellColumn(board, x);
+        aimCellY = cellRow(board, y);
+        if (aimCellX >= 0 && aimCellY >= 0) {
+            postDelayed(aimLongPress, TOUCH_LONG_PRESS_MS);
+        }
+    }
+
+    private void touchMove(int pointer, float x, float y) {
+        if (pointer == menuPointer) {
+            slideMenu(y);
+            return;
+        }
+        if (pointer != aimPointer || ui.screen != UiState.GAME || ui.won) {
+            return;
+        }
+        if (!aimMoved && Math.hypot(x - aimDownX, y - aimDownY) < touchSlop()) {
+            return;
+        }
+        if (!aimMoved) {
+            aimMoved = true;
+            removeCallbacks(aimLongPress);
+            // A slide that starts on a square starts from that square, so the cursor is
+            // where the thumb went down rather than wherever it happened to be before.
+            if (aimCellX >= 0 && aimCellY >= 0 && !aimLongPressed) {
+                placeCursor(0, aimCellX, aimCellY);
+                paintIfHeld();
+            }
+        }
+        BoardLayout board = renderer.board();
+        float step = Math.max(board == null ? 0 : board.cell, mm(TOUCH_STEP_MM));
+        aimCarryX += x - aimLastX;
+        aimCarryY += y - aimLastY;
+        aimLastX = x;
+        aimLastY = y;
+        while (Math.abs(aimCarryX) >= step || Math.abs(aimCarryY) >= step) {
+            int dx = Math.abs(aimCarryX) >= step ? (int) Math.signum(aimCarryX) : 0;
+            int dy = Math.abs(aimCarryY) >= step ? (int) Math.signum(aimCarryY) : 0;
+            aimCarryX -= dx * step;
+            aimCarryY -= dy * step;
+            // Trackpad travel stops at the edge rather than wrapping: a thumb that runs
+            // off the side of the board should not reappear on the other side of it.
+            int nx = Math.max(0, Math.min(game.size - 1, game.cursorX[0] + dx));
+            int ny = Math.max(0, Math.min(game.size - 1, game.cursorY[0] + dy));
+            if (nx == game.cursorX[0] && ny == game.cursorY[0]) {
+                aimCarryX = dx != 0 ? 0 : aimCarryX;
+                aimCarryY = dy != 0 ? 0 : aimCarryY;
+                continue;
+            }
+            placeCursor(0, nx, ny);
+            paintIfHeld();
+        }
+    }
+
+    private void touchUp(int pointer, float x, float y) {
+        if (pointer == menuPointer) {
+            menuPointer = -1;
+            if (!menuMoved) {
+                tapMenu(x, y);
+            }
+            return;
+        }
+        if (pointer == buttonPointer) {
+            buttonPointer = -1;
+            buttonHeld = -1;
+            HudScene.setTouchHeld(-1);
+            return;
+        }
+        if (pointer != aimPointer) {
+            return;
+        }
+        aimPointer = -1;
+        removeCallbacks(aimLongPress);
+        if (aimMoved || aimLongPressed || aimCellX < 0 || aimCellY < 0
+                || ui.screen != UiState.GAME || ui.won) {
+            return;
+        }
+        boolean onCursor = aimCellX == game.cursorX[0] && aimCellY == game.cursorY[0];
+        if (!onCursor) {
+            placeCursor(0, aimCellX, aimCellY);
+        }
+        // Big squares fill on the first tap. Small ones are aimed at first, and a second
+        // tap on the square the cursor is already sitting on fills it.
+        if (onCursor || squaresAreDirect()) {
+            fillSquare(0);
+            checkForWin();
+        }
+    }
+
+    private void releaseAllTouches() {
+        removeCallbacks(aimLongPress);
+        aimPointer = -1;
+        buttonPointer = -1;
+        buttonHeld = -1;
+        menuPointer = -1;
+        HudScene.setTouchHeld(-1);
+    }
+
+    /** A finger resting on a square: cross it out, with a tick you can feel. */
+    private void longPressSquare() {
+        if (aimPointer < 0 || aimMoved || aimCellX < 0 || ui.screen != UiState.GAME
+                || ui.won) {
+            return;
+        }
+        aimLongPressed = true;
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        placeCursor(0, aimCellX, aimCellY);
+        crossSquare(0);
+        checkForWin();
+        invalidate();
+    }
+
+    private void pressTouchButton(int button) {
+        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+        switch (button) {
+            case HudScene.TOUCH_FILL:
+            case HudScene.TOUCH_CROSS:
+                buttonHeld = button;
+                HudScene.setTouchHeld(button);
+                paintFrom = game.markUnder(0);
+                if (button == HudScene.TOUCH_FILL) {
+                    fillSquare(0);
+                } else {
+                    crossSquare(0);
+                }
+                checkForWin();
+                break;
+            case HudScene.TOUCH_HINT:
+                HudScene.setTouchHeld(button);
+                useHint(0);
+                checkForWin();
+                break;
+            default:
+                HudScene.setTouchHeld(-1);
+                openSettings(0);
+                break;
+        }
+    }
+
+    /**
+     * Holding FILL or CROSS OUT while the other thumb slides paints the squares on the way,
+     * but only ones that look like the square the press started on. Holding FILL over an
+     * empty square fills a run of empties and leaves filled and crossed squares alone;
+     * holding it over a filled one clears a run of fills. That is the whole difference
+     * between painting a line and scribbling over it.
+     */
+    private void paintIfHeld() {
+        if (buttonHeld < 0 || ui.won || game.markUnder(0) != paintFrom) {
+            return;
+        }
+        if (buttonHeld == HudScene.TOUCH_FILL) {
+            fillSquare(0);
+        } else {
+            crossSquare(0);
+        }
+        checkForWin();
+    }
+
+    /** Puts a player's cursor on a square, with everything a step there would do. */
+    private void placeCursor(int who, int x, int y) {
+        int dx = Integer.signum(x - game.cursorX[who]);
+        int dy = Integer.signum(y - game.cursorY[who]);
+        if (dx == 0 && dy == 0) {
+            return;
+        }
+        game.cursorX[who] = x;
+        game.cursorY[who] = y;
+        ui.cursorMovedAt[who] = now();
+        forgetHeldSquare(who);
+        sfx.move(who, dx, dy, false);
+        noticeTheOtherCushion(who);
+        if (speaking()) {
+            announce(describeCursor(game, who));
+        }
+    }
+
+    private static int cellColumn(BoardLayout board, float x) {
+        if (board == null) {
+            return -1;
+        }
+        int column = (int) Math.floor((x - board.left) / board.cell);
+        return column >= 0 && column < board.size ? column : -1;
+    }
+
+    private static int cellRow(BoardLayout board, float y) {
+        if (board == null) {
+            return -1;
+        }
+        int row = (int) Math.floor((y - board.top) / board.cell);
+        return row >= 0 && row < board.size ? row : -1;
+    }
+
+    /** A drag in the cozy corner scrolls it a row at a time. */
+    private void slideMenu(float y) {
+        if (ui.screen != UiState.SETTINGS) {
+            return;
+        }
+        float pitch = renderer.settings().rowPitch();
+        if (pitch <= 0) {
+            return;
+        }
+        if (!menuMoved && Math.abs(y - menuDownY) < touchSlop()) {
+            return;
+        }
+        menuMoved = true;
+        menuCarry += y - menuDownY;
+        menuDownY = y;
+        while (Math.abs(menuCarry) >= pitch) {
+            // Dragging up brings later rows into view, as every list on a phone does.
+            int direction = menuCarry < 0 ? 1 : -1;
+            menuCarry += direction * pitch;
+            stepMenu(direction, SettingsScene.ITEM_COUNT, false);
+        }
+    }
+
+    /** A tap on a menu row, a stepper, or the win card. */
+    private void tapMenu(float x, float y) {
+        if (ui.screen == UiState.GAME && ui.won) {
+            handleWinKey(KeyEvent.KEYCODE_BUTTON_A, false);
+            return;
+        }
+        if (ui.screen == UiState.HOME) {
+            HomeScene home = renderer.home();
+            int item = home.itemAt(x, y);
+            if (item < 0) {
+                return;
+            }
+            int step = home.stepAt(item, x);
+            if (ui.menu != item) {
+                HomeScene.disarmRestart();
+                ui.menu = item;
+                sfx.play(CozySfx.Sound.MOVE);
+            }
+            if (step != 0) {
+                if (item == HomeScene.ITEM_SIZE) {
+                    nudgeBoardSize(step * 5);
+                } else {
+                    browseStoryChapter(step);
+                }
+                return;
+            }
+            chooseHomeItem(0);
+            return;
+        }
+        if (ui.screen == UiState.SETTINGS) {
+            int item = renderer.settings().itemAt(x, y);
+            if (item < 0) {
+                return;
+            }
+            if (ui.menu != item) {
+                // Moving onto a question is not an answer to it.
+                SettingsScene.disarmDefaults();
+                ui.menu = item;
+            }
+            chooseSetting();
+        }
     }
 
     // ---- Held directions -----------------------------------------------------------

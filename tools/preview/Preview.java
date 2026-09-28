@@ -360,6 +360,36 @@ public final class Preview {
                 new Frame("24-settings-privacy.png",
                         "The privacy row focused with LARGER TEXT on: the policy's address fits one line.",
                         Preview::settingsPrivacy),
+                new Frame("phone/25-phone-game.png",
+                        "A phone in landscape: the rail's legend becomes FILL, CROSS OUT, HINT and MENU.",
+                        Preview::phoneGame, 2400, 1080),
+                new Frame("phone/26-phone-game-painting.png",
+                        "FILL held while the other thumb slides: the pressed button sinks.",
+                        Preview::phoneGamePainting, 2400, 1080),
+                new Frame("phone/27-phone-home.png",
+                        "The title screen on a phone: rows are tapped, ‹ › steps, no gamepad keys.",
+                        Preview::phoneHome, 2400, 1080),
+                new Frame("phone/28-phone-settings.png",
+                        "The cozy corner on a phone, with the touch footer.",
+                        Preview::phoneSettings, 2400, 1080),
+                new Frame("phone/29-phone-win.png",
+                        "The win card on a phone: TAP for the next picture.",
+                        Preview::phoneWin, 2400, 1080),
+                new Frame("phone/31-phone-five.png",
+                        "A 5x5 on a phone, the shortest rail: the pad shrinks rather than spills.",
+                        Preview::phoneFive, 2400, 1080),
+                new Frame("store/phone-1-game.png",
+                        "Play Store phone shot: a 10x10 in touch mode at 16:9.",
+                        Preview::storeGame, 1920, 1080),
+                new Frame("store/phone-2-home.png",
+                        "Play Store phone shot: the title screen in touch mode.",
+                        Preview::phoneHome, 1920, 1080),
+                new Frame("store/phone-3-win.png",
+                        "Play Store phone shot: a finished picture.",
+                        Preview::phoneWin, 1920, 1080),
+                new Frame("phone/30-phone-small.png",
+                        "A 16:9 phone at 1920x1080 with a 20x20 board.",
+                        Preview::phoneTwenty, 1920, 1080),
                 new Frame("23-win-remote.png",
                         "A settled win reached with a bare remote, whose prompt must say OK.",
                         Preview::winRemote),
@@ -691,6 +721,52 @@ public final class Preview {
         SettingsScene.armDefaults(T0);
         SettingsScene.setTidyingPlayer(1);
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    /** Draws one frame as a phone sees it: touch on, and put back afterwards. */
+    private static void asPhone(Runnable frame) {
+        HudScene.setTouch(true);
+        try {
+            frame.run();
+        } finally {
+            HudScene.setTouch(false);
+            HudScene.setTouchHeld(-1);
+        }
+    }
+
+    private static void phoneGame(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> gameFifteen(canvas, renderer, w, h));
+    }
+
+    private static void phoneGamePainting(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> {
+            HudScene.setTouchHeld(HudScene.TOUCH_FILL);
+            gameFifteen(canvas, renderer, w, h);
+        });
+    }
+
+    private static void phoneHome(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> home(canvas, renderer, w, h));
+    }
+
+    private static void phoneSettings(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> settings(canvas, renderer, w, h));
+    }
+
+    private static void phoneWin(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> winSettled(canvas, renderer, w, h));
+    }
+
+    private static void storeGame(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> gameTen(canvas, renderer, w, h));
+    }
+
+    private static void phoneFive(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> gameFresh(canvas, renderer, w, h));
+    }
+
+    private static void phoneTwenty(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> gameTwenty(canvas, renderer, w, h));
     }
 
     private static void settingsPrivacy(Canvas canvas, Renderer renderer, int w, int h) {
