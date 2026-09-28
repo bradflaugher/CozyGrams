@@ -158,12 +158,14 @@ public final class MainActivity extends Activity {
      * a keyboard folding away and the rest, rather than being torn down and rebuilt around a
      * half-finished puzzle. Keeping it is only half the job: the view still has to draw the
      * next frame in the new configuration, and it reads the font scale fresh every frame.
+     * A new density (display size changed, or the window moved to another screen) also
+     * changes what 48dp is, so the view is told to measure its thumb pad again.
      */
     @Override
     public void onConfigurationChanged(Configuration changed) {
         super.onConfigurationChanged(changed);
         if (game != null) {
-            game.invalidate();
+            game.configurationChanged();
         }
     }
 
@@ -174,11 +176,10 @@ public final class MainActivity extends Activity {
         requestAudioFocus();
         listenForHeadphones();
         if (game != null) {
-            game.resume();
-            if (inACall()) {
-                // The picture is welcome during a call; the music is not.
-                game.hush();
-            }
+            // The picture is welcome during a call; the music is not. Decided before the
+            // sound is switched on, because a track started and stopped again still gets
+            // its fade-out block to the speaker.
+            game.resume(!inACall());
         }
     }
 

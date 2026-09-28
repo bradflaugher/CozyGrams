@@ -216,6 +216,17 @@ public final class CozyGameView extends View {
     }
 
     /**
+     * The activity kept itself through a configuration change. A new density moves the
+     * 48dp floor under the thumb pad, and the bars may have moved with it, so the density
+     * is read again and fresh insets are asked for rather than waited for.
+     */
+    public void configurationChanged() {
+        HudScene.setDensity(getResources().getDisplayMetrics().density);
+        requestApplyInsets();
+        invalidate();
+    }
+
+    /**
      * Hands the window's insets to the renderer as four plain numbers.
      *
      * <p>{@code getSystemWindowInset*} rather than {@code getInsets(Type)}, which is API 30,
@@ -270,8 +281,17 @@ public final class CozyGameView extends View {
     // ---- Lifecycle -----------------------------------------------------------------
 
     public void resume() {
-        music.setEnabled(ui.musicOn);
-        sfx.setEnabled(ui.sfxOn);
+        resume(true);
+    }
+
+    /**
+     * Comes back to the game, with the sound only if {@code withSound}: returning during a
+     * phone call brings back the picture and leaves the music and effects off, without
+     * ever starting a track that would then have to be stopped.
+     */
+    public void resume(boolean withSound) {
+        music.setEnabled(withSound && ui.musicOn);
+        sfx.setEnabled(withSound && ui.sfxOn);
         // Forget the frame we drew before the interruption; the gap since then is however
         // long somebody was away making tea, and it is not a frame time. The same goes for
         // any centre button that was down when we were interrupted: whatever it was doing,

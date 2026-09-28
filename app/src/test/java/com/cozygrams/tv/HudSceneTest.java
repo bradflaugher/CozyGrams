@@ -599,6 +599,40 @@ public class HudSceneTest {
     }
 
     /**
+     * The smallest window the manifest allows (480x360dp) under an ordinary 24dp status bar
+     * and 48dp navigation bar, the split-screen and freeform shape where the bars cannot be
+     * hidden: the compacted rail, MENU row included, still fits between them.
+     */
+    @Test
+    public void theRailFitsTheSmallestDeclaredWindowUnderItsBars() {
+        float density = 2f;
+        float w = 480 * density;
+        float h = 360 * density;
+        HudScene.setTouch(true);
+        HudScene.setDensity(density);
+        HudScene hud = new HudScene(new Draw());
+        UiState ui = new UiState();
+        ui.joined[1] = false;
+        try {
+            Theme.setInsets(0, 24 * density, 0, 48 * density);
+            Theme.setScreen(w, h);
+            for (int size = 5; size <= 20; size += 5) {
+                GameState game = new GameState(7L, size);
+                BoardLayout board = new BoardLayout(w, h, game.puzzle, true);
+                float lane = board.panelRight - board.panelLeft - Theme.scale(14) * 2;
+                float needed = hud.compactPanelHeight(Theme.unitHeight(), lane, game, ui);
+                assertTrue(size + ": the rail needs " + needed + " of "
+                                + (board.panelBottom() - board.panelTop()),
+                        needed <= board.panelBottom() - board.panelTop() + .5f);
+                assertTrue(size + ": the rail runs into the navigation bar",
+                        board.panelBottom() <= h - 48 * density + .01f);
+            }
+        } finally {
+            Theme.setInsets(0, 0, 0, 0);
+        }
+    }
+
+    /**
      * The message pill clears a navigation bar and a cutout the same way it clears the
      * overscan band: each edge is whichever of the two is deeper.
      */

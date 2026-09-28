@@ -33,10 +33,14 @@
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             tools:ignore="DiscouragedApi">
-            <!-- The smallest desktop / ChromeOS window the board and the rail still fit in. -->
+            <!--
+              The smallest desktop / ChromeOS window the board and the rail still fit in,
+              with room left over for a status bar and a navigation bar: the fully compacted
+              touch rail needs about 265dp of height between them.
+            -->
             <layout
                 android:minWidth="480dp"
-                android:minHeight="320dp" />
+                android:minHeight="360dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
