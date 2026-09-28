@@ -1,12 +1,17 @@
 A cozy evening, a picture made of clues, and a second controller if someone sits down beside you.
 
-CozyGrams is an endless nonogram for Android TV. Play solo, or hand someone a second controller and solve one shared picture together. Each controller keeps its own player, cursor, and color. The first controller to send input becomes Rose, and the second becomes Sky. They share the credit, and there is no scoreboard. The Story Book turns each finished puzzle into a little keepsake and remembers the chapters you have completed.
+CozyGrams is an endless nonogram for Android TV, phones and tablets. Play solo, or hand someone a second controller and solve one shared picture together. Each controller keeps its own player, cursor, and color. The first controller to send input becomes Rose, and the second becomes Sky. They share the credit, and there is no scoreboard. The Story Book turns each finished puzzle into a little keepsake and remembers the chapters you have completed.
 
 TWO ON THE COUCH
 • Rose and Sky keep their seats for the session, even if a controller falls asleep and wakes back up.
 • On a gamepad, move with the D-pad or the left stick, and hold to keep travelling. The cursor wraps around the board. A fills a square, B or X crosses one out, and Y reveals one square. Menu or Start opens the cozy corner. Back steps out.
 • A bare TV remote has no face buttons, so OK cycles fill, then cross, then clear, and holding OK reveals one square. Menu opens the cozy corner. The on-screen legend changes to match whatever is actually in the room.
 • The interface is landscape, made for a television. No touchscreen is required, and nothing is drawn below the safe area.
+
+ON A PHONE OR TABLET
+• Played in landscape with two thumbs. Tap a square to fill it, hold it to cross it out, or slide to aim and use the big FILL and CROSS OUT buttons.
+• Hold FILL or CROSS OUT and slide your other thumb to paint a whole run of squares.
+• Pair a controller and a second player can still join as Sky.
 
 ALWAYS ONE ANSWER
 • Every board is uniquely line-solvable. A constraint solver checks each puzzle, so the clues alone are always enough. You never have to guess, and there is never a second valid answer.

@@ -438,6 +438,11 @@ public final class BoardLayout {
 
     /** Top of the rail: level with the paper card, under the title line. */
     public float panelTop() {
+        // On a phone the rail holds the thumb buttons, which are worth more than lining
+        // up with a small board's card: it runs the full safe height instead.
+        if (HudScene.touch()) {
+            return Math.min(cardTop(), screenHeight * Theme.SAFE_AREA);
+        }
         return cardTop();
     }
 
@@ -452,6 +457,9 @@ public final class BoardLayout {
      */
     public float panelBottom() {
         float safe = screenHeight - screenHeight * Theme.SAFE_AREA;
+        if (HudScene.touch()) {
+            return safe;
+        }
         return Math.min(cardBottom(), safe);
     }
 
@@ -513,6 +521,11 @@ public final class BoardLayout {
      * business making the square under it bigger.
      */
     static float cellCeiling(float screenHeight) {
+        // A phone is held a foot away and pressed with a fingertip, so there a small board
+        // grows to the theme's outer bound: a 5x5 becomes big enough to tap square by square.
+        if (HudScene.touch()) {
+            return Theme.scale(Theme.MAX_CELL);
+        }
         return Math.min(Theme.scale(Theme.MAX_CELL), dp(CELL_MAX, screenHeight));
     }
 

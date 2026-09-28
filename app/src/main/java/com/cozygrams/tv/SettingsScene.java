@@ -466,6 +466,34 @@ public final class SettingsScene {
 
     // ---- Drawing ---------------------------------------------------------------------
 
+    /** Where the visible rows were last drawn, for a finger to find. Null until drawn. */
+    private float[] drawnCentres;
+    private float drawnStep;
+    private float drawnLeft;
+    private float drawnRight;
+    private int drawnStart;
+
+    /**
+     * The item under a point, or -1. The window only shows seven of the rows, so this
+     * answers for the ones on screen; the gap between two pills belongs to the nearer one.
+     */
+    public int itemAt(float x, float y) {
+        if (drawnCentres == null || x < drawnLeft || x > drawnRight) {
+            return -1;
+        }
+        for (int slot = 0; slot < drawnCentres.length; slot++) {
+            if (Math.abs(y - drawnCentres[slot]) <= drawnStep / 2) {
+                return drawnStart + slot;
+            }
+        }
+        return -1;
+    }
+
+    /** One row's pitch as last drawn: how far a finger drags to scroll by one row. */
+    public float rowPitch() {
+        return drawnStep;
+    }
+
     public void draw(Canvas canvas, float width, float height, UiState ui, long now) {
         expireDefaults(now);
         boolean bold = ui.highContrastOn;
@@ -517,6 +545,11 @@ public final class SettingsScene {
         boolean[] states = states(ui);
         float[] centres = rowCentres(rowTop, rowBottom);
         float half = rowHalfHeight(rowTop, rowBottom);
+        drawnCentres = centres;
+        drawnStep = rowStep(rowTop, rowBottom);
+        drawnLeft = rowLeft;
+        drawnRight = rowRight;
+        drawnStart = start;
         for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
             int item = start + slot;
             drawRow(canvas, width, centres[slot], half, labels[item], states[item],
@@ -583,6 +616,11 @@ public final class SettingsScene {
     private void drawActionAccessory(Canvas canvas, float right, float centreY,
                                      String label, float size, int textColor) {
         float labelWidth = draw.measure(label, size, true);
+        if (HudScene.touch()) {
+            draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
+                    textColor, Paint.Align.RIGHT, true);
+            return;
+        }
         float gap = Theme.scale(8);
         float height = size * 1.05f;
         String key = HomeScene.confirmName();
@@ -724,6 +762,13 @@ public final class SettingsScene {
     private void drawFooter(Canvas canvas, float width, float baseline, boolean bold) {
         float left = frame.rowLeft(width);
         float right = frame.rowRight(width);
+        if (HudScene.touch()) {
+            String line = "Tap a row to change it · drag for more · back to close";
+            float size = fit(line, right - left, Theme.textSize(Theme.CAPTION), false);
+            draw.text(canvas, line, (left + right) / 2, baseline, size,
+                    Theme.secondaryText(bold), Paint.Align.CENTER, false);
+            return;
+        }
         String confirm = HomeScene.confirmName();
         String back = HudScene.backName();
         float size = Theme.textSize(Theme.CAPTION);
