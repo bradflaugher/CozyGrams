@@ -787,9 +787,9 @@ public final class CozyGameView extends View {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
-                touchUp(event.getPointerId(index), event.getX(index), event.getY(index));
-                if (action == MotionEvent.ACTION_UP) {
-                    // The last finger is off the glass: tell accessibility services a click
+                if (touchUp(event.getPointerId(index), event.getX(index),
+                        event.getY(index))) {
+                    // That finger finished a tap: tell accessibility services a click
                     // happened, the way a stock View does. What the tap did is already done.
                     performClick();
                 }
@@ -806,6 +806,9 @@ public final class CozyGameView extends View {
 
     /**
      * Reports the click to accessibility services and autofill, and nothing more.
+     *
+     * <p>Called only for a finger that finished a tap; a drag, a stroke or a long press is
+     * not a click and sends nothing.
      *
      * <p>The tap has already been acted on square by square in {@link #touchUp}, which is
      * the only place that knows what was under the finger, so this must not act on it a
@@ -1108,38 +1111,48 @@ public final class CozyGameView extends View {
         checkForWin();
     }
 
-    private void touchUp(int pointer, float x, float y) {
+    /**
+     * A finger leaving the glass.
+     *
+     * @return true when it finished a tap — a button let go of where it was pressed, a menu
+     *         row tapped rather than dragged, a square tapped rather than stroked or held —
+     *         so {@link #onTouchEvent} reports a click only for something that was one
+     */
+    private boolean touchUp(int pointer, float x, float y) {
         if (pointer == backPointer) {
             backPointer = -1;
             HudScene.setTouchHeld(-1);
             // Like any button on a phone: sliding off it before letting go changes nothing.
             if (HudScene.backButtonAt(x, y)) {
                 goBack();
+                return true;
             }
-            return;
+            return false;
         }
         if (pointer == menuPointer) {
             menuPointer = -1;
             ui.settingsPressed = -1;
             if (!menuMoved) {
                 tapMenu(x, y);
+                return true;
             }
-            return;
+            return false;
         }
         if (pointer == buttonPointer) {
+            // The thumb pad acts as it is pressed, so letting go completes that press.
             buttonPointer = -1;
             buttonHeld = -1;
             HudScene.setTouchHeld(-1);
-            return;
+            return true;
         }
         if (pointer != aimPointer) {
-            return;
+            return false;
         }
         aimPointer = -1;
         removeCallbacks(aimLongPress);
         if (aimMoved || aimLongPressed || aimCellX < 0 || aimCellY < 0
                 || ui.screen != UiState.GAME || ui.won) {
-            return;
+            return false;
         }
         boolean onCursor = aimCellX == game.cursorX[0] && aimCellY == game.cursorY[0];
         if (!onCursor) {
@@ -1150,6 +1163,7 @@ public final class CozyGameView extends View {
         if (onCursor || aimDirect) {
             markAtCursor(ui.crossPen);
         }
+        return true;
     }
 
     private void releaseAllTouches() {
