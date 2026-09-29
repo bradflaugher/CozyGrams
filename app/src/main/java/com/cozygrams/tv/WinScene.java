@@ -918,8 +918,8 @@ public final class WinScene {
         p.centre = (left + right) / 2;
         p.padY = Theme.scale(44);
         p.column = right - left - Theme.scale(40) * 2;
-        p.together = ui.joined[0] && ui.joined[1];
-        p.solo = ui.joined[1] && !ui.joined[0] ? 1 : 0;
+        p.together = ui.joined[0] && ui.skyPlaying();
+        p.solo = ui.skyPlaying() && !ui.joined[0] ? 1 : 0;
 
         p.eyebrow = eyebrow(game, p.together);
         p.message = message(game, p.together);

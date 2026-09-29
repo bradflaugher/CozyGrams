@@ -196,6 +196,13 @@ public final class PlayerRegistry {
     private boolean justShared;
     /** Set when {@link #stickStep} swallows an unarmed controller's first deflection. */
     private boolean justStirred;
+    /** True on a one-player evening: every controller is Rose, and Sky's seat is shut. */
+    private boolean solo;
+    /**
+     * True once a finger on the glass is playing Rose. That seat is then taken even though
+     * no controller holds it, so the first pad picked up on a phone sits down as Sky.
+     */
+    private boolean touchRose;
 
     public PlayerRegistry() {
         this(new PlatformDevices());
@@ -223,8 +230,19 @@ public final class PlayerRegistry {
         justShared = false;
 
         String name = nameOf(deviceId);
-        away.remove(name);
         Integer known = playerByDevice.get(name);
+        if (known != null && known == ROSE && !solo && away.contains(name)
+                && seatOccupied(ROSE) && !seatOccupied(SKY)) {
+            // Back from away to find somebody else in Rose's seat and Sky's empty — Sky's
+            // own pad after a one-player spell rewrote every seat to Rose, say. Sitting it
+            // down as Rose would leave two pads driving her, so it takes Sky, as any
+            // newcomer would.
+            away.remove(name);
+            playerByDevice.put(name, SKY);
+            justJoined = SKY;
+            return SKY;
+        }
+        away.remove(name);
         if (known != null) {
             // Either a device we have seen before, or the same controller back from a
             // reconnect under a new id. Both keep the identity they already had.
@@ -234,6 +252,11 @@ public final class PlayerRegistry {
         int player;
         if (!seatOccupied(ROSE)) {
             player = ROSE;
+        } else if (solo) {
+            // A second controller on a one-player evening is the same person reaching
+            // for another pad, not somebody new — nothing to announce.
+            playerByDevice.put(name, ROSE);
+            return ROSE;
         } else if (!seatOccupied(SKY)) {
             player = SKY;
         } else {
@@ -245,6 +268,57 @@ public final class PlayerRegistry {
             justJoined = player;
         }
         return player;
+    }
+
+    /**
+     * Opens or shuts Sky's seat.
+     *
+     * <p>Shutting it seats every controller already known as Rose, so a pad that was Sky a
+     * moment ago keeps working rather than going dead in somebody's hands. Opening it
+     * counts only the controllers still here: the first of them is Rose and the second
+     * takes Sky's seat — the pad that would have been Sky all along, in the order the
+     * evening met them — while any others double up on Rose, which is where a third
+     * controller always sits. A pad that has gone away is never handed a seat, so two
+     * controllers in the room can never end up both driving Rose with Sky's chair empty.
+     */
+    public void setSolo(boolean on) {
+        solo = on;
+        // With a finger already in Rose's seat, the first controller here is the one
+        // that becomes Sky.
+        int skyAt = touchRose ? 0 : 1;
+        int present = 0;
+        for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
+            boolean here = !away.contains(entry.getKey());
+            entry.setValue(!on && here && present == skyAt ? SKY : ROSE);
+            if (here) {
+                present++;
+            }
+        }
+    }
+
+    public boolean solo() {
+        return solo;
+    }
+
+    /**
+     * Says a finger is playing Rose. See {@link #touchRose}.
+     *
+     * <p>With Sky's seat open and empty, a pad that sat down as Rose before the finger
+     * arrived moves over to Sky: the finger is Rose now, and leaving the pad there too
+     * would have two people driving one cursor while Sky's chair stays empty.
+     */
+    public void setTouchRose(boolean on) {
+        boolean claiming = on && !touchRose;
+        touchRose = on;
+        if (!claiming || solo || seatOccupied(SKY)) {
+            return;
+        }
+        for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
+            if (entry.getValue() == ROSE && !away.contains(entry.getKey())) {
+                entry.setValue(SKY);
+                return;
+            }
+        }
     }
 
     /** The slot that was claimed by the most recent {@link #playerFor}, or -1. */
@@ -319,6 +393,9 @@ public final class PlayerRegistry {
      * whose batteries died has {@code joined} true for ever and nobody at the table.
      */
     public boolean seatOccupied(int player) {
+        if (player == ROSE && touchRose) {
+            return true;
+        }
         for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
             if (entry.getValue() == player && !away.contains(entry.getKey())) {
                 return true;

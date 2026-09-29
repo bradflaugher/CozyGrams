@@ -72,6 +72,7 @@ public final class SaveStore {
     private static final String KEY_DISTINCT = "distinctPlayers";
     private static final String KEY_BOLD_CURSOR = "boldCursor";
     private static final String KEY_CALM_MOTION = "calmMotion";
+    private static final String KEY_TWO_PLAYERS = "twoPlayers";
 
     // The look the game ships with lives on UiState, so a first run and "put everything
     // back" can never drift apart, and so the drawing code never has to know about
@@ -209,6 +210,7 @@ public final class SaveStore {
         ui.hintsOn = readBoolean(KEY_HINTS, DEFAULT_HINTS);
         ui.bigTextOn = readBoolean(KEY_BIG_TEXT, DEFAULT_BIG_TEXT);
         ui.highContrastOn = readBoolean(KEY_CONTRAST, DEFAULT_CONTRAST);
+        ui.twoPlayers = readBoolean(KEY_TWO_PLAYERS, ui.defaultTwoPlayers);
 
         Comfort comfort = Comfort.get();
         comfort.distinctPlayers = readBoolean(KEY_DISTINCT, false);
@@ -329,6 +331,7 @@ public final class SaveStore {
                 .putBoolean(KEY_DISTINCT, comfort.distinctPlayers)
                 .putBoolean(KEY_BOLD_CURSOR, comfort.boldCursor)
                 .putBoolean(KEY_CALM_MOTION, comfort.calmMotion)
+                .putBoolean(KEY_TWO_PLAYERS, ui.twoPlayers)
                 .apply();
         lastWritten = digest;
         lastWriteAt = now;
@@ -493,6 +496,7 @@ public final class SaveStore {
                 .append(comfort.distinctPlayers ? 1 : 0)
                 .append(comfort.boldCursor ? 1 : 0)
                 .append(comfort.calmMotion ? 1 : 0)
+                .append(ui.twoPlayers ? 1 : 0)
                 .append('\n')
                 .append(game.moves[0]).append('|')
                 .append(game.moves[1]).append('|')

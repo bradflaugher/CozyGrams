@@ -153,7 +153,7 @@ public final class CursorRenderer {
      */
     public static boolean needsFrames(UiState ui, long now) {
         boolean lively = !Comfort.get().calmMotion;
-        int players = ui.joined[1] ? 2 : 1;
+        int players = ui.skyPlaying() ? 2 : 1;
         for (int player = 0; player < players; player++) {
             if (settlingDown(ui, player, now)
                     || (lively && ui.landing(player, now) < 1f)) {
@@ -197,7 +197,7 @@ public final class CursorRenderer {
                      long now) {
         Cursor rose = cursors[0];
         Cursor sky = cursors[1];
-        boolean both = ui.joined[1];
+        boolean both = ui.skyPlaying();
 
         measure(rose, board, ui, 0, now);
         if (!both) {

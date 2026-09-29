@@ -45,6 +45,38 @@ public final class UiState {
     public boolean highContrastOn = DEFAULT_CONTRAST;
 
     /**
+     * Whether a second controller may take Sky's seat.
+     *
+     * <p>The one option whose starting value depends on the device. A television is the
+     * sofa with two controllers on it, so it starts on; a phone or a tablet is one person
+     * and one screen, and there Sky's seat, her cursor and "press a button to join" are
+     * furniture for somebody who is not coming. The view says which kind of device this
+     * is through {@link #defaultTwoPlayers} before the save is read, so a first run and
+     * "put everything back" both land on the right answer for the hardware.
+     */
+    public boolean twoPlayers = true;
+    public boolean defaultTwoPlayers = true;
+
+    /**
+     * What a tap on the board does on a touch screen: fill, or cross out. The phone's
+     * answer to having no B button — one thumb chooses the pen on the rail, and then every
+     * tap and every drag across the squares uses it. Not saved: every evening starts with
+     * the pen that makes a picture appear.
+     */
+    public boolean crossPen;
+
+    /**
+     * How far the cozy corner's list has been dragged, in rows, on a touch screen. A
+     * finger scrolls the list itself rather than walking a highlight through it, so this
+     * is kept apart from {@link #menu}, which is where a controller's focus is.
+     */
+    public float settingsScroll;
+    /** The corner's row a finger is resting on right now, drawn lit; -1 for none. */
+    public int settingsPressed = -1;
+    /** The corner's row a finger last changed, whose explanation the bottom line gives. */
+    public int settingsTouched = -1;
+
+    /**
      * The television's own Display &amp; Sound text size, as {@code Configuration.fontScale}.
      *
      * <p>Kept beside {@link #bigTextOn} because the two are the same request arriving by two
@@ -68,6 +100,11 @@ public final class UiState {
 
     /** True once a controller has claimed the matching player slot. */
     public final boolean[] joined = {false, false};
+
+    /** True when Sky is actually at the table: two players allowed and her seat taken. */
+    public boolean skyPlaying() {
+        return twoPlayers && joined[1];
+    }
     /** When each player last did anything, for gently dimming an idle cursor. */
     public final long[] lastActive = {0, 0};
 
@@ -93,6 +130,7 @@ public final class UiState {
         hintsOn = DEFAULT_HINTS;
         bigTextOn = DEFAULT_BIG_TEXT;
         highContrastOn = DEFAULT_CONTRAST;
+        twoPlayers = defaultTwoPlayers;
         Comfort.get().restoreDefaults();
     }
 

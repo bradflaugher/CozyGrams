@@ -3,7 +3,7 @@
 A cozy, endless nonogram game made for the couch. Play solo, or hand someone a second
 controller and solve every picture together with independent Rose and Sky cursors. One
 app for Android TV and for phones and tablets: a television gets the ten-foot interface
-and controllers, a phone gets the same game with touch controls built for two thumbs.
+and controllers, a phone gets the same game as a one-player touch puzzle with a fill-or-cross pen.
 
 ![CozyGrams title screen with Rose and Sky ready to play](docs/screenshots/home.webp)
 
@@ -34,24 +34,30 @@ legend changes to match whatever is actually in the room.
 
 ### On a phone or tablet
 
-The phone is held in landscape and played with two thumbs, the way a gamepad is. Rose is
-the finger on the glass; a controller paired to the phone can still take Sky's seat.
+A phone or tablet starts as a one-player game: no Sky, no second cursor, no "press a button
+to join". **Two players** in the Cozy Corner opens Sky's seat for a controller paired to the
+device (and turns it off again on a television, where it starts on). Rose is the finger on
+the glass.
+
+The rail's legend becomes a thumb pad. At the top is the **pen** — **FILL | CROSS** — and
+it decides what touching the board does, so the whole picture can be solved with one thumb.
 
 | | touch |
 |---|---|
-| aim | tap a square to put the cursor there, or slide to move it like a trackpad |
-| fill a square | tap it (on boards whose squares are big enough to hit), tap the cursor's square again, or **FILL** |
-| cross a square out | hold on it, or **CROSS OUT** |
-| paint a line | hold **FILL** or **CROSS OUT** with one thumb and slide the other |
+| choose fill or cross out | tap **FILL** or **CROSS** on the pen |
+| mark a square | tap it (on boards whose squares are big enough to hit) |
+| mark a line | drag along a row or column — the stroke locks to its first direction and only changes squares that looked like the one it started on |
+| the other mark, just once | hold on a square |
+| small squares | tap or slide to aim like a trackpad, then tap the cursor's square again or press **MARK**; hold **MARK** and slide the other thumb to paint |
 | reveal one square | **HINT** |
-| cozy corner | **MENU** |
-| back | the system back gesture |
+| cozy corner | **MENU** — drag the list to scroll it, tap a row to change it |
+| back | **HOME** in the top-left corner of a puzzle or a finished picture, **BACK** in the Cozy Corner — or the system back gesture |
 
-The rail's legend becomes those four buttons, sized for a thumb, and every screen names
-taps instead of buttons. Small boards grow to fill the phone. Picking up a controller brings
-the controller legend back; touching the screen again brings the buttons back. The first controller to send
-input becomes Rose, the second becomes Sky, and both keep their identity for the session —
-including across a controller falling asleep and waking up with a new device id.
+Every screen names taps instead of buttons. Small boards grow to fill the phone. Picking up
+a controller brings the controller legend back; touching the screen again brings the pad
+back. With two players on, the first controller to send input becomes Rose, the second
+becomes Sky, and both keep their identity for the session — including across a controller
+falling asleep and waking up with a new device id.
 
 ## Game features
 

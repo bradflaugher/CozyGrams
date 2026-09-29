@@ -36,6 +36,8 @@ public class Canvas {
     private final BufferedImage target;
     private final Graphics2D g;
     private final Deque<AffineTransform> stack = new ArrayDeque<>();
+    /** The clip that was in force at each save; null entries mean "no clip". */
+    private final Deque<Shape[]> clips = new ArrayDeque<>();
 
     private final Rectangle2D.Float rectShape = new Rectangle2D.Float();
     private final RoundRectangle2D.Float roundShape = new RoundRectangle2D.Float();
@@ -80,13 +82,22 @@ public class Canvas {
 
     public int save() {
         stack.push(g.getTransform());
+        clips.push(new Shape[]{g.getClip()});
         return stack.size();
     }
 
     public void restore() {
         if (!stack.isEmpty()) {
             g.setTransform(stack.pop());
+            g.setClip(clips.pop()[0]);
         }
+    }
+
+    /** Intersects the clip with a rectangle, as Skia does; undone by {@link #restore}. */
+    public boolean clipRect(float left, float top, float right, float bottom) {
+        rectShape.setRect(left, top, right - left, bottom - top);
+        g.clip(rectShape);
+        return right > left && bottom > top;
     }
 
     public void translate(float dx, float dy) {

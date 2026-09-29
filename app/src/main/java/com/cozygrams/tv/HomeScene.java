@@ -876,11 +876,12 @@ public final class HomeScene {
 
     private void drawPresence(Canvas canvas, float left, float right, float centreY,
                               UiState ui) {
-        boolean together = ui.joined[1];
+        boolean together = ui.skyPlaying();
         String line = together ? "Rose and Sky are ready  ♥"
+                : !ui.twoPlayers ? "A quiet puzzle, just for you"
                 : HudScene.touch() ? "Sky can join any time on a controller"
                 : "Sky can join any time — press a button";
-        int accent = together ? Theme.PINK : Comfort.skyColor();
+        int accent = together || !ui.twoPlayers ? Theme.PINK : Comfort.skyColor();
         float size = draw.fit(line, landingText(Theme.CAPTION), right - left
                 - Theme.scale(34), together, landingText(Theme.MIN_PROSE_SP));
         float half = size * .95f;
@@ -1318,11 +1319,12 @@ public final class HomeScene {
      * 824 px lane, and neither of them is prose that may be set any smaller.
      */
     private void drawFooter(Canvas canvas, float width, UiState ui) {
-        boolean together = ui.joined[1];
+        boolean together = ui.skyPlaying();
         String hint = together ? "Rose and Sky are both here"
+                : !ui.twoPlayers ? "A quiet puzzle, just for you"
                 : HudScene.touch() ? "Sky can join any time on a controller"
                 : "Sky can join any time — press a button";
-        int accent = together ? Theme.PINK : Comfort.skyColor();
+        int accent = together || !ui.twoPlayers ? Theme.PINK : Comfort.skyColor();
 
         float size = Theme.textSize(Theme.CAPTION);
         float half = size * .95f;
