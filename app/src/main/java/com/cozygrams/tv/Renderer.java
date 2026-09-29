@@ -20,6 +20,8 @@ public final class Renderer {
     private final HomeScene home = new HomeScene(draw);
     private final SettingsScene settings = new SettingsScene(draw);
     private final WinScene win = new WinScene(draw);
+    /** The board card's rectangle, reused so the back button can keep off it. */
+    private final float[] avoidRect = new float[4];
 
     private BoardLayout lastBoard;
 
@@ -99,6 +101,33 @@ public final class Renderer {
                 drawGame(canvas, width, height, game, ui, effects, now);
                 break;
         }
+        // On a touch screen the way back is a button, drawn last so nothing covers it.
+        // The title screen has none: back from there leaves the game, and that is the
+        // phone's own business.
+        String back = backLabel(ui);
+        if (HudScene.touch() && back != null) {
+            float[] avoid = null;
+            if (ui.screen == UiState.SETTINGS) {
+                avoid = settings.panelRect(width, height);
+            } else if (lastBoard != null && !ui.won) {
+                avoidRect[0] = lastBoard.cardLeft();
+                avoidRect[1] = lastBoard.cardTop();
+                avoidRect[2] = lastBoard.cardRight();
+                avoidRect[3] = lastBoard.cardBottom();
+                avoid = avoidRect;
+            }
+            hud.drawBackButton(canvas, width, height, back, ui.highContrastOn, avoid);
+        } else {
+            HudScene.forgetBackButton();
+        }
+    }
+
+    /** What the on-screen back button says on this screen, or null for no button. */
+    static String backLabel(UiState ui) {
+        if (ui.screen == UiState.SETTINGS) {
+            return "BACK";
+        }
+        return ui.screen == UiState.GAME ? "HOME" : null;
     }
 
     private void drawGame(Canvas canvas, float width, float height, GameState game,

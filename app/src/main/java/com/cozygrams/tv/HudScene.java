@@ -289,6 +289,7 @@ public final class HudScene {
         touchFit = 1f;
         touchHeld = -1;
         touchRectsDrawn = false;
+        backDrawn = false;
         density = 1f;
         headEyebrow = true;
     }
@@ -326,6 +327,8 @@ public final class HudScene {
     public static final int TOUCH_MENU = 3;
     /** The pen, used at the cursor. */
     public static final int TOUCH_MARK = 4;
+    /** The on-screen back button; not one of the pad's rectangles. */
+    public static final int TOUCH_BACK = 5;
 
     /** Where each touch button was last drawn: left, top, right, bottom. */
     private static final float[][] touchRects = new float[5][4];
@@ -400,6 +403,107 @@ public final class HudScene {
             }
         }
         return -1;
+    }
+
+    // ---- The on-screen back button ---------------------------------------------------
+
+    /**
+     * Where the back button was last drawn — left, top, right, bottom — and whether it
+     * was drawn this frame at all.
+     *
+     * <p>A television has a Back key on every remote and everybody in the room knows it.
+     * A phone has a gesture, or a navigation-bar arrow some phones hide, and a lot of
+     * people never reach for either inside a game: they look for a button on the screen,
+     * find none, and are stuck on a puzzle with no way back to the title or out of the
+     * cozy corner. So on a touch screen the way back is drawn, top left, where every
+     * phone app keeps it.
+     */
+    private static final float[] backRect = new float[4];
+    private static boolean backDrawn;
+
+    /** Forgets the button, for a frame that will not draw it. */
+    static void forgetBackButton() {
+        backDrawn = false;
+    }
+
+    /** True when a point lands on the back button drawn this frame. */
+    public static boolean backButtonAt(float x, float y) {
+        if (!touch || !backDrawn) {
+            return false;
+        }
+        float slop = Theme.scale(8);
+        return x >= backRect[0] - slop && x <= backRect[2] + slop
+                && y >= backRect[1] - slop && y <= backRect[3] + slop;
+    }
+
+    /** The button's height: a caption's worth of pill, never under the 48dp floor. */
+    static float backButtonHeight() {
+        return Math.max(Theme.scale(56), touchMinPx());
+    }
+
+    /**
+     * Draws the back button in the top-left corner of the safe area: a dark pill with a
+     * chevron and a word, so it reads as a control on the warm backdrop and on the paper.
+     *
+     * <p>{@code avoid} is the screen's main surface — the board's card, the corner's
+     * panel — as left, top, right, bottom. Where the corner beside it is too tight for
+     * the word, as it is beside a 20x20 on a 16:9 phone, the button gives up the word and
+     * keeps the chevron in a 48dp circle rather than lying across the paper.
+     */
+    void drawBackButton(Canvas canvas, float width, float height, String label,
+                        boolean bold, float[] avoid) {
+        float h = backButtonHeight();
+        float size = Math.min(Theme.textSize(Theme.CAPTION), h * .42f);
+        float chevron = h * .22f;
+        float pad = h * .42f;
+        float gap = h * .18f;
+        float left = Theme.safeLeft(width);
+        float top = Theme.safeTop(height);
+        float w = pad + chevron + gap + draw.measure(label, size, true) + pad;
+        if (avoid != null && left + w > avoid[0] && top + h > avoid[1]
+                && left < avoid[2] && top < avoid[3]) {
+            w = h;
+            label = "";
+            pad = (h - chevron) / 2;
+        }
+        backRect[0] = left;
+        backRect[1] = top;
+        backRect[2] = left + w;
+        backRect[3] = top + h;
+        backDrawn = true;
+        boolean held = touchHeld == TOUCH_BACK;
+        float sink = held ? Theme.scale(2) : 0;
+        if (!held) {
+            draw.roundRect(canvas, left, top + Theme.scale(3), left + w,
+                    top + h + Theme.scale(3), h / 2, Draw.withAlpha(Theme.INK, 90));
+        }
+        int fill = held ? Draw.blend(Theme.PANEL, Theme.INK, .4f) : Theme.PANEL;
+        draw.roundRect(canvas, left, top + sink, left + w, top + h + sink, h / 2,
+                Draw.withAlpha(fill, bold ? 250 : 235));
+        draw.roundRectStroke(canvas, left, top + sink, left + w, top + h + sink, h / 2,
+                Theme.hairline(), Draw.withAlpha(Theme.CREAM, bold ? 200 : 120));
+        float centreY = top + h / 2 + sink;
+        float cx = left + pad + chevron * .5f;
+        Paint paint = backPaint;
+        paint.setColor(Theme.CREAM);
+        paint.setStrokeWidth(Math.max(2f, h * .07f));
+        canvas.drawLine(cx + chevron * .45f, centreY - chevron, cx - chevron * .45f, centreY,
+                paint);
+        canvas.drawLine(cx - chevron * .45f, centreY, cx + chevron * .45f, centreY + chevron,
+                paint);
+        if (!label.isEmpty()) {
+            draw.text(canvas, label, left + pad + chevron + gap,
+                    centreY + draw.capCentreOffset(size), size, Theme.CREAM,
+                    Paint.Align.LEFT, true);
+        }
+    }
+
+    private final Paint backPaint = newStrokePaint();
+
+    private static Paint newStrokePaint() {
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        return paint;
     }
 
     /**
@@ -488,11 +592,12 @@ public final class HudScene {
      *
      * <p>A gamepad's View / Select key — two overlapping squares on an Xbox pad — is how
      * Android TV means Back, and the legend used to never mention it. {@code ⧉} is that
-     * glyph. A bare remote just says BACK.
+     * glyph. A bare remote just says BACK. A touch screen names the on-screen button that
+     * does the job from a puzzle and its win card, which reads HOME.
      */
     public static String backName() {
         if (touch) {
-            return "BACK";
+            return "HOME";
         }
         return remoteOnly ? "Back" : "⧉";
     }

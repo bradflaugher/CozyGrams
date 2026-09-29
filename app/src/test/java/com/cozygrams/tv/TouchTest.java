@@ -30,7 +30,8 @@ public class TouchTest {
     public void aPhoneNamesWhatAFingerDoes() {
         HudScene.setTouch(true);
         assertEquals("TAP", HomeScene.confirmName());
-        assertEquals("BACK", HudScene.backName());
+        assertEquals("the win card names the HOME button on the screen",
+                "HOME", HudScene.backName());
         assertTrue(HudScene.inviteLine().contains("controller"));
         for (int row = 0; row < HomeScene.ITEM_COUNT; row++) {
             String footer = HomeScene.touchFooter(row);
@@ -44,15 +45,34 @@ public class TouchTest {
     public void nothingIsTappableBeforeItIsDrawn() {
         HudScene.setTouch(true);
         assertEquals(-1, HudScene.touchButtonAt(10, 10));
+        assertFalse(HudScene.backButtonAt(10, 10));
         assertEquals(-1, new SettingsScene(new Draw()).itemAt(10, 10));
         assertEquals(-1, new HomeScene(new Draw()).itemAt(10, 10));
         assertEquals(0, new HomeScene(new Draw()).stepAt(HomeScene.ITEM_SIZE, 10));
     }
 
+    /**
+     * People on phones look for a way back on the screen, not a gesture. Every screen a
+     * finger can get stuck on draws one; the title screen, where back means leaving the
+     * game, is left to the phone.
+     */
     @Test
-    public void theTouchButtonsAreFourDistinctActions() {
+    public void everyScreenButTheTitleHasAWayBackOnScreen() {
+        UiState ui = new UiState();
+        ui.screen = UiState.HOME;
+        assertEquals(null, Renderer.backLabel(ui));
+        ui.screen = UiState.GAME;
+        assertEquals("HOME", Renderer.backLabel(ui));
+        ui.won = true;
+        assertEquals("the win card too", "HOME", Renderer.backLabel(ui));
+        ui.screen = UiState.SETTINGS;
+        assertEquals("BACK", Renderer.backLabel(ui));
+    }
+
+    @Test
+    public void theTouchButtonsAreDistinctActions() {
         int[] buttons = {HudScene.TOUCH_FILL, HudScene.TOUCH_CROSS, HudScene.TOUCH_HINT,
-                HudScene.TOUCH_MENU};
+                HudScene.TOUCH_MENU, HudScene.TOUCH_MARK, HudScene.TOUCH_BACK};
         for (int i = 0; i < buttons.length; i++) {
             assertEquals(i, buttons[i]);
         }

@@ -534,6 +534,17 @@ public final class SettingsScene {
         return item >= 0 && item < ITEM_COUNT ? item : -1;
     }
 
+    private final float[] panel = new float[4];
+
+    /** The corner's panel on a screen this size, for the back button to keep clear of. */
+    public float[] panelRect(float width, float height) {
+        panel[0] = frame.left(width);
+        panel[1] = frame.top(height);
+        panel[2] = frame.right(width);
+        panel[3] = frame.bottom(height);
+        return panel;
+    }
+
     /** One row's pitch as last drawn: how far a finger drags to scroll by one row. */
     public float rowPitch() {
         return drawnStep;

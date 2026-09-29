@@ -723,6 +723,8 @@ public final class CozyGameView extends View {
 
     private int buttonPointer = -1;
     private int buttonHeld = -1;
+    /** The finger on the on-screen back button, which acts when it lifts there. */
+    private int backPointer = -1;
     /** What MARK found under the cursor, so painting only repeats that change. */
     private byte paintFrom;
 
@@ -876,6 +878,12 @@ public final class CozyGameView extends View {
     }
 
     private void touchDown(int pointer, float x, float y) {
+        if (backPointer < 0 && HudScene.backButtonAt(x, y)) {
+            backPointer = pointer;
+            performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            HudScene.setTouchHeld(HudScene.TOUCH_BACK);
+            return;
+        }
         if (ui.screen != UiState.GAME || ui.won) {
             if (menuPointer < 0) {
                 menuPointer = pointer;
@@ -1034,6 +1042,15 @@ public final class CozyGameView extends View {
     }
 
     private void touchUp(int pointer, float x, float y) {
+        if (pointer == backPointer) {
+            backPointer = -1;
+            HudScene.setTouchHeld(-1);
+            // Like any button on a phone: sliding off it before letting go changes nothing.
+            if (HudScene.backButtonAt(x, y)) {
+                goBack();
+            }
+            return;
+        }
         if (pointer == menuPointer) {
             menuPointer = -1;
             ui.settingsPressed = -1;
@@ -1073,6 +1090,7 @@ public final class CozyGameView extends View {
         aimPointer = -1;
         buttonPointer = -1;
         buttonHeld = -1;
+        backPointer = -1;
         menuPointer = -1;
         ui.settingsPressed = -1;
         HudScene.setTouchHeld(-1);
@@ -1696,12 +1714,7 @@ public final class CozyGameView extends View {
             return handleWinKey(key, repeat);
         }
         if (PlayerRegistry.isBack(key)) {
-            ui.screen = UiState.HOME;
-            ui.menu = 0;
-            if (speaking()) {
-                announce(describeMenu());
-            }
-            store.save(game, ui);
+            goHome();
             return true;
         }
 
@@ -1821,6 +1834,30 @@ public final class CozyGameView extends View {
         }
         store.save(game, ui);
         return true;
+    }
+
+    /** Leaves a puzzle for the title screen, keeping the board exactly as it is. */
+    private void goHome() {
+        ui.screen = UiState.HOME;
+        ui.menu = 0;
+        if (speaking()) {
+            announce(describeMenu());
+        }
+        store.save(game, ui);
+    }
+
+    /**
+     * The on-screen back button: exactly what Back does on each screen it is drawn on, by
+     * the same paths, so the button and the gesture can never disagree.
+     */
+    private void goBack() {
+        if (ui.screen == UiState.SETTINGS) {
+            leaveSettings();
+        } else if (ui.screen == UiState.GAME && ui.won) {
+            handleWinKey(KeyEvent.KEYCODE_BACK, false);
+        } else if (ui.screen == UiState.GAME) {
+            goHome();
+        }
     }
 
     /** Notes a centre press: what the square was, when, and what it was pressed on. */

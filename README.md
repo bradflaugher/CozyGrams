@@ -51,7 +51,7 @@ it decides what touching the board does, so the whole picture can be solved with
 | small squares | tap or slide to aim like a trackpad, then tap the cursor's square again or press **MARK**; hold **MARK** and slide the other thumb to paint |
 | reveal one square | **HINT** |
 | cozy corner | **MENU** — drag the list to scroll it, tap a row to change it |
-| back | the system back gesture |
+| back | **HOME** in the top-left corner of a puzzle or a finished picture, **BACK** in the Cozy Corner — or the system back gesture |
 
 Every screen names taps instead of buttons. Small boards grow to fill the phone. Picking up
 a controller brings the controller legend back; touching the screen again brings the pad
