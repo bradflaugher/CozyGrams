@@ -880,8 +880,10 @@ public final class CozyGameView extends View {
             tell(Theme.playerName(PlayerRegistry.SKY) + " joined the puzzle  ♥",
                     Theme.playerColor(PlayerRegistry.SKY));
             sfx.play(CozySfx.Sound.JOIN);
-            music.setPresence(2);
         }
+        // Rose's seat may have just filled beside a Sky who was already here, so the score
+        // follows the registry's count, announced or not.
+        music.setPresence(players.playerCount() >= 2 ? 2 : 1);
     }
 
     private void crossUnderPointer(float x, float y) {
