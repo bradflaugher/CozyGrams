@@ -365,6 +365,8 @@ public final class CozyGameView extends View {
         int freed = players.releaseDevice(deviceId);
         padsInTheRoom.remove(deviceId);
         HudScene.setRemoteOnly(players.deviceCount() > 0 && padsInTheRoom.isEmpty());
+        // The registry counts the finger too, so a pad going away cannot take Rose's seat
+        // from somebody who has been playing her on the glass.
         for (int player = 0; player < ui.joined.length; player++) {
             ui.joined[player] = players.seatOccupied(player);
         }
@@ -758,7 +760,10 @@ public final class CozyGameView extends View {
         HudScene.setTouch(true);
         // The finger on the glass is Rose. A controller that arrives later takes Sky's seat.
         ui.joined[0] = true;
-        fingerIsRose = true;
+        if (!fingerIsRose) {
+            fingerIsRose = true;
+            players.setTouchRose(true);
+        }
         ui.lastActive[0] = now();
         int action = event.getActionMasked();
         int index = event.getActionIndex();

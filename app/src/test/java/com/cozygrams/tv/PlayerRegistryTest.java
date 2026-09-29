@@ -659,4 +659,37 @@ public class PlayerRegistryTest {
         assertEquals(PlayerRegistry.ROSE, players.slotOf(12));
         assertFalse(players.seatOccupied(PlayerRegistry.SKY));
     }
+
+    // ---- A finger playing Rose ---------------------------------------------------------
+
+    @Test
+    public void withAFingerAsRoseTheFirstControllerSitsDownAsSky() {
+        PlayerRegistry players = new PlayerRegistry(twoPads());
+        players.setTouchRose(true);
+        assertEquals(PlayerRegistry.SKY, players.playerFor(11));
+        assertEquals(PlayerRegistry.SKY, players.justJoined());
+        assertEquals(2, players.playerCount());
+    }
+
+    @Test
+    public void openingSkysSeatHandsItToThePadAFingerWasSharingRoseWith() {
+        PlayerRegistry players = new PlayerRegistry(twoPads());
+        players.setSolo(true);
+        players.setTouchRose(true);
+        assertEquals(PlayerRegistry.ROSE, players.playerFor(11));
+
+        players.setSolo(false);
+
+        assertEquals(PlayerRegistry.SKY, players.slotOf(11));
+    }
+
+    @Test
+    public void aControllerGoingAwayLeavesTheFingersRoseSeated() {
+        PlayerRegistry players = new PlayerRegistry(twoPads());
+        players.setTouchRose(true);
+        players.playerFor(11);
+        players.releaseDevice(11);
+        assertTrue(players.seatOccupied(PlayerRegistry.ROSE));
+        assertFalse(players.seatOccupied(PlayerRegistry.SKY));
+    }
 }

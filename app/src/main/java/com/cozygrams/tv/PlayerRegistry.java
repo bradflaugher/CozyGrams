@@ -198,6 +198,11 @@ public final class PlayerRegistry {
     private boolean justStirred;
     /** True on a one-player evening: every controller is Rose, and Sky's seat is shut. */
     private boolean solo;
+    /**
+     * True once a finger on the glass is playing Rose. That seat is then taken even though
+     * no controller holds it, so the first pad picked up on a phone sits down as Sky.
+     */
+    private boolean touchRose;
 
     public PlayerRegistry() {
         this(new PlatformDevices());
@@ -267,10 +272,13 @@ public final class PlayerRegistry {
      */
     public void setSolo(boolean on) {
         solo = on;
+        // With a finger already in Rose's seat, the first controller here is the one
+        // that becomes Sky.
+        int skyAt = touchRose ? 0 : 1;
         int present = 0;
         for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
             boolean here = !away.contains(entry.getKey());
-            entry.setValue(!on && here && present == 1 ? SKY : ROSE);
+            entry.setValue(!on && here && present == skyAt ? SKY : ROSE);
             if (here) {
                 present++;
             }
@@ -279,6 +287,11 @@ public final class PlayerRegistry {
 
     public boolean solo() {
         return solo;
+    }
+
+    /** Says a finger is playing Rose. See {@link #touchRose}. */
+    public void setTouchRose(boolean on) {
+        touchRose = on;
     }
 
     /** The slot that was claimed by the most recent {@link #playerFor}, or -1. */
@@ -353,6 +366,9 @@ public final class PlayerRegistry {
      * whose batteries died has {@code joined} true for ever and nobody at the table.
      */
     public boolean seatOccupied(int player) {
+        if (player == ROSE && touchRose) {
+            return true;
+        }
         for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
             if (entry.getValue() == player && !away.contains(entry.getKey())) {
                 return true;
