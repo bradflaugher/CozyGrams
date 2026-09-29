@@ -1,6 +1,6 @@
 A cozy evening, a picture made of clues, and a second controller if someone sits down beside you.
 
-CozyGrams is an endless nonogram for Android TV, phones and tablets. Play solo, or hand someone a second controller and solve one shared picture together. Each controller keeps its own player, cursor, and color. The first controller to send input becomes Rose, and the second becomes Sky; on a phone or tablet, turn on Two players in the cozy corner to let Sky sit down. They share the credit, and there is no scoreboard. The Story Book turns each finished puzzle into a little keepsake and remembers the chapters you have completed.
+CozyGrams is an endless nonogram for Android TV, phones and tablets. Play solo, or hand someone a second controller and solve one shared picture together. Each controller keeps its own player, cursor, and color. On a TV, the first controller to send input becomes Rose and the second becomes Sky. On a phone or tablet your finger is Rose, and with Two players on in the cozy corner, a paired controller joins as Sky. They share the credit, and there is no scoreboard. The Story Book turns each finished puzzle into a little keepsake and remembers the chapters you have completed.
 
 TWO ON THE COUCH
 • Rose and Sky keep their seats for the session, even if a controller falls asleep and wakes back up.

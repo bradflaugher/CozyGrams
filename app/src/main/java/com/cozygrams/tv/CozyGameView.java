@@ -715,6 +715,12 @@ public final class CozyGameView extends View {
     private int aimCellY = -1;
     /** Whether this finger went down on a board big enough to be touched directly. */
     private boolean aimDirect;
+    /**
+     * The board as it was drawn when this finger went down. The first touch after a
+     * controller redraws the board with touch geometry, so a stroke keeps reading its
+     * squares off the layout it started on rather than jumping to the new one mid-drag.
+     */
+    private BoardLayout aimBoard;
 
     /** A direct drag's stroke: which mark it lays, and the axis it is locked to. */
     private boolean strokeCross;
@@ -962,6 +968,7 @@ public final class CozyGameView extends View {
         aimDirect = squaresAreDirect();
         strokeAxis = 0;
         BoardLayout board = renderer.board();
+        aimBoard = board;
         aimCellX = cellColumn(board, x);
         aimCellY = cellRow(board, y);
         if (aimCellX >= 0 && aimCellY >= 0) {
@@ -995,7 +1002,7 @@ public final class CozyGameView extends View {
                 paintIfHeld();
             }
         }
-        BoardLayout board = renderer.board();
+        BoardLayout board = aimBoard;
         float step = Math.max(board == null ? 0 : board.cell, mm(TOUCH_STEP_MM));
         aimCarryX += x - aimLastX;
         aimCarryY += y - aimLastY;
@@ -1040,7 +1047,7 @@ public final class CozyGameView extends View {
                 markAtCursor(strokeCross);
             }
         }
-        BoardLayout board = renderer.board();
+        BoardLayout board = aimBoard;
         if (board == null || ui.won) {
             return;
         }
