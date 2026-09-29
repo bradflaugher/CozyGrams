@@ -2341,7 +2341,9 @@ public final class Preview {
      * "Six pictures done" hearts — a screenshot mechanism hiding the thing the screenshot
      * was taken to show.
      *
-     * <p><b>What is not stamped.</b> The frames inside a clip. They exist for a few minutes
+     * <p><b>What is not stamped.</b> The {@code store/} frames, which are uploaded to Google
+     * Play as they are and are checked against {@link #MANIFEST} and the committed copies
+     * under {@code fastlane/} instead. And the frames inside a clip. They exist for a few minutes
      * between being rendered and being handed to ffmpeg, they are deleted afterwards, and a
      * badge burned into fifty-eight of them in a row is a distraction in the one artefact
      * that is about motion. The clip's contact sheet — which is the thing a review actually
@@ -2509,11 +2511,19 @@ public final class Preview {
                     .append("** (sources fingerprint `").append(fingerprint)
                     .append("`) on ").append(stampedDate()).append(", at ")
                     .append(width).append('x').append(height).append(".\n\n")
-                    .append("Every frame carries the same commit and fingerprint in its "
-                            + "bottom-left corner, because\nthis directory is in "
-                            + "`.gitignore` and a PNG that leaves it takes nothing else "
-                            + "with it.\nIf the corner of a picture disagrees with `git "
-                            + "log -1`, the picture is old.\n\n")
+                    .append("Every frame outside `store/` carries the same commit and "
+                            + "fingerprint in its bottom-left\ncorner, because this "
+                            + "directory is in `.gitignore` and a PNG that leaves it takes "
+                            + "nothing\nelse with it. If the corner of a picture disagrees "
+                            + "with `git log -1`, the picture is old.\n\n"
+                            + "The `store/` frames are the Google Play listing's screenshots "
+                            + "and carry no stamp and no alpha\nchannel, so they upload as "
+                            + "they are. Their freshness is `")
+                    .append(MANIFEST)
+                    .append("`'s to vouch for: `sha256sum -c`\nbelow names a store frame "
+                            + "that has changed since this render, and comparing one "
+                            + "against its copy\nunder `fastlane/metadata/android/en-US/"
+                            + "images/` with `cmp` says whether the listing is current.\n\n")
                     .append("```sh\n")
                     .append("tools/preview/render.sh tools/preview/out ")
                     .append(width).append(' ').append(height)
