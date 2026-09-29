@@ -388,32 +388,59 @@ public final class Preview {
                         "A 5x5 on a phone, the shortest rail: the pad shrinks rather than spills.",
                         Preview::phoneFive, 2400, 1080),
                 new Frame("store/phone-1-game.png",
-                        "Play Store phone shot: a 10x10 in touch mode at 18:9, Play's widest allowed.",
-                        Preview::storeGame, 2160, 1080),
-                new Frame("store/phone-2-home.png",
-                        "Play Store phone shot: the title screen in touch mode.",
-                        Preview::phoneHome, 2160, 1080),
-                new Frame("store/phone-3-win.png",
-                        "Play Store phone shot: a finished picture.",
-                        Preview::phoneWin, 2160, 1080),
+                        "Play Store phone shot, 16:9: a 15x15 solo with the FILL | CROSS pen, MARK and HOME.",
+                        Preview::phoneGame, 1920, 1080),
+                new Frame("store/phone-2-cross-pen.png",
+                        "Play Store phone shot: the CROSS pen picked up on a 20x20.",
+                        Preview::phoneCrossPen, 1920, 1080),
+                new Frame("store/phone-3-home.png",
+                        "Play Store phone shot: the title screen on chapter one of the Story Book.",
+                        Preview::storeHome, 1920, 1080),
+                new Frame("store/phone-4-story.png",
+                        "Play Store phone shot: a Story Book chapter part way through, one player.",
+                        Preview::storeStory, 1920, 1080),
+                new Frame("store/phone-5-two-players.png",
+                        "Play Store phone shot: the Cozy Corner with a finger on Two players.",
+                        Preview::storeTwoPlayersSwitch, 1920, 1080),
+                new Frame("store/phone-6-win.png",
+                        "Play Store phone shot: a Story Book chapter finished, its hearts filling in.",
+                        Preview::storeStoryWin, 1920, 1080),
                 new Frame("store/tablet7-1-game.png",
-                        "Play Store 7-inch tablet shot: a 10x10 at 16:10.",
-                        Preview::storeTabletGame, 1920, 1200),
-                new Frame("store/tablet7-2-home.png",
-                        "Play Store 7-inch tablet shot: the title screen.",
-                        Preview::tabletHome, 1920, 1200),
-                new Frame("store/tablet7-3-win.png",
-                        "Play Store 7-inch tablet shot: a finished picture.",
-                        Preview::storeTabletWin, 1920, 1200),
+                        "Play Store 7-inch tablet shot, 16:9 at 600dp: a 15x15 with the pen.",
+                        Preview::storeTablet7Game, 1920, 1080),
+                new Frame("store/tablet7-2-story.png",
+                        "Play Store 7-inch tablet shot: a Story Book chapter part way through.",
+                        Preview::storeTablet7Story, 1920, 1080),
+                new Frame("store/tablet7-3-two-players.png",
+                        "Play Store 7-inch tablet shot: the Cozy Corner with a finger on Two players.",
+                        Preview::storeTablet7Settings, 1920, 1080),
+                new Frame("store/tablet7-4-win.png",
+                        "Play Store 7-inch tablet shot: a Story Book chapter finished.",
+                        Preview::storeTablet7Win, 1920, 1080),
                 new Frame("store/tablet10-1-game.png",
-                        "Play Store 10-inch tablet shot: a 10x10 at 16:10.",
-                        Preview::storeTabletGame, 2560, 1600),
+                        "Play Store 10-inch tablet shot, 16:9 at 800dp: a Story Book chapter with the pen.",
+                        Preview::storeTablet10Game, 2560, 1440),
                 new Frame("store/tablet10-2-home.png",
                         "Play Store 10-inch tablet shot: the title screen.",
-                        Preview::tabletHome, 2560, 1600),
-                new Frame("store/tablet10-3-win.png",
-                        "Play Store 10-inch tablet shot: a finished picture.",
-                        Preview::storeTabletWin, 2560, 1600),
+                        Preview::storeTablet10Home, 2560, 1440),
+                new Frame("store/tablet10-3-two-players.png",
+                        "Play Store 10-inch tablet shot: the Cozy Corner with a finger on Two players.",
+                        Preview::storeTablet10Settings, 2560, 1440),
+                new Frame("store/tablet10-4-win.png",
+                        "Play Store 10-inch tablet shot: a finished endless picture.",
+                        Preview::storeTablet10Win, 2560, 1440),
+                new Frame("store/tv-1-home.png",
+                        "Play Store TV shot: the title screen with Rose and Sky both ready.",
+                        Preview::homeTogether, 1920, 1080),
+                new Frame("store/tv-2-game.png",
+                        "Play Store TV shot: the reference 10x10, both playing, gamepad legend.",
+                        Preview::gameTen, 1920, 1080),
+                new Frame("store/tv-3-story.png",
+                        "Play Store TV shot: a Story Book chapter part way through, both playing.",
+                        Preview::gameStory, 1920, 1080),
+                new Frame("store/tv-4-win.png",
+                        "Play Store TV shot: a Story Book chapter finished together.",
+                        Preview::winStory, 1920, 1080),
                 new Frame("phone/30-phone-small.png",
                         "A 16:9 phone at 1920x1080 with a 20x20 board.",
                         Preview::phoneTwenty, 1920, 1080),
@@ -912,16 +939,115 @@ public final class Preview {
         asPhone(() -> winSettled(canvas, renderer, w, h));
     }
 
-    private static void storeGame(Canvas canvas, Renderer renderer, int w, int h) {
-        asPhone(() -> gameTen(canvas, renderer, w, h));
+    // The store set. Play takes 16:9 for a listing to be eligible for promotion, so every
+    // one of these is pinned at a 16:9 size; what changes between the phone and the two
+    // tablets is the density, which is what decides how big the thumb pad and the text are.
+
+    /** A 7-inch tablet: 600dp on the short side. */
+    private static void asSevenInch(int h, Runnable frame) {
+        asTouch(h / 600f, frame);
     }
 
-    private static void storeTabletGame(Canvas canvas, Renderer renderer, int w, int h) {
-        asTouch(tabletDensity(w, h), () -> gameTen(canvas, renderer, w, h));
+    /** A 10-inch tablet: 800dp on the short side. */
+    private static void asTenInch(int h, Runnable frame) {
+        asTouch(h / 800f, frame);
     }
 
-    private static void storeTabletWin(Canvas canvas, Renderer renderer, int w, int h) {
-        asTouch(tabletDensity(w, h), () -> winSettled(canvas, renderer, w, h));
+    /** The title screen as a first evening sees it: chapter one, no greeting. */
+    private static void storeHomeScene(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_SWEETHEART, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.HOME;
+        ui.menu = HomeScene.ITEM_STORY;
+        ui.joined[0] = true;
+        HomeScene.setPendingChapter(0);
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    /**
+     * The Cozy Corner scrolled so its Two players row sits whole in the list, with a finger
+     * just lifted from it: the switch is on and the line under the list says what it does.
+     */
+    private static void twoPlayersSwitch(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.SETTINGS;
+        ui.screenBeforeSettings = UiState.GAME;
+        ui.joined[0] = true;
+        ui.musicOn = true;
+        ui.sfxOn = true;
+        ui.hintsOn = true;
+        ui.twoPlayers = true;
+        ui.settingsScroll = STORE_SETTINGS_SCROLL;
+        ui.settingsTouched = SettingsScene.ITEM_TWO_PLAYERS;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    /**
+     * Draws a frame the way the running game would, with tonight's baseline set.
+     *
+     * <p>{@code CozyGameView} always tells the rail how many pictures the pair sat down
+     * with, so its closing block reads THIS SESSION; only the harness leaves it unset and
+     * sees the TOGETHER SO FAR fallback. A store shot is the one place that difference
+     * would be advertised, so these set it — every frame puts it back first, see
+     * {@link #forgetSceneMemory}.
+     */
+    private static void tonight(Runnable frame) {
+        HudScene.setPuzzlesBeforeTonight(0);
+        frame.run();
+    }
+
+    /** Whole rows, so no row is cut in half at the top of the list. */
+    private static final float STORE_SETTINGS_SCROLL = 4f;
+
+    private static void storeHome(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> storeHomeScene(canvas, renderer, w, h));
+    }
+
+    private static void storeStory(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> gameStory(canvas, renderer, w, h));
+    }
+
+    private static void storeTwoPlayersSwitch(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> twoPlayersSwitch(canvas, renderer, w, h));
+    }
+
+    private static void storeStoryWin(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> winStory(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet7Game(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> tonight(() -> gameFifteen(canvas, renderer, w, h)));
+    }
+
+    // Not the title screen: it lays out by the window rather than by density, so at 1920x1080
+    // it would be the phone's shot over again, byte for byte.
+    private static void storeTablet7Story(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> gameStory(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet7Settings(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> twoPlayersSwitch(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet7Win(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> winStory(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet10Game(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> gameStory(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet10Home(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> storeHomeScene(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet10Settings(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> twoPlayersSwitch(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet10Win(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> winSettled(canvas, renderer, w, h));
     }
 
     private static void phoneFive(Canvas canvas, Renderer renderer, int w, int h) {
@@ -2074,7 +2200,13 @@ public final class Preview {
         canvas.release();
 
         BufferedImage image = target.image();
-        if (!Boolean.getBoolean("cozy.preview.clean")) {
+        boolean store = frame.name.startsWith(STORE_DIR);
+        if (store) {
+            // What goes to Google Play: no provenance stamp in the pixels, since these are
+            // the pictures a stranger judges the game by, and no alpha channel, which Play
+            // refuses on a screenshot. MANIFEST.sha256 still ties each one to its tree.
+            image = opaque(image);
+        } else if (!Boolean.getBoolean("cozy.preview.clean")) {
             Provenance.stamp(image);
         }
 
@@ -2091,6 +2223,22 @@ public final class Preview {
         return file;
     }
 
+    /** The sub-directory whose frames are the Play Store listing's screenshots. */
+    private static final String STORE_DIR = "store/";
+
+    /** The same pixels in a 24-bit image, for an upload that will not take an alpha channel. */
+    private static BufferedImage opaque(BufferedImage image) {
+        BufferedImage rgb = new BufferedImage(image.getWidth(), image.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = rgb.createGraphics();
+        try {
+            g.drawImage(image, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return rgb;
+    }
+
     /**
      * Puts back everything the two menus remember in static fields.
      *
@@ -2103,21 +2251,34 @@ public final class Preview {
      * screenshot. Called before every frame rather than after the ones that dirty
      * something, so a new scenario cannot forget.
      *
-     * <p>{@code HudScene.puzzlesBeforeTonight} is the one piece of room memory not reset
-     * here: its setter clamps at zero and its "nobody has said" value is -1, so there is
-     * no public way back. No frame sets it.
+     * <p>{@code HudScene.puzzlesBeforeTonight} has no public way back — its setter clamps
+     * at zero and its "nobody has said" value is -1 — so it goes back through the rail's
+     * own package-private {@code forgetTheRoom}, which the unit tests use for the same
+     * reason. The store shots set it; see {@link #tonight}.
      */
     private static void forgetSceneMemory() {
         HomeScene.disarmRestart();
         HomeScene.setWelcome("");
         HomeScene.setPendingSize(0);
+        HomeScene.setPendingChapter(-1);
         SettingsScene.disarmDefaults();
         SettingsScene.setTidyingPlayer(-1);
+        forgetTheRail();
         HudScene.setRemoteOnly(false);
         HudScene.setJoinedAt(0);
         HudScene.setSeatStirredAt(0, 0);
         HudScene.setSeatStirredAt(1, 0);
         Comfort.get().restoreDefaults();
+    }
+
+    private static void forgetTheRail() {
+        try {
+            java.lang.reflect.Method forget = HudScene.class.getDeclaredMethod("forgetTheRoom");
+            forget.setAccessible(true);
+            forget.invoke(null);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("HudScene.forgetTheRoom is gone", e);
+        }
     }
 
     private static Bitmap load(File assets, String name) throws IOException {
