@@ -788,6 +788,11 @@ public final class CozyGameView extends View {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
                 touchUp(event.getPointerId(index), event.getX(index), event.getY(index));
+                if (action == MotionEvent.ACTION_UP) {
+                    // The last finger is off the glass: tell accessibility services a click
+                    // happened, the way a stock View does. What the tap did is already done.
+                    performClick();
+                }
                 break;
             case MotionEvent.ACTION_CANCEL:
                 releaseAllTouches();
@@ -796,6 +801,21 @@ public final class CozyGameView extends View {
                 break;
         }
         invalidate();
+        return true;
+    }
+
+    /**
+     * Reports the click to accessibility services and autofill, and nothing more.
+     *
+     * <p>The tap has already been acted on square by square in {@link #touchUp}, which is
+     * the only place that knows what was under the finger, so this must not act on it a
+     * second time. It is here because the platform's accessibility events for a click are
+     * sent from {@code View.performClick}, and a view that swallows every touch in
+     * {@code onTouchEvent} otherwise never sends them.
+     */
+    @Override
+    public boolean performClick() {
+        super.performClick();
         return true;
     }
 
