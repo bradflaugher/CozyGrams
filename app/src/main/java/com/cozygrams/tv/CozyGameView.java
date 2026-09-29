@@ -757,22 +757,15 @@ public final class CozyGameView extends View {
             invalidate();
             return true;
         }
+        if (!HudScene.touch()) {
+            // The finger lands on the rows a controller's focus was showing, so the list
+            // starts from there rather than jumping under it between down and up.
+            ui.settingsScroll = SettingsScene.windowStart(ui.menu);
+        }
         HudScene.setTouch(true);
         // The finger on the glass is Rose. A controller that arrives later takes Sky's seat.
         ui.joined[0] = true;
-        if (!fingerIsRose) {
-            fingerIsRose = true;
-            players.setTouchRose(true);
-            if (!ui.joined[PlayerRegistry.SKY] && players.seatOccupied(PlayerRegistry.SKY)) {
-                // A pad that was Rose until the finger arrived has moved over to Sky.
-                ui.joined[PlayerRegistry.SKY] = true;
-                HudScene.setJoinedAt(now());
-                tell(Theme.playerName(PlayerRegistry.SKY) + " joined the puzzle  ♥",
-                        Theme.playerColor(PlayerRegistry.SKY));
-                sfx.play(CozySfx.Sound.JOIN);
-                music.setPresence(2);
-            }
-        }
+        claimRoseForTouch();
         ui.lastActive[0] = now();
         int action = event.getActionMasked();
         int index = event.getActionIndex();
@@ -865,11 +858,38 @@ public final class CozyGameView extends View {
         return true;
     }
 
+    /**
+     * The first time a finger or a mouse plays Rose, tells the registry her seat is taken.
+     * A pad that was Rose until then may move over to Sky; it is announced, and any
+     * direction it was holding on Rose's cursor is let go, since its key-up will now be
+     * looked for on Sky's.
+     */
+    private void claimRoseForTouch() {
+        if (fingerIsRose) {
+            return;
+        }
+        fingerIsRose = true;
+        players.setTouchRose(true);
+        HoldRepeat roseHold = cursorHolds[PlayerRegistry.ROSE];
+        if (roseHold.active && players.slotOf(roseHold.deviceId) == PlayerRegistry.SKY) {
+            roseHold.clear();
+        }
+        if (!ui.joined[PlayerRegistry.SKY] && players.seatOccupied(PlayerRegistry.SKY)) {
+            ui.joined[PlayerRegistry.SKY] = true;
+            HudScene.setJoinedAt(now());
+            tell(Theme.playerName(PlayerRegistry.SKY) + " joined the puzzle  ♥",
+                    Theme.playerColor(PlayerRegistry.SKY));
+            sfx.play(CozySfx.Sound.JOIN);
+            music.setPresence(2);
+        }
+    }
+
     private void crossUnderPointer(float x, float y) {
         if (ui.screen != UiState.GAME || ui.won) {
             return;
         }
         ui.joined[0] = true;
+        claimRoseForTouch();
         ui.lastActive[0] = now();
         BoardLayout board = renderer.board();
         int column = cellColumn(board, x);
