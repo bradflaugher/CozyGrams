@@ -69,6 +69,25 @@ public class TouchTest {
         assertEquals("BACK", Renderer.backLabel(ui));
     }
 
+    /**
+     * The pen's halves share an edge. A tap just inside CROSS used to be answered by FILL,
+     * because the slop was applied before anything had been found under the finger.
+     */
+    @Test
+    public void aTapJustInsideCrossIsCross() throws Exception {
+        HudScene.setTouch(true);
+        java.lang.reflect.Field rects = HudScene.class.getDeclaredField("touchRects");
+        rects.setAccessible(true);
+        float[][] r = (float[][]) rects.get(null);
+        r[HudScene.TOUCH_FILL] = new float[]{0, 0, 100, 50};
+        r[HudScene.TOUCH_CROSS] = new float[]{100, 0, 200, 50};
+        java.lang.reflect.Field drawn = HudScene.class.getDeclaredField("touchRectsDrawn");
+        drawn.setAccessible(true);
+        drawn.setBoolean(null, true);
+        assertEquals(HudScene.TOUCH_CROSS, HudScene.touchButtonAt(101, 25));
+        assertEquals(HudScene.TOUCH_FILL, HudScene.touchButtonAt(99, 25));
+    }
+
     @Test
     public void theTouchButtonsAreDistinctActions() {
         int[] buttons = {HudScene.TOUCH_FILL, HudScene.TOUCH_CROSS, HudScene.TOUCH_HINT,

@@ -734,6 +734,9 @@ public final class CozyGameView extends View {
     private float menuLastY;
     private boolean menuMoved;
 
+    /** True once a finger has played Rose, which is a seat no controller holds. */
+    private boolean fingerIsRose;
+
     private final Runnable aimLongPress = this::longPressSquare;
     private boolean taughtTouch;
 
@@ -755,6 +758,7 @@ public final class CozyGameView extends View {
         HudScene.setTouch(true);
         // The finger on the glass is Rose. A controller that arrives later takes Sky's seat.
         ui.joined[0] = true;
+        fingerIsRose = true;
         ui.lastActive[0] = now();
         int action = event.getActionMasked();
         int index = event.getActionIndex();
@@ -1135,16 +1139,16 @@ public final class CozyGameView extends View {
         }
     }
 
-    /** Picks up the other pen, and says so once — out loud, too, for TalkBack. */
+    /** Picks up the other pen, and says so once. */
     private void choosePen(boolean cross) {
         if (ui.crossPen == cross) {
             return;
         }
         ui.crossPen = cross;
         sfx.play(CozySfx.Sound.MOVE);
-        String said = cross ? "Taps cross squares out" : "Taps fill squares";
-        tell(said, cross ? Theme.GOLD : Theme.PINK);
-        announce(said);
+        // tell() already speaks it for TalkBack.
+        tell(cross ? "Taps cross squares out" : "Taps fill squares",
+                cross ? Theme.GOLD : Theme.PINK);
     }
 
     /**
@@ -1659,15 +1663,17 @@ public final class CozyGameView extends View {
 
     /**
      * Opens or shuts Sky's seat to match {@link UiState#twoPlayers}, after the switch or a
-     * reset has changed it. Rose's seat is left alone: on a phone she is the finger, which
-     * is no controller the registry has ever heard of.
+     * reset has changed it. Rose keeps her seat without a controller only where a finger
+     * has actually been playing her — the finger is no controller the registry has ever
+     * heard of — and nowhere else, so a television whose Rose pad has gone does not go
+     * on drawing her cursor.
      */
     private void applyPlayerCount() {
         if (players.solo() == !ui.twoPlayers) {
             return;
         }
         players.setSolo(!ui.twoPlayers);
-        ui.joined[0] = ui.joined[0] || players.seatOccupied(PlayerRegistry.ROSE);
+        ui.joined[0] = players.seatOccupied(PlayerRegistry.ROSE) || fingerIsRose;
         ui.joined[1] = players.seatOccupied(PlayerRegistry.SKY);
         music.setPresence(players.playerCount() >= 2 ? 2 : 1);
     }

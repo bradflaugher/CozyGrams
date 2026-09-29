@@ -628,4 +628,35 @@ public class PlayerRegistryTest {
         assertEquals("a third pad doubles up, as it always has",
                 PlayerRegistry.ROSE, players.slotOf(13));
     }
+
+    @Test
+    public void reopeningSkysSeatKeepsTheReplacementWhoIsActuallyHere() {
+        PlayerRegistry players = new PlayerRegistry(twoPads().plug(13, "pad-new"));
+        players.playerFor(11);
+        players.playerFor(12);
+        players.releaseDevice(12);
+        assertEquals(PlayerRegistry.SKY, players.playerFor(13));
+
+        players.setSolo(true);
+        players.setSolo(false);
+
+        assertEquals(PlayerRegistry.ROSE, players.slotOf(11));
+        assertEquals("the pad in the room keeps Sky's seat, not the one that went",
+                PlayerRegistry.SKY, players.slotOf(13));
+        assertTrue(players.seatOccupied(PlayerRegistry.SKY));
+    }
+
+    @Test
+    public void aLoneControllerLeftAfterRoseGoesIsRoseNotSky() {
+        PlayerRegistry players = new PlayerRegistry(twoPads());
+        players.playerFor(11);
+        players.playerFor(12);
+        players.setSolo(true);
+        players.releaseDevice(11);
+
+        players.setSolo(false);
+
+        assertEquals(PlayerRegistry.ROSE, players.slotOf(12));
+        assertFalse(players.seatOccupied(PlayerRegistry.SKY));
+    }
 }

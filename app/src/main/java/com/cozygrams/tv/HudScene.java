@@ -393,7 +393,16 @@ public final class HudScene {
         if (!touch || !touchRectsDrawn) {
             return -1;
         }
-        // Forgiving by a few pixels either way: a thumb lands a little low and outside.
+        // A button the point is actually inside wins outright. The pen's two halves share
+        // an edge, and with the slop applied first a tap just right of the divider — on
+        // the half that says CROSS — was answered by FILL, which is tested first.
+        for (int button = 0; button < touchRects.length; button++) {
+            float[] r = touchRects[button];
+            if (x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]) {
+                return button;
+            }
+        }
+        // Then forgiving by a few pixels either way: a thumb lands a little low and outside.
         float slop = Theme.scale(6);
         for (int button = 0; button < touchRects.length; button++) {
             float[] r = touchRects[button];

@@ -259,16 +259,21 @@ public final class PlayerRegistry {
      *
      * <p>Shutting it seats every controller already known as Rose, so a pad that was Sky a
      * moment ago keeps working rather than going dead in somebody's hands. Opening it
-     * gives Sky's seat to the second controller the evening met, if there was one — the
-     * pad that would have been Sky all along — and leaves any others doubled up on Rose,
-     * which is where a third controller always sits.
+     * counts only the controllers still here: the first of them is Rose and the second
+     * takes Sky's seat — the pad that would have been Sky all along, in the order the
+     * evening met them — while any others double up on Rose, which is where a third
+     * controller always sits. A pad that has gone away is never handed a seat, so two
+     * controllers in the room can never end up both driving Rose with Sky's chair empty.
      */
     public void setSolo(boolean on) {
         solo = on;
-        int order = 0;
+        int present = 0;
         for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
-            entry.setValue(!on && order == 1 ? SKY : ROSE);
-            order++;
+            boolean here = !away.contains(entry.getKey());
+            entry.setValue(!on && here && present == 1 ? SKY : ROSE);
+            if (here) {
+                present++;
+            }
         }
     }
 
