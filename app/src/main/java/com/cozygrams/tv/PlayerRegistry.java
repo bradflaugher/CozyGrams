@@ -230,8 +230,19 @@ public final class PlayerRegistry {
         justShared = false;
 
         String name = nameOf(deviceId);
-        away.remove(name);
         Integer known = playerByDevice.get(name);
+        if (known != null && known == ROSE && !solo && away.contains(name)
+                && seatOccupied(ROSE) && !seatOccupied(SKY)) {
+            // Back from away to find somebody else in Rose's seat and Sky's empty — Sky's
+            // own pad after a one-player spell rewrote every seat to Rose, say. Sitting it
+            // down as Rose would leave two pads driving her, so it takes Sky, as any
+            // newcomer would.
+            away.remove(name);
+            playerByDevice.put(name, SKY);
+            justJoined = SKY;
+            return SKY;
+        }
+        away.remove(name);
         if (known != null) {
             // Either a device we have seen before, or the same controller back from a
             // reconnect under a new id. Both keep the identity they already had.
@@ -289,9 +300,25 @@ public final class PlayerRegistry {
         return solo;
     }
 
-    /** Says a finger is playing Rose. See {@link #touchRose}. */
+    /**
+     * Says a finger is playing Rose. See {@link #touchRose}.
+     *
+     * <p>With Sky's seat open and empty, a pad that sat down as Rose before the finger
+     * arrived moves over to Sky: the finger is Rose now, and leaving the pad there too
+     * would have two people driving one cursor while Sky's chair stays empty.
+     */
     public void setTouchRose(boolean on) {
+        boolean claiming = on && !touchRose;
         touchRose = on;
+        if (!claiming || solo || seatOccupied(SKY)) {
+            return;
+        }
+        for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
+            if (entry.getValue() == ROSE && !away.contains(entry.getKey())) {
+                entry.setValue(SKY);
+                return;
+            }
+        }
     }
 
     /** The slot that was claimed by the most recent {@link #playerFor}, or -1. */

@@ -763,6 +763,15 @@ public final class CozyGameView extends View {
         if (!fingerIsRose) {
             fingerIsRose = true;
             players.setTouchRose(true);
+            if (!ui.joined[PlayerRegistry.SKY] && players.seatOccupied(PlayerRegistry.SKY)) {
+                // A pad that was Rose until the finger arrived has moved over to Sky.
+                ui.joined[PlayerRegistry.SKY] = true;
+                HudScene.setJoinedAt(now());
+                tell(Theme.playerName(PlayerRegistry.SKY) + " joined the puzzle  ♥",
+                        Theme.playerColor(PlayerRegistry.SKY));
+                sfx.play(CozySfx.Sound.JOIN);
+                music.setPresence(2);
+            }
         }
         ui.lastActive[0] = now();
         int action = event.getActionMasked();
@@ -2396,6 +2405,14 @@ public final class CozyGameView extends View {
             return false;
         }
         if (amount == 0) {
+            return true;
+        }
+        if (ui.screen == UiState.SETTINGS && HudScene.touch()) {
+            // A finger's list is drawn where it was dragged to, not around the focus, so
+            // the wheel scrolls it the way a drag does — wheel up shows the rows above.
+            wheelCarry = 0;
+            ui.settingsScroll = SettingsScene.clampScroll(
+                    SettingsScene.clampScroll(ui.settingsScroll) - amount);
             return true;
         }
         if (Math.signum(amount) != Math.signum(wheelCarry)) {
