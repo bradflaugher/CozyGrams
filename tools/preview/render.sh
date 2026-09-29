@@ -137,7 +137,10 @@ fi
 # ---- Run -------------------------------------------------------------------------
 
 mkdir -p "$OUT_DIR"
-rm -f "$OUT_DIR"/*.png
+# The pinned sub-directories too: a frame that has been renamed or retired would otherwise
+# survive beside its replacement — in store/, straight into the Play listing — and the
+# manifest, which lists only what this run wrote, would never mention it.
+rm -f "$OUT_DIR"/*.png "$OUT_DIR"/sizes/*.png "$OUT_DIR"/phone/*.png "$OUT_DIR"/store/*.png
 
 echo "render.sh: rendering"
 clean_arg=()
