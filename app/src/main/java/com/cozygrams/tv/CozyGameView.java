@@ -1115,7 +1115,8 @@ public final class CozyGameView extends View {
      * A finger leaving the glass.
      *
      * @return true when it finished a tap — a button let go of where it was pressed, a menu
-     *         row tapped rather than dragged, a square tapped rather than stroked or held —
+     *         row tapped rather than dragged (and a row, not the space between them), a
+     *         square tapped rather than stroked or held —
      *         so {@link #onTouchEvent} reports a click only for something that was one
      */
     private boolean touchUp(int pointer, float x, float y) {
@@ -1132,11 +1133,7 @@ public final class CozyGameView extends View {
         if (pointer == menuPointer) {
             menuPointer = -1;
             ui.settingsPressed = -1;
-            if (!menuMoved) {
-                tapMenu(x, y);
-                return true;
-            }
-            return false;
+            return !menuMoved && tapMenu(x, y);
         }
         if (pointer == buttonPointer) {
             // The thumb pad acts as it is pressed, so letting go completes that press.
@@ -1302,17 +1299,24 @@ public final class CozyGameView extends View {
         menuLastY = y;
     }
 
-    /** A tap on a menu row, a stepper, or the win card. */
-    private void tapMenu(float x, float y) {
+    /**
+     * A tap on a menu row, a stepper, or the win card.
+     *
+     * @return true when it landed on something that acted — the win card, a home row or
+     *         its stepper, a Cozy Corner row — and false for blank space between them
+     */
+    private boolean tapMenu(float x, float y) {
         if (ui.screen == UiState.GAME && ui.won) {
+            // Anywhere on the card: it either deals the next picture or finishes the
+            // entrance, and handleWinKey always acts on a confirm.
             handleWinKey(KeyEvent.KEYCODE_BUTTON_A, false);
-            return;
+            return true;
         }
         if (ui.screen == UiState.HOME) {
             HomeScene home = renderer.home();
             int item = home.itemAt(x, y);
             if (item < 0) {
-                return;
+                return false;
             }
             int step = home.stepAt(item, x);
             if (ui.menu != item) {
@@ -1326,15 +1330,15 @@ public final class CozyGameView extends View {
                 } else {
                     browseStoryChapter(step);
                 }
-                return;
+                return true;
             }
             chooseHomeItem(0);
-            return;
+            return true;
         }
         if (ui.screen == UiState.SETTINGS) {
             int item = renderer.settings().itemAt(x, y);
             if (item < 0) {
-                return;
+                return false;
             }
             if (ui.menu != item) {
                 // Moving onto a question is not an answer to it.
@@ -1343,7 +1347,9 @@ public final class CozyGameView extends View {
             }
             ui.settingsTouched = item;
             chooseSetting();
+            return true;
         }
+        return false;
     }
 
     // ---- Held directions -----------------------------------------------------------
