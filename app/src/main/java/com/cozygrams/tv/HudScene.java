@@ -1072,7 +1072,21 @@ public final class HudScene {
             // it was over by 14 px at 720p, 20 at 1080p and 40 at 4K. Everything above the
             // name is either a player's identity or the shared bar; the name is the only
             // thing here that can yield without something going missing.
-            name = nameBlock(screenHeight, lane, game, 1);
+            Wrapped oneLine = nameBlock(screenHeight, lane, game, 1);
+            if (touch && widestLine(oneLine.lines, oneLine.size) > lane) {
+                // Except that one line has a floor, and on a phone at 3x the floor is wide:
+                // "Rain on the Window" with Two players on came to more than the lane at
+                // the prose floor and ran off the card. The name wins over the deck-and-size
+                // eyebrow there, which the next step would give up anyway, so try keeping
+                // both of its lines and losing the eyebrow first.
+                headEyebrow = false;
+                if (panelHeight(game, ui, name, legendRows) > available) {
+                    headEyebrow = true;
+                    name = oneLine;
+                }
+            } else {
+                name = oneLine;
+            }
         }
         if (touch && panelHeight(game, ui, name, legendRows) > available) {
             // And past even that, which only a phone reaches: a 5x5 at 3x with Larger
