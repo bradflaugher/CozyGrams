@@ -196,6 +196,8 @@ public final class PlayerRegistry {
     private boolean justShared;
     /** Set when {@link #stickStep} swallows an unarmed controller's first deflection. */
     private boolean justStirred;
+    /** True on a one-player evening: every controller is Rose, and Sky's seat is shut. */
+    private boolean solo;
 
     public PlayerRegistry() {
         this(new PlatformDevices());
@@ -234,6 +236,11 @@ public final class PlayerRegistry {
         int player;
         if (!seatOccupied(ROSE)) {
             player = ROSE;
+        } else if (solo) {
+            // A second controller on a one-player evening is the same person reaching
+            // for another pad, not somebody new — nothing to announce.
+            playerByDevice.put(name, ROSE);
+            return ROSE;
         } else if (!seatOccupied(SKY)) {
             player = SKY;
         } else {
@@ -245,6 +252,28 @@ public final class PlayerRegistry {
             justJoined = player;
         }
         return player;
+    }
+
+    /**
+     * Opens or shuts Sky's seat.
+     *
+     * <p>Shutting it seats every controller already known as Rose, so a pad that was Sky a
+     * moment ago keeps working rather than going dead in somebody's hands. Opening it
+     * gives Sky's seat to the second controller the evening met, if there was one — the
+     * pad that would have been Sky all along — and leaves any others doubled up on Rose,
+     * which is where a third controller always sits.
+     */
+    public void setSolo(boolean on) {
+        solo = on;
+        int order = 0;
+        for (Map.Entry<String, Integer> entry : playerByDevice.entrySet()) {
+            entry.setValue(!on && order == 1 ? SKY : ROSE);
+            order++;
+        }
+    }
+
+    public boolean solo() {
+        return solo;
     }
 
     /** The slot that was claimed by the most recent {@link #playerFor}, or -1. */

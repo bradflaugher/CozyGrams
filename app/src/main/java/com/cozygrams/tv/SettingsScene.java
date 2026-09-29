@@ -34,17 +34,23 @@ public final class SettingsScene {
     public static final int ITEM_DISTINCT_PLAYERS = 6;
     public static final int ITEM_BOLD_CURSOR = 7;
     public static final int ITEM_CALM_MOTION = 8;
-    public static final int ITEM_DEFAULTS = 9;
-    public static final int ITEM_START_STORY = 10;
-    public static final int ITEM_PRIVACY = 11;
-    public static final int ITEM_BACK = 12;
-    public static final int ITEM_COUNT = 13;
+    /**
+     * Whether a second controller may sit in as Sky. Last of the switches rather than
+     * first, because the corner opens on its first row and a reflexive A press from the
+     * sofa must not be able to stand somebody up.
+     */
+    public static final int ITEM_TWO_PLAYERS = 9;
+    public static final int ITEM_DEFAULTS = 10;
+    public static final int ITEM_START_STORY = 11;
+    public static final int ITEM_PRIVACY = 12;
+    public static final int ITEM_BACK = 13;
+    public static final int ITEM_COUNT = 14;
 
     /** Where the privacy policy lives; shown on the row, because a TV may have no browser. */
     static final String PRIVACY_URL = "bradflaugher.com/privacy/cozygrams";
 
     /** The last row that carries a switch; everything after it is an action. */
-    private static final int LAST_SWITCH = ITEM_CALM_MOTION;
+    private static final int LAST_SWITCH = ITEM_TWO_PLAYERS;
 
     /** Enough choices to scan at once from a sofa without turning the screen into a ledger. */
     static final int VISIBLE_ROWS = 7;
@@ -129,6 +135,7 @@ public final class SettingsScene {
                 "Player colors",
                 "Bolder cursors",
                 "Reduce motion",
+                "Two players",
                 defaultsArmed() ? "Reset all settings?" : "Reset settings",
                 storyRestartArmed() ? "Start the story over?" : "Start story over",
                 "Privacy policy",
@@ -157,6 +164,8 @@ public final class SettingsScene {
                 "Sky takes a deeper teal and a dashed ring",
                 "thicker cursor rings that are easy to find",
                 "fewer sparkles, with no pulsing",
+                ui.twoPlayers ? "a second controller can join as Sky"
+                        : "just you — every controller plays as Rose",
                 "every option back the way it started",
                 "chapter one, a fresh book",
                 PRIVACY_URL,
@@ -177,6 +186,7 @@ public final class SettingsScene {
                 comfort.distinctPlayers,
                 comfort.boldCursor,
                 comfort.calmMotion,
+                ui.twoPlayers,
                 false,
                 false,
                 false,
@@ -236,6 +246,9 @@ public final class SettingsScene {
                 return sayState(item, ui, now);
             case ITEM_CALM_MOTION:
                 comfort.calmMotion = !comfort.calmMotion;
+                return sayState(item, ui, now);
+            case ITEM_TWO_PLAYERS:
+                ui.twoPlayers = !ui.twoPlayers;
                 return sayState(item, ui, now);
             case ITEM_DEFAULTS:
                 return putEverythingBack(ui, now);
@@ -401,6 +414,20 @@ public final class SettingsScene {
         return descriptions(ui)[Math.floorMod(focus, ITEM_COUNT)];
     }
 
+    /**
+     * The bottom line on a touch screen. There is no highlight to explain there — a finger
+     * does not leave one behind — so it explains the row that was last touched, and says
+     * nothing at all until one has been.
+     */
+    static String touchBottomLine(long now, UiState ui) {
+        if (defaultsArmed() || storyRestartArmed()
+                || (!note.isEmpty() && noteAt > 0 && now - noteAt < NOTE_MS)) {
+            return bottomLine(ui.settingsTouched, now, ui);
+        }
+        return ui.settingsTouched < 0 ? ""
+                : descriptions(ui)[Math.floorMod(ui.settingsTouched, ITEM_COUNT)];
+    }
+
     /** Puts the screen's memory back, for tests that share one static corner between them. */
     static void forgetTheRoom() {
         defaultsArmedAt = 0;
@@ -441,8 +468,28 @@ public final class SettingsScene {
         if (selected <= ITEM_SFX) return "SOUND";
         if (selected <= ITEM_HINTS) return "HELPING HANDS";
         if (selected <= ITEM_CALM_MOTION) return "COMFORT & ACCESS";
+        if (selected == ITEM_TWO_PLAYERS) return "PLAYERS";
         if (selected == ITEM_PRIVACY) return "ABOUT";
         return "STORY & RESET";
+    }
+
+    /** How far the list can be dragged, in rows: far enough to bring the last one in. */
+    static float maxScroll() {
+        return ITEM_COUNT - VISIBLE_ROWS;
+    }
+
+    /** A drag's scroll position, held to the list. */
+    static float clampScroll(float rows) {
+        return Math.max(0, Math.min(maxScroll(), rows));
+    }
+
+    /**
+     * The first row of the window. A controller's window follows its focus; a finger's
+     * window is wherever the finger left it, so the two never fight over the same list.
+     */
+    static float windowTop(UiState ui) {
+        return HudScene.touch() ? clampScroll(ui.settingsScroll)
+                : windowStart(ui.menu);
     }
 
     /** Vertical centres for the visible rows only. */
@@ -471,22 +518,20 @@ public final class SettingsScene {
     private float drawnStep;
     private float drawnLeft;
     private float drawnRight;
-    private int drawnStart;
+    private float drawnTop;
+    private float drawnScroll;
 
     /**
      * The item under a point, or -1. The window only shows seven of the rows, so this
      * answers for the ones on screen; the gap between two pills belongs to the nearer one.
      */
     public int itemAt(float x, float y) {
-        if (drawnCentres == null || x < drawnLeft || x > drawnRight) {
+        if (drawnCentres == null || x < drawnLeft || x > drawnRight || drawnStep <= 0
+                || y < drawnTop || y > drawnTop + drawnStep * VISIBLE_ROWS) {
             return -1;
         }
-        for (int slot = 0; slot < drawnCentres.length; slot++) {
-            if (Math.abs(y - drawnCentres[slot]) <= drawnStep / 2) {
-                return drawnStart + slot;
-            }
-        }
-        return -1;
+        int item = (int) Math.floor((y - drawnTop) / drawnStep + drawnScroll);
+        return item >= 0 && item < ITEM_COUNT ? item : -1;
     }
 
     /** One row's pitch as last drawn: how far a finger drags to scroll by one row. */
@@ -527,14 +572,18 @@ public final class SettingsScene {
         float explainY = hintY - capSize * .70f - Theme.scale(14) - explainSize * .18f;
         float footerTop = explainY - explainSize * .70f - Theme.scale(10);
 
+        boolean touch = HudScene.touch();
         int focus = Math.floorMod(ui.menu, ITEM_COUNT);
+        float scroll = windowTop(ui);
+        int start = Math.round(scroll);
         float sectionSize = Theme.textSize(Theme.CAPTION);
         float sectionY = headerBottom + sectionSize * .70f;
         float rowLeft = frame.rowLeft(width);
         float rowRight = frame.rowRight(width);
-        draw.text(canvas, sectionName(focus), rowLeft, sectionY, sectionSize, Theme.GOLD,
-                Paint.Align.LEFT, true);
-        int start = windowStart(focus);
+        // A controller names the group its focus is in; a finger, the group at the top of
+        // what it has scrolled to, since that is what it is looking at.
+        draw.text(canvas, sectionName(touch ? start : focus), rowLeft, sectionY, sectionSize,
+                Theme.GOLD, Paint.Align.LEFT, true);
         String place = (start + 1) + "–" + (start + VISIBLE_ROWS) + "  OF  " + ITEM_COUNT;
         draw.text(canvas, place, rowRight, sectionY, sectionSize,
                 Theme.secondaryText(bold), Paint.Align.RIGHT, false);
@@ -545,18 +594,39 @@ public final class SettingsScene {
         boolean[] states = states(ui);
         float[] centres = rowCentres(rowTop, rowBottom);
         float half = rowHalfHeight(rowTop, rowBottom);
+        float step = rowStep(rowTop, rowBottom);
         drawnCentres = centres;
-        drawnStep = rowStep(rowTop, rowBottom);
+        drawnStep = step;
         drawnLeft = rowLeft;
         drawnRight = rowRight;
-        drawnStart = start;
-        for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
-            int item = start + slot;
-            drawRow(canvas, width, centres[slot], half, labels[item], states[item],
-                    item == focus, item, ui, now);
+        drawnTop = rowTop;
+        drawnScroll = scroll;
+        if (touch) {
+            // The list slides under the finger a pixel at a time, so the rows at either
+            // end can be part-way in; the band is clipped rather than letting them spill
+            // over the heading or the explanation. The glow a pressed row carries is
+            // allowed out sideways, where there is nothing to cover.
+            int first = (int) Math.floor(scroll);
+            float glow = half * .25f;
+            canvas.save();
+            canvas.clipRect(rowLeft - glow, rowTop, rowRight + glow, rowBottom);
+            for (int item = first; item < Math.min(ITEM_COUNT, first + VISIBLE_ROWS + 1);
+                 item++) {
+                float centreY = centres[0] + (item - scroll) * step;
+                drawRow(canvas, width, centreY, half, labels[item], states[item],
+                        item == ui.settingsPressed, item, ui, now);
+            }
+            canvas.restore();
+            drawScrollBar(canvas, rowRight, rowTop, rowBottom, scroll, bold);
+            drawBottomLine(canvas, width, explainY, touchBottomLine(now, ui), bold);
+        } else {
+            for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
+                int item = start + slot;
+                drawRow(canvas, width, centres[slot], half, labels[item], states[item],
+                        item == focus, item, ui, now);
+            }
+            drawBottomLine(canvas, width, explainY, bottomLine(focus, now, ui), bold);
         }
-
-        drawBottomLine(canvas, width, explainY, bottomLine(focus, now, ui), bold);
         drawFooter(canvas, width, hintY, bold);
     }
 
@@ -611,6 +681,24 @@ public final class SettingsScene {
                         Theme.textOn(fill));
             }
         }
+    }
+
+    /**
+     * A thin thumb in the margin beside the rows, showing how much list there is and where
+     * the window sits in it. A phone user reads a list by dragging it, and without this
+     * nothing said the seventh row was not the last one.
+     */
+    private void drawScrollBar(Canvas canvas, float rowRight, float top, float bottom,
+                               float scroll, boolean bold) {
+        float x = rowRight + Theme.scale(12);
+        float width = Theme.scale(5);
+        float track = bottom - top;
+        float thumb = track * VISIBLE_ROWS / ITEM_COUNT;
+        float thumbTop = top + (track - thumb) * (scroll / maxScroll());
+        draw.roundRect(canvas, x, top, x + width, bottom, width / 2,
+                Draw.withAlpha(Theme.CREAM, bold ? 60 : 34));
+        draw.roundRect(canvas, x, thumbTop, x + width, thumbTop + thumb, width / 2,
+                Draw.withAlpha(Theme.CREAM, bold ? 220 : 160));
     }
 
     private void drawActionAccessory(Canvas canvas, float right, float centreY,
@@ -763,7 +851,7 @@ public final class SettingsScene {
         float left = frame.rowLeft(width);
         float right = frame.rowRight(width);
         if (HudScene.touch()) {
-            String line = "Tap a row to change it · drag for more · back to close";
+            String line = "Tap a row to change it · drag the list for more";
             float size = fit(line, right - left, Theme.textSize(Theme.CAPTION), false);
             draw.text(canvas, line, (left + right) / 2, baseline, size,
                     Theme.secondaryText(bold), Paint.Align.CENTER, false);

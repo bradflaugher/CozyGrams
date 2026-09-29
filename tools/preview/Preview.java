@@ -361,17 +361,26 @@ public final class Preview {
                         "The privacy row focused with LARGER TEXT on: the policy's address fits one line.",
                         Preview::settingsPrivacy),
                 new Frame("phone/25-phone-game.png",
-                        "A phone in landscape: the rail's legend becomes FILL, CROSS OUT, HINT and MENU.",
+                        "A phone in landscape, one player: the rail's legend becomes the FILL | CROSS pen, MARK, HINT and MENU.",
                         Preview::phoneGame, 2400, 1080),
                 new Frame("phone/26-phone-game-painting.png",
-                        "FILL held while the other thumb slides: the pressed button sinks.",
+                        "MARK held while the other thumb slides: the pressed button sinks.",
                         Preview::phoneGamePainting, 2400, 1080),
                 new Frame("phone/27-phone-home.png",
                         "The title screen on a phone: rows are tapped, ‹ › steps, no gamepad keys.",
                         Preview::phoneHome, 2400, 1080),
                 new Frame("phone/28-phone-settings.png",
-                        "The cozy corner on a phone, with the touch footer.",
+                        "The cozy corner on a phone: no highlight until a finger rests on a row.",
                         Preview::phoneSettings, 2400, 1080),
+                new Frame("phone/37-phone-settings-scrolled.png",
+                        "The cozy corner dragged part-way down, a finger resting on a row.",
+                        Preview::phoneSettingsScrolled, 2400, 1080),
+                new Frame("phone/38-phone-cross-pen.png",
+                        "The CROSS pen picked up on a 20x20: taps and drags now cross out.",
+                        Preview::phoneCrossPen, 2400, 1080),
+                new Frame("phone/39-phone-two-players.png",
+                        "A phone with Two players switched on and a controller in Sky's seat.",
+                        Preview::phoneTwoPlayers, 2400, 1080),
                 new Frame("phone/29-phone-win.png",
                         "The win card on a phone: TAP for the next picture.",
                         Preview::phoneWin, 2400, 1080),
@@ -455,7 +464,7 @@ public final class Preview {
 
     private static void home(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
         ui.joined[0] = true;
@@ -464,7 +473,7 @@ public final class Preview {
 
     private static void homeSize(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_SIZE;
         ui.joined[0] = true;
@@ -474,7 +483,7 @@ public final class Preview {
 
     private static void homeTogether(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_SWEETHEART, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
         ui.joined[0] = true;
@@ -486,7 +495,7 @@ public final class Preview {
 
     private static void settings(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_MUSIC;
         ui.musicOn = true;
@@ -695,7 +704,7 @@ public final class Preview {
         GameState game = storyGame(STORY_CHAPTER);
         game.storyFurthest = PuzzleLibrary.count() - 7;
         game.solved = 128;
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
         ui.bigTextOn = true;
@@ -736,7 +745,7 @@ public final class Preview {
      */
     private static void settingsSwitches(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_SFX;
         ui.musicOn = true;
@@ -755,7 +764,7 @@ public final class Preview {
 
     private static void settingsArmed(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_DEFAULTS;
         ui.joined[0] = true;
@@ -779,9 +788,11 @@ public final class Preview {
     private static void asTouch(float density, Runnable frame) {
         HudScene.setTouch(true);
         HudScene.setDensity(density);
+        handheld = true;
         try {
             frame.run();
         } finally {
+            handheld = false;
             HudScene.setTouch(false);
             HudScene.setTouchHeld(-1);
             HudScene.setDensity(1f);
@@ -843,7 +854,7 @@ public final class Preview {
 
     private static void phoneGamePainting(Canvas canvas, Renderer renderer, int w, int h) {
         asPhone(() -> {
-            HudScene.setTouchHeld(HudScene.TOUCH_FILL);
+            HudScene.setTouchHeld(HudScene.TOUCH_MARK);
             gameFifteen(canvas, renderer, w, h);
         });
     }
@@ -854,6 +865,47 @@ public final class Preview {
 
     private static void phoneSettings(Canvas canvas, Renderer renderer, int w, int h) {
         asPhone(() -> settings(canvas, renderer, w, h));
+    }
+
+    private static void phoneSettingsScrolled(Canvas canvas, Renderer renderer, int w,
+                                              int h) {
+        asPhone(() -> {
+            GameState game = endless(SUBJECT_OWL, 10);
+            UiState ui = newUi();
+            ui.screen = UiState.SETTINGS;
+            ui.screenBeforeSettings = UiState.GAME;
+            ui.joined[0] = true;
+            ui.settingsScroll = 4.4f;
+            ui.settingsPressed = SettingsScene.ITEM_TWO_PLAYERS;
+            ui.settingsTouched = SettingsScene.ITEM_BOLD_CURSOR;
+            renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+        });
+    }
+
+    private static void phoneCrossPen(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> {
+            GameState game = endless(SUBJECT_PIE, 20);
+            game.solved = 6;
+            fillPicture(game, .55f);
+            scatterCrosses(game, 5);
+            UiState ui = playing(false);
+            ui.crossPen = true;
+            placeCursors(game, ui, 6, 11, 14, 5);
+            ui.showToast("Taps cross squares out", Theme.GOLD, T0 - 600);
+            renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+        });
+    }
+
+    private static void phoneTwoPlayers(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> {
+            GameState game = endless(SUBJECT_RAIN, 15);
+            fillPicture(game, .55f);
+            scatterCrosses(game, 4);
+            UiState ui = playing(true);
+            ui.twoPlayers = true;
+            placeCursors(game, ui, 5, 7, 11, 3);
+            renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+        });
     }
 
     private static void phoneWin(Canvas canvas, Renderer renderer, int w, int h) {
@@ -882,7 +934,7 @@ public final class Preview {
 
     private static void settingsPrivacy(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_PRIVACY;
         ui.bigTextOn = true;
@@ -892,7 +944,7 @@ public final class Preview {
 
     private static void settingsBigText(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = new UiState();
+        UiState ui = newUi();
         ui.screen = UiState.SETTINGS;
         ui.screenBeforeSettings = UiState.GAME;
         ui.menu = SettingsScene.ITEM_BIG_TEXT;
@@ -1312,8 +1364,23 @@ public final class Preview {
         return game;
     }
 
-    private static UiState playing(boolean bothJoined) {
+    /**
+     * True while a frame is drawn as a phone or a tablet. Those start as one-player games
+     * in the real app — the view sets {@link UiState#defaultTwoPlayers} from the hardware —
+     * so every touch frame is drawn the way a handheld actually opens, with Sky's seat shut.
+     */
+    private static boolean handheld;
+
+    /** A fresh UiState, as the device this frame pretends to be would start one. */
+    private static UiState newUi() {
         UiState ui = new UiState();
+        ui.defaultTwoPlayers = !handheld;
+        ui.twoPlayers = !handheld;
+        return ui;
+    }
+
+    private static UiState playing(boolean bothJoined) {
+        UiState ui = newUi();
         ui.screen = UiState.GAME;
         ui.joined[0] = true;
         ui.joined[1] = bothJoined;
@@ -1438,7 +1505,7 @@ public final class Preview {
      */
     private static final class Take {
         final GameState game;
-        final UiState ui = new UiState();
+        final UiState ui = newUi();
         final Effects effects = new Effects();
         final Renderer renderer;
 

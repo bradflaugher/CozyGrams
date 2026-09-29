@@ -282,7 +282,7 @@ public final class BoardRenderer {
      * about 11 arcminutes from ten feet — well clear of resolvable.
      */
     private void drawCursorGuides(Canvas canvas, BoardLayout board, UiState ui) {
-        boolean both = ui.joined[1];
+        boolean both = ui.skyPlaying();
         // Tested on the drawn positions rather than the logical ones so the split holds
         // through the ~100 ms glide instead of snapping on halfway across it.
         boolean sameRow = both && sameLine(ui.cursorDrawY[0], ui.cursorDrawY[1]);
@@ -755,7 +755,7 @@ public final class BoardRenderer {
         float half = plateHalf(cell);
         float edge = plateEdge(cell);
         float radius = Math.max(2.5f, cell * .17f);
-        int players = ui.joined[1] ? 2 : 1;
+        int players = ui.skyPlaying() ? 2 : 1;
         boolean crowded = players == 2 && !samePlate(ui) && platesOverlap(ui, half, cell);
 
         for (int player = 0; player < players; player++) {

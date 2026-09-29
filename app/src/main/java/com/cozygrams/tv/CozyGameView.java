@@ -174,8 +174,15 @@ public final class CozyGameView extends View {
         // A phone or tablet starts in touch mode, so its first screen already talks about
         // tapping; a television never does. After that, whichever was used last wins.
         PackageManager pm = context.getPackageManager();
-        HudScene.setTouch(pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
-                && !pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK));
+        boolean handheld = pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+                && !pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        HudScene.setTouch(handheld);
+        // A television is the sofa, and starts with a seat for Sky. A phone or a tablet is
+        // one person holding one screen, and starts as a one-player game; either can be
+        // changed in the cozy corner. Said before the save is read, so the save's own
+        // answer wins and a first run falls back to the one that suits the hardware.
+        ui.defaultTwoPlayers = !handheld;
+        ui.twoPlayers = ui.defaultTwoPlayers;
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         talkback = (AccessibilityManager) context.getSystemService(
                 Context.ACCESSIBILITY_SERVICE);
@@ -183,6 +190,7 @@ public final class CozyGameView extends View {
         store = new SaveStore(context);
         game = store.loadGame();
         store.loadSettings(ui);
+        players.setSolo(!ui.twoPlayers);
         nextSize = store.pendingSize();
         // A board restored in its finished state has already been celebrated once, so
         // deal the next picture rather than replaying the win on the first keypress.
@@ -565,7 +573,10 @@ public final class CozyGameView extends View {
         // typing, not a second person picking up a pad across the sofa. Eating their first
         // arrow key reads as the game ignoring them, so the press takes the seat and then
         // does what it says.
-        if (joining && !keyboard) {
+        //
+        // And except on a one-player evening, where there is no seat to choose between
+        // and the press can simply be the press it was meant to be.
+        if (joining && !keyboard && ui.twoPlayers) {
             invalidate();
             return true;
         }
@@ -657,14 +668,25 @@ public final class CozyGameView extends View {
     // ---- Touch -----------------------------------------------------------------------
 
     /*
-     * A phone is played with two thumbs, the way a gamepad is. The left thumb aims: a tap
-     * on a square puts Rose's cursor there, and sliding moves it like a trackpad, one
-     * square for every square's width of travel (never less than TOUCH_STEP_MM, so even a
-     * 20x20 board can be walked a square at a time). The right thumb marks, on the FILL
-     * and CROSS OUT buttons in the rail; holding one while the left thumb slides paints
-     * every square the cursor passes. Where the squares are big enough to hit reliably
-     * (TOUCH_DIRECT_MM and up) a tap fills the square under the finger straight away and
-     * a long press crosses it, like any nonogram on a phone.
+     * A phone is played the way every nonogram on a phone is: choose a pen, then touch the
+     * squares. The pen is the FILL | CROSS switch at the top of the rail's thumb pad, and
+     * it decides what every tap and drag on the board does, so one thumb can solve a whole
+     * picture without a second button or a gesture nobody discovers.
+     *
+     * Where the squares are big enough to hit reliably (TOUCH_DIRECT_MM and up) a tap uses
+     * the pen on the square under the finger, and a drag paints a straight line: the
+     * stroke locks to the row or the column it first moves along, and only changes squares
+     * that look like the one it started on, so dragging over a half-finished row fills its
+     * empties without rubbing out what is already there. Resting on a square uses the
+     * other mark — a cross while the pen fills, a fill while it crosses — for the odd
+     * square that wants the other one, and a drag that carries on from there paints with
+     * it.
+     *
+     * Smaller squares are aimed at first, like a trackpad: a tap puts Rose's cursor on a
+     * square, a slide moves it one square for every square's width of travel (never less
+     * than TOUCH_STEP_MM, so even a 20x20 can be walked a square at a time), and a tap on
+     * the square the cursor already sits on uses the pen. MARK on the rail uses it too,
+     * and holding MARK while the other thumb slides paints every square the cursor passes.
      *
      * Every gesture ends in the same fillSquare / crossSquare / useHint the buttons call,
      * so gentle checking, hints, line sweeps, sounds and TalkBack all behave exactly as
@@ -675,7 +697,7 @@ public final class CozyGameView extends View {
     private static final float TOUCH_STEP_MM = 4.5f;
     /** Squares at least this big are tapped directly; smaller ones are aimed at first. */
     private static final float TOUCH_DIRECT_MM = 5.5f;
-    /** How long a finger rests on a square before that means "cross it out". */
+    /** How long a finger rests on a square before that means "the other mark". */
     private static final long TOUCH_LONG_PRESS_MS = 380;
 
     private int aimPointer = -1;
@@ -689,15 +711,25 @@ public final class CozyGameView extends View {
     private boolean aimLongPressed;
     private int aimCellX = -1;
     private int aimCellY = -1;
+    /** Whether this finger went down on a board big enough to be touched directly. */
+    private boolean aimDirect;
+
+    /** A direct drag's stroke: which mark it lays, and the axis it is locked to. */
+    private boolean strokeCross;
+    /** 0 until the stroke has left its first square, then 1 along a row or 2 down a column. */
+    private int strokeAxis;
+    /** What the stroke's first square held before the finger arrived. */
+    private byte strokeFrom;
 
     private int buttonPointer = -1;
     private int buttonHeld = -1;
-    /** What the held button found under the cursor, so painting only repeats that change. */
+    /** What MARK found under the cursor, so painting only repeats that change. */
     private byte paintFrom;
 
     private int menuPointer = -1;
+    private float menuDownX;
     private float menuDownY;
-    private float menuCarry;
+    private float menuLastY;
     private boolean menuMoved;
 
     private final Runnable aimLongPress = this::longPressSquare;
@@ -830,11 +862,11 @@ public final class CozyGameView extends View {
         checkForWin();
     }
 
-    /** The first time a finger reaches a puzzle, say how the two thumbs split the work. */
+    /** The first time a finger reaches a puzzle, say how the pen and the board split the work. */
     private void teachTouch() {
         tell(squaresAreDirect()
-                        ? "Tap to fill · hold to cross out · or use the buttons"
-                        : "Tap or slide to aim, tap again to fill · hold to cross out",
+                        ? "Tap or drag to use the pen · hold for the other mark"
+                        : "Tap or slide to aim, tap again to mark · or use MARK",
                 Theme.CREAM);
     }
 
@@ -847,9 +879,14 @@ public final class CozyGameView extends View {
         if (ui.screen != UiState.GAME || ui.won) {
             if (menuPointer < 0) {
                 menuPointer = pointer;
-                menuDownY = y;
-                menuCarry = 0;
+                menuDownX = x;
+                menuDownY = menuLastY = y;
                 menuMoved = false;
+                if (ui.screen == UiState.SETTINGS) {
+                    // Lit while the finger rests on it, the way a phone's list answers a
+                    // touch, and let go of the moment the finger starts to scroll.
+                    ui.settingsPressed = renderer.settings().itemAt(x, y);
+                }
             }
             return;
         }
@@ -874,23 +911,30 @@ public final class CozyGameView extends View {
         aimCarryX = aimCarryY = 0;
         aimMoved = false;
         aimLongPressed = false;
+        aimDirect = squaresAreDirect();
+        strokeAxis = 0;
         BoardLayout board = renderer.board();
         aimCellX = cellColumn(board, x);
         aimCellY = cellRow(board, y);
         if (aimCellX >= 0 && aimCellY >= 0) {
+            strokeFrom = game.puzzle.marks[aimCellY][aimCellX];
             postDelayed(aimLongPress, TOUCH_LONG_PRESS_MS);
         }
     }
 
     private void touchMove(int pointer, float x, float y) {
         if (pointer == menuPointer) {
-            slideMenu(y);
+            slideMenu(x, y);
             return;
         }
         if (pointer != aimPointer || ui.screen != UiState.GAME || ui.won) {
             return;
         }
         if (!aimMoved && Math.hypot(x - aimDownX, y - aimDownY) < touchSlop()) {
+            return;
+        }
+        if (aimDirect && aimCellX >= 0 && aimCellY >= 0) {
+            strokeTo(x, y);
             return;
         }
         if (!aimMoved) {
@@ -928,9 +972,71 @@ public final class CozyGameView extends View {
         }
     }
 
+    /**
+     * Carries a direct drag to the square under the finger.
+     *
+     * <p>The first time the finger leaves its slop the stroke begins: it takes the pen, or
+     * the other mark if the finger had rested long enough to ask for it, and marks the
+     * square it started on. The first square it crosses into decides the axis, and after
+     * that the finger's position is read along that one line only, so a thumb that wanders
+     * a little off a row keeps painting the row. Every square between the cursor and the
+     * finger is visited in turn, so a fast flick cannot skip one.
+     */
+    private void strokeTo(float x, float y) {
+        if (!aimMoved) {
+            aimMoved = true;
+            removeCallbacks(aimLongPress);
+            strokeCross = aimLongPressed != ui.crossPen;
+            placeCursor(0, aimCellX, aimCellY);
+            if (!aimLongPressed) {
+                markAtCursor(strokeCross);
+            }
+        }
+        BoardLayout board = renderer.board();
+        if (board == null || ui.won) {
+            return;
+        }
+        int column = clampCell(board, (int) Math.floor((x - board.left) / board.cell));
+        int row = clampCell(board, (int) Math.floor((y - board.top) / board.cell));
+        if (strokeAxis == 0) {
+            if (column == aimCellX && row == aimCellY) {
+                return;
+            }
+            strokeAxis = Math.abs(column - aimCellX) >= Math.abs(row - aimCellY) ? 1 : 2;
+        }
+        if (strokeAxis == 1) {
+            row = aimCellY;
+        } else {
+            column = aimCellX;
+        }
+        while (!ui.won && (game.cursorX[0] != column || game.cursorY[0] != row)) {
+            int nx = game.cursorX[0] + Integer.signum(column - game.cursorX[0]);
+            int ny = game.cursorY[0] + Integer.signum(row - game.cursorY[0]);
+            placeCursor(0, nx, ny);
+            if (game.markUnder(0) == strokeFrom) {
+                markAtCursor(strokeCross);
+            }
+        }
+    }
+
+    private static int clampCell(BoardLayout board, int cell) {
+        return Math.max(0, Math.min(board.size - 1, cell));
+    }
+
+    /** Uses a mark on the square under Rose's cursor, and sees whether that finished it. */
+    private void markAtCursor(boolean cross) {
+        if (cross) {
+            crossSquare(0);
+        } else {
+            fillSquare(0);
+        }
+        checkForWin();
+    }
+
     private void touchUp(int pointer, float x, float y) {
         if (pointer == menuPointer) {
             menuPointer = -1;
+            ui.settingsPressed = -1;
             if (!menuMoved) {
                 tapMenu(x, y);
             }
@@ -955,11 +1061,10 @@ public final class CozyGameView extends View {
         if (!onCursor) {
             placeCursor(0, aimCellX, aimCellY);
         }
-        // Big squares fill on the first tap. Small ones are aimed at first, and a second
-        // tap on the square the cursor is already sitting on fills it.
-        if (onCursor || squaresAreDirect()) {
-            fillSquare(0);
-            checkForWin();
+        // Big squares take the pen on the first tap. Small ones are aimed at first, and a
+        // second tap on the square the cursor is already sitting on uses it.
+        if (onCursor || aimDirect) {
+            markAtCursor(ui.crossPen);
         }
     }
 
@@ -969,10 +1074,11 @@ public final class CozyGameView extends View {
         buttonPointer = -1;
         buttonHeld = -1;
         menuPointer = -1;
+        ui.settingsPressed = -1;
         HudScene.setTouchHeld(-1);
     }
 
-    /** A finger resting on a square: cross it out, with a tick you can feel. */
+    /** A finger resting on a square: the other mark, with a tick you can feel. */
     private void longPressSquare() {
         if (aimPointer < 0 || aimMoved || aimCellX < 0 || ui.screen != UiState.GAME
                 || ui.won) {
@@ -981,8 +1087,7 @@ public final class CozyGameView extends View {
         aimLongPressed = true;
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         placeCursor(0, aimCellX, aimCellY);
-        crossSquare(0);
-        checkForWin();
+        markAtCursor(!ui.crossPen);
         invalidate();
     }
 
@@ -991,15 +1096,14 @@ public final class CozyGameView extends View {
         switch (button) {
             case HudScene.TOUCH_FILL:
             case HudScene.TOUCH_CROSS:
+                HudScene.setTouchHeld(button);
+                choosePen(button == HudScene.TOUCH_CROSS);
+                break;
+            case HudScene.TOUCH_MARK:
                 buttonHeld = button;
                 HudScene.setTouchHeld(button);
                 paintFrom = game.markUnder(0);
-                if (button == HudScene.TOUCH_FILL) {
-                    fillSquare(0);
-                } else {
-                    crossSquare(0);
-                }
-                checkForWin();
+                markAtCursor(ui.crossPen);
                 break;
             case HudScene.TOUCH_HINT:
                 HudScene.setTouchHeld(button);
@@ -1013,23 +1117,30 @@ public final class CozyGameView extends View {
         }
     }
 
+    /** Picks up the other pen, and says so once — out loud, too, for TalkBack. */
+    private void choosePen(boolean cross) {
+        if (ui.crossPen == cross) {
+            return;
+        }
+        ui.crossPen = cross;
+        sfx.play(CozySfx.Sound.MOVE);
+        String said = cross ? "Taps cross squares out" : "Taps fill squares";
+        tell(said, cross ? Theme.GOLD : Theme.PINK);
+        announce(said);
+    }
+
     /**
-     * Holding FILL or CROSS OUT while the other thumb slides paints the squares on the way,
-     * but only ones that look like the square the press started on. Holding FILL over an
-     * empty square fills a run of empties and leaves filled and crossed squares alone;
-     * holding it over a filled one clears a run of fills. That is the whole difference
+     * Holding MARK while the other thumb slides paints the squares on the way, but only
+     * ones that look like the square the press started on. With the fill pen over an
+     * empty square that fills a run of empties and leaves filled and crossed squares
+     * alone; over a filled one it clears a run of fills. That is the whole difference
      * between painting a line and scribbling over it.
      */
     private void paintIfHeld() {
-        if (buttonHeld < 0 || ui.won || game.markUnder(0) != paintFrom) {
+        if (buttonHeld != HudScene.TOUCH_MARK || ui.won || game.markUnder(0) != paintFrom) {
             return;
         }
-        if (buttonHeld == HudScene.TOUCH_FILL) {
-            fillSquare(0);
-        } else {
-            crossSquare(0);
-        }
-        checkForWin();
+        markAtCursor(ui.crossPen);
     }
 
     /** Puts a player's cursor on a square, with everything a step there would do. */
@@ -1066,8 +1177,14 @@ public final class CozyGameView extends View {
         return row >= 0 && row < board.size ? row : -1;
     }
 
-    /** A drag in the cozy corner scrolls it a row at a time. */
-    private void slideMenu(float y) {
+    /**
+     * A drag in the cozy corner scrolls the list itself, following the finger a pixel at a
+     * time. It used to walk the highlight a row per row's-height of travel instead, so the
+     * lit row raced up and down under the finger and the list only moved once the lit row
+     * reached the middle — the right answer for a remote and a strange one for a thumb.
+     * A drag that starts on a row lets go of it, so scrolling is never taken for a tap.
+     */
+    private void slideMenu(float x, float y) {
         if (ui.screen != UiState.SETTINGS) {
             return;
         }
@@ -1075,18 +1192,15 @@ public final class CozyGameView extends View {
         if (pitch <= 0) {
             return;
         }
-        if (!menuMoved && Math.abs(y - menuDownY) < touchSlop()) {
+        if (!menuMoved && Math.hypot(x - menuDownX, y - menuDownY) < touchSlop()) {
             return;
         }
         menuMoved = true;
-        menuCarry += y - menuDownY;
-        menuDownY = y;
-        while (Math.abs(menuCarry) >= pitch) {
-            // Dragging up brings later rows into view, as every list on a phone does.
-            int direction = menuCarry < 0 ? 1 : -1;
-            menuCarry += direction * pitch;
-            stepMenu(direction, SettingsScene.ITEM_COUNT, false);
-        }
+        ui.settingsPressed = -1;
+        // Dragging up brings later rows into view, as every list on a phone does.
+        ui.settingsScroll = SettingsScene.clampScroll(
+                SettingsScene.clampScroll(ui.settingsScroll) - (y - menuLastY) / pitch);
+        menuLastY = y;
     }
 
     /** A tap on a menu row, a stepper, or the win card. */
@@ -1128,6 +1242,7 @@ public final class CozyGameView extends View {
                 SettingsScene.disarmDefaults();
                 ui.menu = item;
             }
+            ui.settingsTouched = item;
             chooseSetting();
         }
     }
@@ -1508,6 +1623,7 @@ public final class CozyGameView extends View {
             return;
         }
         music.setEnabled(ui.musicOn);
+        applyPlayerCount();
         // The chime rises for something turned on and falls for something turned off, so
         // the answer is audible even for a row whose effect is on another screen.
         boolean switchedOn = SettingsScene.hasSwitch(row) && SettingsScene.states(ui)[row];
@@ -1523,13 +1639,32 @@ public final class CozyGameView extends View {
         store.save(game, ui);
     }
 
+    /**
+     * Opens or shuts Sky's seat to match {@link UiState#twoPlayers}, after the switch or a
+     * reset has changed it. Rose's seat is left alone: on a phone she is the finger, which
+     * is no controller the registry has ever heard of.
+     */
+    private void applyPlayerCount() {
+        if (players.solo() == !ui.twoPlayers) {
+            return;
+        }
+        players.setSolo(!ui.twoPlayers);
+        ui.joined[0] = ui.joined[0] || players.seatOccupied(PlayerRegistry.ROSE);
+        ui.joined[1] = players.seatOccupied(PlayerRegistry.SKY);
+        music.setPresence(players.playerCount() >= 2 ? 2 : 1);
+    }
+
     /** Opens the cozy corner, remembering where to return to and who reached for it. */
     private void openSettings(int who) {
         ui.screenBeforeSettings = ui.screen;
         ui.menuBeforeSettings = ui.menu;
         ui.screen = UiState.SETTINGS;
         ui.menu = 0;
-        SettingsScene.setTidyingPlayer(who);
+        ui.settingsScroll = 0;
+        ui.settingsPressed = -1;
+        ui.settingsTouched = -1;
+        // Only worth saying whose hand it was when there are two hands in the room.
+        SettingsScene.setTidyingPlayer(ui.twoPlayers ? who : -1);
         SettingsScene.disarmDefaults();
         SettingsScene.disarmStoryRestart();
         if (speaking()) {

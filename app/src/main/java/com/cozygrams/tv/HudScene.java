@@ -306,18 +306,29 @@ public final class HudScene {
 
     /**
      * True once the game has been touched. A phone has no face buttons, so the rail's
-     * reference card of button names becomes the buttons themselves: FILL and CROSS OUT
-     * sized for a thumb, with HINT and MENU beneath them. The other thumb aims on the board.
+     * reference card of button names becomes the buttons themselves, sized for a thumb.
+     *
+     * <p>On top is the pen: FILL and CROSS side by side, one of them lit. It decides what
+     * a tap or a drag on the board does, which is how every nonogram on a phone works and
+     * what a single thumb needs — the old pad had FILL and CROSS OUT as actions at the
+     * cursor, so crossing a square out took either a long press nobody finds or a second
+     * thumb. Under it, MARK does the pen's job at the cursor, for boards whose squares are
+     * too small to hit and are aimed at like a trackpad instead; held while the other
+     * thumb slides, it paints. HINT and MENU are the small row at the bottom.
      */
     private static boolean touch;
 
+    /** The pen's FILL half. */
     public static final int TOUCH_FILL = 0;
+    /** The pen's CROSS half. */
     public static final int TOUCH_CROSS = 1;
     public static final int TOUCH_HINT = 2;
     public static final int TOUCH_MENU = 3;
+    /** The pen, used at the cursor. */
+    public static final int TOUCH_MARK = 4;
 
     /** Where each touch button was last drawn: left, top, right, bottom. */
-    private static final float[][] touchRects = new float[4][4];
+    private static final float[][] touchRects = new float[5][4];
     private static boolean touchRectsDrawn;
     /** The button a finger is on right now, drawn pressed; -1 for none. */
     private static int touchHeld = -1;
@@ -398,6 +409,23 @@ public final class HudScene {
      */
     private static float seatsEyebrowHeight() {
         return touch ? Theme.scale(4) : labelSize() * 1.9f;
+    }
+
+    /**
+     * The seats block: its eyebrow, both cards and any invitation under an open one.
+     *
+     * <p>Nothing at all when the pair have said this is a one-player evening. A seat card
+     * is there to say whose cursor is whose and that there is room for somebody else;
+     * with one player and no room, it is two lines of furniture on a phone's shortest
+     * rail, and the height goes to the thumb pad instead.
+     */
+    private static float seatsHeight(UiState ui) {
+        if (!ui.twoPlayers) {
+            return 0;
+        }
+        return seatsEyebrowHeight()
+                + Theme.scale(CARD_HEIGHT) * 2 + Theme.scale(CARD_GAP)
+                + (touch ? 0 : openSeats(ui) * inviteHeight());
     }
 
     /** The whole pad's height: two thumb rows and a row of smaller buttons. */
@@ -761,9 +789,7 @@ public final class HudScene {
     private float panelHeight(GameState game, UiState ui, Wrapped name, int legendRows) {
         return Theme.scale(PANEL_PAD)                       // top inset
                 + headBlockHeight(name)                     // where we are, and its name
-                + seatsEyebrowHeight()                      // "PLAYING TOGETHER"
-                + Theme.scale(CARD_HEIGHT) * 2 + Theme.scale(CARD_GAP)
-                + (touch ? 0 : openSeats(ui) * inviteHeight())
+                + seatsHeight(ui)                           // who is here, if two can be
                 + Theme.scale(PROGRESS_GAP) + progressHeight()
                 + Theme.scale(LEGEND_GAP)
                 // Counted, not assumed: the remote-only legend need not be four rows
@@ -959,16 +985,17 @@ public final class HudScene {
         float y = drawWhereWeAre(canvas, left + pad, top + pad, right - pad, game, ui,
                 name);
 
-        if (!touch) {
-            float label = labelSize();
-            String seatsEyebrow = seatsEyebrow(ui);
-            draw.text(canvas, seatsEyebrow, left + pad, y + label * 1.28f,
-                    eyebrowSize(seatsEyebrow, lane),
-                    Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+        if (ui.twoPlayers) {
+            if (!touch) {
+                float label = labelSize();
+                String seatsEyebrow = seatsEyebrow(ui);
+                draw.text(canvas, seatsEyebrow, left + pad, y + label * 1.28f,
+                        eyebrowSize(seatsEyebrow, lane),
+                        Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+            }
+            y += seatsEyebrowHeight();
+            y = drawSeats(canvas, screenHeight, left + pad, y, right - pad, game, ui, now);
         }
-        y += seatsEyebrowHeight();
-
-        y = drawSeats(canvas, screenHeight, left + pad, y, right - pad, game, ui, now);
 
         y += Theme.scale(PROGRESS_GAP);
         drawProgress(canvas, screenHeight, left + pad, y, right - pad, game, ui);
@@ -1014,13 +1041,16 @@ public final class HudScene {
         float pad = Theme.scale(PANEL_PAD);
         float gutter = pad * 2;
         float available = board.panelBottom() - top;
-        float column = (right - left - pad * 2 - gutter * 2) / 3;
+        // One player has no seats to show, so the middle column goes and the other two
+        // share its width rather than leaving a hole in the rail.
+        int columns = ui.twoPlayers ? 3 : 2;
+        float column = (right - left - pad * 2 - gutter * (columns - 1)) / columns;
         if (column <= 0) {
             return;
         }
         float aLeft = left + pad;
         float bLeft = aLeft + column + gutter;
-        float cLeft = bLeft + column + gutter;
+        float cLeft = columns == 3 ? bLeft + column + gutter : bLeft;
 
         touchFit = 1f;
         headEyebrow = true;
@@ -1053,15 +1083,17 @@ public final class HudScene {
         drawProgress(canvas, screenHeight, aLeft, y, aLeft + column, game, ui);
 
         y = top + pad;
-        if (!touch) {
-            float label = labelSize();
-            String seatsEyebrow = seatsEyebrow(ui);
-            draw.text(canvas, seatsEyebrow, bLeft, y + label * 1.28f,
-                    eyebrowSize(seatsEyebrow, column),
-                    Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+        if (ui.twoPlayers) {
+            if (!touch) {
+                float label = labelSize();
+                String seatsEyebrow = seatsEyebrow(ui);
+                draw.text(canvas, seatsEyebrow, bLeft, y + label * 1.28f,
+                        eyebrowSize(seatsEyebrow, column),
+                        Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, true);
+            }
+            y += seatsEyebrowHeight();
+            drawSeats(canvas, screenHeight, bLeft, y, bLeft + column, game, ui, now);
         }
-        y += seatsEyebrowHeight();
-        drawSeats(canvas, screenHeight, bLeft, y, bLeft + column, game, ui, now);
 
         if (touch) {
             drawTouchPad(canvas, cLeft, top + pad, cLeft + column, ui);
@@ -1077,9 +1109,7 @@ public final class HudScene {
      */
     private float stackedHeight(GameState game, UiState ui, Wrapped name, int legendRows) {
         float where = headBlockHeight(name) + progressHeight();
-        float seats = seatsEyebrowHeight()
-                + Theme.scale(CARD_HEIGHT) * 2 + Theme.scale(CARD_GAP)
-                + (touch ? 0 : openSeats(ui) * inviteHeight());
+        float seats = seatsHeight(ui);
         float controls = touch ? touchPadHeight() : legendStep() * legendRows;
         return Theme.scale(PANEL_PAD) * 2 + Math.max(where, Math.max(seats, controls));
     }
@@ -1459,18 +1489,90 @@ public final class HudScene {
         float big = touchRow(TOUCH_BIG, touchFit);
         float small = touchRow(TOUCH_SMALL, touchFit);
         float gap = Theme.scale(TOUCH_GAP) * touchFit;
-        float y = top;
-        touchButton(canvas, TOUCH_FILL, left, y, right, y + big, "FILL", Theme.PINK, true);
-        y += big + gap;
-        touchButton(canvas, TOUCH_CROSS, left, y, right, y + big, "CROSS OUT", Theme.GOLD,
-                true);
-        y += big + gap;
         float mid = (left + right) / 2;
+        float y = top;
+        drawPen(canvas, left, y, right, y + big, ui.crossPen);
+        y += big + gap;
+        touchButton(canvas, TOUCH_MARK, left, y, right, y + big, "MARK",
+                penColor(ui.crossPen), true);
+        y += big + gap;
         touchButton(canvas, TOUCH_HINT, left, y, mid - gap / 2, y + small,
                 ui.hintsOn ? "HINT" : "RESTING", Theme.BUTTON_Y, ui.hintsOn);
         touchButton(canvas, TOUCH_MENU, mid + gap / 2, y, right, y + small, "MENU",
                 Theme.SOFT_TEXT, true);
         touchRectsDrawn = true;
+    }
+
+    /** The pen's colour: Rose's pink for filling, the gold of B for crossing out. */
+    private static int penColor(boolean cross) {
+        return cross ? Theme.GOLD : Theme.PINK;
+    }
+
+    /**
+     * The pen switch: one pill split down the middle, the chosen half in its colour and
+     * the other sunk into the panel. Which half is lit is carried by the fill and by the
+     * glyph and word inside it, never by colour alone.
+     */
+    private void drawPen(Canvas canvas, float left, float top, float right, float bottom,
+                         boolean cross) {
+        float height = bottom - top;
+        // Squarer than the other buttons: each half of a rail-wide pill is about as wide
+        // as it is tall, and at a full pill's radius the lit half came out as a circle
+        // with its word squeezed out past the edge.
+        float radius = height * .32f;
+        float mid = (left + right) / 2;
+        float inset = Theme.scale(5);
+        touchRects[TOUCH_FILL][0] = left;
+        touchRects[TOUCH_FILL][1] = top;
+        touchRects[TOUCH_FILL][2] = mid;
+        touchRects[TOUCH_FILL][3] = bottom;
+        touchRects[TOUCH_CROSS][0] = mid;
+        touchRects[TOUCH_CROSS][1] = top;
+        touchRects[TOUCH_CROSS][2] = right;
+        touchRects[TOUCH_CROSS][3] = bottom;
+        draw.roundRect(canvas, left, top, right, bottom, radius,
+                Draw.withAlpha(Theme.INK, 170));
+        float lit = cross ? mid : left;
+        float litRight = cross ? right : mid;
+        int color = penColor(cross);
+        boolean held = touchHeld == (cross ? TOUCH_CROSS : TOUCH_FILL);
+        draw.roundRect(canvas, lit + inset, top + inset, litRight - inset, bottom - inset,
+                radius - inset, held ? Draw.blend(color, Theme.INK, .22f) : color);
+        penHalf(canvas, TOUCH_FILL, left, mid, top, bottom, "FILL", !cross);
+        penHalf(canvas, TOUCH_CROSS, mid, right, top, bottom, "CROSS", cross);
+    }
+
+    private void penHalf(Canvas canvas, int button, float left, float right, float top,
+                         float bottom, String label, boolean chosen) {
+        int ink = chosen ? Theme.textOn(penColor(button == TOUCH_CROSS))
+                : Theme.readableOn(Theme.SOFT_TEXT, Theme.PANEL, 4.5);
+        float height = bottom - top;
+        if (right - left > height * 1.8f) {
+            // A wide, short half — a tablet's stacked rail — reads best in one line.
+            float centreY = (top + bottom) / 2;
+            float glyphSize = height * .32f;
+            float glyphGap = Theme.scale(10);
+            float size = Math.min(railTextSize(), height * .42f);
+            size = fit(label, right - left - height - glyphSize - glyphGap, size,
+                    size * .7f, true);
+            float x = (left + right) / 2
+                    - (draw.measure(label, size, true) + glyphSize + glyphGap) / 2;
+            drawTouchGlyph(canvas, button, x, centreY, glyphSize, ink);
+            draw.text(canvas, label, x + glyphSize + glyphGap,
+                    centreY + draw.capCentreOffset(size), size, ink, Paint.Align.LEFT, true);
+            return;
+        }
+        // Otherwise the glyph over its word: a half of a phone's rail is narrow and tall.
+        float glyphSize = height * .26f;
+        float size = Math.min(railTextSize() * .9f, height * .26f);
+        size = fit(label, right - left - Theme.scale(20), size, size * .7f, true);
+        float gap = height * .09f;
+        float block = glyphSize + gap + size * .72f;
+        float glyphTop = (top + bottom) / 2 - block / 2;
+        drawTouchGlyph(canvas, button, (left + right) / 2 - glyphSize / 2,
+                glyphTop + glyphSize / 2, glyphSize, ink);
+        draw.text(canvas, label, (left + right) / 2, glyphTop + block, size, ink,
+                Paint.Align.CENTER, true);
     }
 
     private void touchButton(Canvas canvas, int button, float left, float top, float right,
@@ -1494,7 +1596,7 @@ public final class HudScene {
         int ink = Theme.textOn(fill);
         float centreY = (top + bottom) / 2 + sink;
         float size = Math.min(railTextSize(), (bottom - top) * .42f);
-        boolean glyph = button == TOUCH_FILL || button == TOUCH_CROSS;
+        boolean glyph = button == TOUCH_MARK;
         float glyphSize = (bottom - top) * .34f;
         float glyphGap = Theme.scale(10);
         float room = right - left - radius * 1.2f - (glyph ? glyphSize + glyphGap : 0);
@@ -1502,7 +1604,8 @@ public final class HudScene {
         float textWidth = draw.measure(label, size, true);
         float x = (left + right) / 2 - (textWidth + (glyph ? glyphSize + glyphGap : 0)) / 2;
         if (glyph) {
-            drawTouchGlyph(canvas, button, x, centreY, glyphSize, ink);
+            drawTouchGlyph(canvas, color == Theme.GOLD ? TOUCH_CROSS : TOUCH_FILL, x,
+                    centreY, glyphSize, ink);
             x += glyphSize + glyphGap;
         }
         draw.text(canvas, label, x, centreY + draw.capCentreOffset(size), size, ink,

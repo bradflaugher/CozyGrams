@@ -583,4 +583,49 @@ public class PlayerRegistryTest {
                     PlayerRegistry.isGameKey(PlayerRegistry.canonical(key)));
         }
     }
+
+    // ---- One player ------------------------------------------------------------------
+
+    @Test
+    public void aOnePlayerEveningSeatsEveryControllerAsRoseWithoutFuss() {
+        PlayerRegistry players = new PlayerRegistry(twoPads());
+        players.setSolo(true);
+        assertEquals(PlayerRegistry.ROSE, players.playerFor(11));
+        assertEquals(PlayerRegistry.ROSE, players.justJoined());
+        assertEquals(PlayerRegistry.ROSE, players.playerFor(12));
+        assertEquals("a second pad is the same person, not a new arrival",
+                -1, players.justJoined());
+        assertFalse("and nothing is said about sharing", players.justShared());
+        assertFalse(players.seatOccupied(PlayerRegistry.SKY));
+        assertEquals(1, players.playerCount());
+    }
+
+    @Test
+    public void shuttingSkysSeatHandsHerControllerToRose() {
+        PlayerRegistry players = new PlayerRegistry(twoPads());
+        players.playerFor(11);
+        players.playerFor(12);
+        assertEquals(PlayerRegistry.SKY, players.slotOf(12));
+
+        players.setSolo(true);
+
+        assertEquals(PlayerRegistry.ROSE, players.slotOf(12));
+        assertFalse(players.seatOccupied(PlayerRegistry.SKY));
+    }
+
+    @Test
+    public void openingItAgainGivesItToTheSecondControllerTheEveningMet() {
+        PlayerRegistry players = new PlayerRegistry(twoPads().plug(13, "pad-third"));
+        players.setSolo(true);
+        players.playerFor(11);
+        players.playerFor(12);
+        players.playerFor(13);
+
+        players.setSolo(false);
+
+        assertEquals(PlayerRegistry.ROSE, players.slotOf(11));
+        assertEquals(PlayerRegistry.SKY, players.slotOf(12));
+        assertEquals("a third pad doubles up, as it always has",
+                PlayerRegistry.ROSE, players.slotOf(13));
+    }
 }

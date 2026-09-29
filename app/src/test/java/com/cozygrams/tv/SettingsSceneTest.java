@@ -156,7 +156,7 @@ public class SettingsSceneTest {
     public void everySwitchRowFlipsTheStateItDraws() {
         UiState ui = new UiState();
         SaveStore.restoreDefaults(ui);
-        for (int item = 0; item <= SettingsScene.ITEM_CALM_MOTION; item++) {
+        for (int item = 0; item <= SettingsScene.ITEM_TWO_PLAYERS; item++) {
             boolean before = SettingsScene.states(ui)[item];
             SettingsScene.toggle(ui, item);
             assertEquals("row " + item + " does not show its own state",
@@ -168,7 +168,7 @@ public class SettingsSceneTest {
 
     @Test
     public void switchesAndActionsAreToldApart() {
-        for (int item = 0; item <= SettingsScene.ITEM_CALM_MOTION; item++) {
+        for (int item = 0; item <= SettingsScene.ITEM_TWO_PLAYERS; item++) {
             assertTrue(SettingsScene.hasSwitch(item));
         }
         assertFalse(SettingsScene.hasSwitch(SettingsScene.ITEM_DEFAULTS));
@@ -281,7 +281,7 @@ public class SettingsSceneTest {
     @Test
     public void everySwitchSaysWhatItJustDid() {
         UiState ui = new UiState();
-        for (int item = 0; item <= SettingsScene.ITEM_CALM_MOTION; item++) {
+        for (int item = 0; item <= SettingsScene.ITEM_TWO_PLAYERS; item++) {
             SettingsScene.toggle(ui, item, 1000);
             String said = SettingsScene.bottomLine(item, 1000);
             assertNotEquals("row " + item + " says nothing back",
@@ -388,6 +388,67 @@ public class SettingsSceneTest {
     /** Relative luminance, as defined by WCAG. */
     private static double luminance(int red, int green, int blue) {
         return .2126 * channel(red) + .7152 * channel(green) + .0722 * channel(blue);
+    }
+
+    // ---- One player or two ----------------------------------------------------------
+
+    @Test
+    public void theSeatSwitchIsTheLastSwitchAndSaysWhatItDoes() {
+        UiState ui = new UiState();
+        assertTrue(SettingsScene.hasSwitch(SettingsScene.ITEM_TWO_PLAYERS));
+        assertEquals("PLAYERS", SettingsScene.sectionName(SettingsScene.ITEM_TWO_PLAYERS));
+        ui.twoPlayers = true;
+        String together = SettingsScene.descriptions(ui)[SettingsScene.ITEM_TWO_PLAYERS];
+        ui.twoPlayers = false;
+        String alone = SettingsScene.descriptions(ui)[SettingsScene.ITEM_TWO_PLAYERS];
+        assertNotEquals(together, alone);
+        assertTrue(alone.contains("Rose"));
+    }
+
+    @Test
+    public void puttingEverythingBackRemembersWhatKindOfDeviceThisIs() {
+        UiState phone = new UiState();
+        phone.defaultTwoPlayers = false;
+        phone.twoPlayers = true;
+        phone.restoreDefaults();
+        assertFalse("a phone goes back to one player", phone.twoPlayers);
+
+        UiState television = new UiState();
+        television.twoPlayers = false;
+        television.restoreDefaults();
+        assertTrue("a television goes back to two", television.twoPlayers);
+    }
+
+    @Test
+    public void skyIsOnlyAtTheTableWhenTwoPlayersAreAllowed() {
+        UiState ui = new UiState();
+        ui.joined[1] = true;
+        assertTrue(ui.skyPlaying());
+        ui.twoPlayers = false;
+        assertFalse(ui.skyPlaying());
+    }
+
+    // ---- A finger scrolls the list, not the highlight ---------------------------------
+
+    @Test
+    public void aDragIsHeldToTheList() {
+        assertEquals(0f, SettingsScene.clampScroll(-3f), 0f);
+        assertEquals(SettingsScene.maxScroll(), SettingsScene.clampScroll(99f), 0f);
+        assertEquals(2.5f, SettingsScene.clampScroll(2.5f), 0f);
+        assertEquals(SettingsScene.ITEM_COUNT - SettingsScene.VISIBLE_ROWS,
+                SettingsScene.maxScroll(), 0f);
+    }
+
+    @Test
+    public void aTouchScreensBottomLineExplainsTheRowLastTouched() {
+        UiState ui = new UiState();
+        assertEquals("nothing to explain before a row is touched",
+                "", SettingsScene.touchBottomLine(1000, ui));
+        ui.settingsTouched = SettingsScene.ITEM_HINTS;
+        assertEquals(SettingsScene.descriptions(ui)[SettingsScene.ITEM_HINTS],
+                SettingsScene.touchBottomLine(1000, ui));
+        SettingsScene.toggle(ui, SettingsScene.ITEM_HINTS, 2000);
+        assertTrue(SettingsScene.touchBottomLine(2000, ui).startsWith("Hints is"));
     }
 
     private static double channel(int value) {
