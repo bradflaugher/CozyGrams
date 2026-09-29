@@ -32,12 +32,18 @@ you have completed.
 A remote has no face buttons, so the centre key does more work there and the on-screen
 legend changes to match whatever is actually in the room.
 
+A keyboard plays too — arrows or **WASD** to move, **Enter** or **Space** to fill, **X** or
+**C** to cross out, **H** for a hint, **M** or **Tab** for the cozy corner and **Esc** to go
+back — and a mouse's right button crosses out the square under the pointer.
+
 ### On a phone or tablet
 
 A phone or tablet starts as a one-player game: no Sky, no second cursor, no "press a button
 to join". **Two players** in the Cozy Corner opens Sky's seat for a controller paired to the
 device (and turns it off again on a television, where it starts on). Rose is the finger on
 the glass.
+
+![CozyGrams on a phone: the FILL | CROSS pen, MARK, HINT and MENU beside a 15×15 board](docs/screenshots/phone.webp)
 
 The rail's legend becomes a thumb pad. At the top is the **pen** — **FILL | CROSS** — and
 it decides what touching the board does, so the whole picture can be solved with one thumb.
@@ -51,7 +57,7 @@ it decides what touching the board does, so the whole picture can be solved with
 | small squares | tap or slide to aim like a trackpad, then tap the cursor's square again or press **MARK**; hold **MARK** and slide the other thumb to paint |
 | reveal one square | **HINT** |
 | cozy corner | **MENU** — drag the list to scroll it, tap a row to change it |
-| back | **HOME** in the top-left corner of a puzzle or a finished picture, **BACK** in the Cozy Corner — or the system back gesture |
+| back | **‹ HOME** in the top-left corner of a puzzle or a finished picture (just **‹** where the corner is tight), **‹ BACK** in the Cozy Corner — or the system back gesture |
 
 Every screen names taps instead of buttons. Small boards grow to fill the phone. Picking up
 a controller brings the controller legend back; touching the screen again brings the pad
@@ -90,6 +96,17 @@ falling asleep and waking up with a new device id.
 - Native landscape interface for the TV (no touchscreen required, nothing below the safe
   area) and touch controls on phones and tablets from the same app.
 
+## Getting it
+
+CozyGrams is being readied for Google Play, for Android TV, phones and tablets alike.
+Until the listing is live, the signed APK on the
+[latest GitHub release](https://github.com/bradflaugher/CozyGrams/releases/latest)
+installs on any of them — see [Release](#release) below.
+
+It is free, with no ads, no in-app purchases and no network access at all: the app does not
+ask for the internet permission. The [privacy policy](https://bradflaugher.com/privacy/cozygrams/)
+says the same at more length, and its address is in the Cozy Corner.
+
 ## Build and test
 
 Install JDK 21 and the Android SDK, then run:
@@ -101,7 +118,8 @@ Install JDK 21 and the Android SDK, then run:
 The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs
 tests, lint and a complete release build on every push and pull request.
 
-CozyGrams runs on Android TV 8.0 (API 26) and up and targets the latest Android. The code
+CozyGrams runs on Android 8.0 (API 26) and up — televisions, phones, tablets and
+Chromebooks — and targets the latest Android. The code
 carries no version checks: if a feature needs a newer API, raise `minSdk` instead.
 
 ## Previewing the interface without a device
@@ -128,7 +146,11 @@ a camera cutout, which are the frames to read at portrait, square and 4:3 sizes 
 `1600 2560`, `1200 1200` or `800 600`. Twenty-eight of them render at whatever resolution
 you ask for; `sizes/` holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a
 scaling regression turns up as a picture rather than as an argument, and a portrait tablet
-pinned at 1600×2560; `phone/` and `store/` pin the phone shapes.
+pinned at 1600×2560; `phone/` pins the phone shapes, and `store/` holds the Google Play
+listing's screenshots at the 16:9 sizes Play asks for — a phone at 3×, a 7-inch tablet at
+600dp and a 10-inch one at 800dp, each 1920×1080 or 2560×1440, and the television at
+1920×1080. Those are written ready to upload, with no alpha channel and no stamp (below), and
+are what `fastlane/metadata/android/en-US/images/*Screenshots/` is copied from.
 
 Nothing in the set is posed. The frames that show the game reacting — the particles, the
 win — press the button and let the same calls the real input path makes decide what comes
@@ -138,8 +160,8 @@ reviewed instead of the game.
 **These frames outlive the tree they came from.** `tools/preview/out/` is in `.gitignore`,
 so nothing in the repository records how old a copy of one is, and a set rendered before
 v2.0.0 once survived long enough to have a review written from it. Every frame therefore
-carries the short commit and a fingerprint of the compiled sources in its bottom-left
-corner, outside the safe area, where it can cover backdrop and nothing else; if that
+outside `store/` carries the short commit and a fingerprint of the compiled sources in its
+bottom-left corner, outside the safe area, where it can cover backdrop and nothing else; if that
 disagrees with `git log -1`, the picture is old. Alongside them, `MANIFEST.sha256` lists
 every input and every output, so
 
@@ -182,7 +204,7 @@ Releases so only the latest release remains. It contains:
 
 | File | For |
 |---|---|
-| `CozyGrams.apk` (and `.sha256`) | Sideloading on a TV such as the NVIDIA Shield (enable installation from unknown sources first) |
+| `CozyGrams.apk` (and `.sha256`) | Sideloading on a TV such as the NVIDIA Shield, or on a phone or tablet (allow installing unknown apps first) |
 | `CozyGrams.aab` | Google Play upload |
 | `mapping.txt` | Play Console deobfuscation file for crash reports |
 
