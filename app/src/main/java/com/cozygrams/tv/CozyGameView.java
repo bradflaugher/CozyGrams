@@ -195,7 +195,13 @@ public final class CozyGameView extends View {
         // A board restored in its finished state has already been celebrated once, so
         // deal the next picture rather than replaying the win on the first keypress.
         if (game.puzzle.complete()) {
-            game.next();
+            // The same choice the win card's own exit makes, so a size picked before the
+            // app was closed on a finished picture is the size of the next one.
+            if (takesTheBankedSize()) {
+                dealBankedSize();
+            } else {
+                game.next();
+            }
         }
         ui.snapCursors(game);
         forgetTheRoom();
@@ -1718,7 +1724,8 @@ public final class CozyGameView extends View {
             return;
         }
         if (SettingsScene.consumeStoryRestart()) {
-            game.solved = 0;
+            // Only the book starts over. The pictures already on the wall (and the
+            // endless count and tonight's tally that read them) stay where they are.
             game.storyFurthest = 0;
             game.storyCompleted = 0;
             game.startStory(0);
@@ -1973,7 +1980,15 @@ public final class CozyGameView extends View {
         if (holdX[who] < 0) {
             return;
         }
-        game.undoMark(who, holdX[who], holdY[who], holdMark[who]);
+        // A press that began on another board (the partner dealt a new one mid-hold) has
+        // no square here to put back.
+        boolean sameBoard = holdX[who] < game.size && holdY[who] < game.size;
+        // Only take the fill back when a hint is actually coming to replace it: with hints
+        // resting, or nothing left to reveal, the hold would otherwise just erase a square.
+        if (sameBoard && ui.hintsOn && game.hintAvailable()
+                && game.puzzle.marks[holdY[who]][holdX[who]] != holdMark[who]) {
+            game.undoMark(who, holdX[who], holdY[who], holdMark[who]);
+        }
         forgetHeldSquare(who);
         centreDownAt[who] = 0;
         useHint(who);

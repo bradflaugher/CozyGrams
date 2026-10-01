@@ -222,8 +222,10 @@ public final class GameState {
 
     /**
      * Reveals the next picture square, searching outward from the player's cursor so the
-     * help always appears somewhere they were already looking. Returns false when the
-     * picture is already fully found.
+     * help always appears somewhere they were already looking. Once every picture square
+     * is filled, a hint crosses out a square that was filled by mistake instead, so a
+     * board that is not yet won always has one more hint to give. Returns false only when
+     * the board already matches the picture.
      */
     public boolean hint(int player, long now) {
         int cells = size * size;
@@ -239,6 +241,32 @@ public final class GameState {
                 cursorY[player] = y;
                 moves[player]++;
                 return true;
+            }
+        }
+        for (int step = 0; step < cells; step++) {
+            int at = (start + step) % cells;
+            int y = at / size;
+            int x = at % size;
+            if (!puzzle.solution[y][x] && puzzle.marks[y][x] == Puzzle.FILLED) {
+                puzzle.marks[y][x] = Puzzle.CROSSED;
+                claim(player, x, y, Puzzle.CROSSED, now);
+                cursorX[player] = x;
+                cursorY[player] = y;
+                moves[player]++;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when {@link #hint} would change something. */
+    public boolean hintAvailable() {
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                boolean filled = puzzle.marks[y][x] == Puzzle.FILLED;
+                if (puzzle.solution[y][x] != filled) {
+                    return true;
+                }
             }
         }
         return false;

@@ -80,6 +80,31 @@ public class GameStateTest {
             }
         }
         assertFalse(game.hint(0));
+        assertFalse(game.hintAvailable());
+    }
+
+    @Test
+    public void hintCrossesAStrayFillOnceEveryPictureSquareIsFound() {
+        GameState game = new GameState(7, 5);
+        int strayX = -1;
+        int strayY = -1;
+        for (int y = 0; y < game.size; y++) {
+            for (int x = 0; x < game.size; x++) {
+                if (game.puzzle.solution[y][x]) {
+                    game.puzzle.marks[y][x] = Puzzle.FILLED;
+                } else if (strayX < 0) {
+                    strayX = x;
+                    strayY = y;
+                }
+            }
+        }
+        game.puzzle.marks[strayY][strayX] = Puzzle.FILLED;
+        assertFalse(game.puzzle.complete());
+        assertTrue(game.hintAvailable());
+        assertTrue(game.hint(0));
+        assertEquals(Puzzle.CROSSED, game.puzzle.marks[strayY][strayX]);
+        assertTrue(game.puzzle.complete());
+        assertFalse(game.hint(0));
     }
 
     /**
