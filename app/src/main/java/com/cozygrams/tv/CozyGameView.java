@@ -585,9 +585,10 @@ public final class CozyGameView extends View {
         // Back and Menu mean one press, however long they are held. Auto-repeat would hand
         // each repeat to whatever screen the first press opened: a held Back walked from the
         // cozy corner through the puzzle to the title, and a held Menu flicked the corner
-        // open and shut. On the title screen a Back still goes to the platform as it came.
-        if (repeat && (PlayerRegistry.isMenu(key)
-                || (PlayerRegistry.isBack(key) && ui.screen != UiState.HOME))) {
+        // open and shut. The repeats are swallowed on the title screen too, since a Back
+        // held from the puzzle arrives there still repeating; only a fresh Back pressed on
+        // the title screen goes to the platform.
+        if (repeat && (PlayerRegistry.isMenu(key) || PlayerRegistry.isBack(key))) {
             return true;
         }
         // The back gesture on a phone arrives as a key from no controller at all. It is
