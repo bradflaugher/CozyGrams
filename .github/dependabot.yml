@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Every version update waits 3 days after a release before Dependabot
+  # proposes it, so a hijacked release has time to be pulled first. Security
+  # updates ignore the cooldown.
+
+  # The Android Gradle plugin in build.gradle (the app has no libraries).
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+
+  # Actions are pinned to commit SHAs; Dependabot keeps the pins current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
