@@ -20,6 +20,13 @@ with:
 sha256sum -c CozyGrams.apk.sha256
 ```
 
+Each APK and bundle also carries a signed build provenance attestation,
+which proves it was built by this repository's CI from a specific commit:
+
+```sh
+gh attestation verify CozyGrams.apk --repo bradflaugher/CozyGrams
+```
+
 ## Design notes
 
 - The app requests no permissions at all. There is no `INTERNET`

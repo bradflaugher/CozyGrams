@@ -12,6 +12,13 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
+    groups:
+      # Minor and patch bumps land together in one PR. Major versions still
+      # arrive one per PR, so their release notes get a look.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
 
   # Actions are pinned to commit SHAs; Dependabot keeps the pins current.
   - package-ecosystem: github-actions
@@ -21,3 +28,9 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
+    groups:
+      # All action pin bumps in one PR: they are SHA-pinned and CI runs on
+      # every one of them.
+      actions:
+        patterns:
+          - "*"
