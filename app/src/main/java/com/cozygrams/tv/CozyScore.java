@@ -457,7 +457,7 @@ final class CozyScore {
             }
         }
         for (int i = offset * 2; i < (offset + count) * 2; i++) {
-            out[i] *= master;
+            out[i] = (float) (out[i] * master);
         }
     }
 
