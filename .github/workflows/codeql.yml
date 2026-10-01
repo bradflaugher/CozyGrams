@@ -24,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
-      actions: read
-      security-events: write
+      contents: read # check out the code
+      actions: read # read this run's metadata (needed by CodeQL)
+      security-events: write # upload the results to code scanning
 
     strategy:
       fail-fast: false

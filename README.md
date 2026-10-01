@@ -213,3 +213,6 @@ The release key lives only in the repository secrets `COZYGRAMS_KEYSTORE_BASE64`
 them the build still runs, unsigned, and nothing is published. The key was replaced in
 September 2026 (the old one was public), so a CozyGrams sideloaded before then has to be
 uninstalled once before the new APK will install.
+
+Keeping the toolchain and CI current, and the repository's security
+settings, are covered in [MAINTAINING.md](MAINTAINING.md).
