@@ -10,9 +10,12 @@ import android.hardware.input.InputManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 /**
  * Hosts the single game surface.
@@ -84,6 +87,36 @@ public final class MainActivity extends Activity {
         setContentView(game);
         applyImmersiveMode();
         watchForControllers();
+        catchBackIfTheKeyStopsComing();
+    }
+
+    /**
+     * The manifest's {@code enableOnBackInvokedCallback="false"} keeps Back arriving as
+     * {@code KEYCODE_BACK}, and while Android honours it the callback below is never called
+     * (the platform ignores callbacks for an app that has opted out). Google describes that
+     * opt-out as temporary for apps targeting Android 16 and later. If a release stops
+     * honouring it, the key stops coming and Back is offered here instead: it steps back
+     * through the game's own screens exactly as the key would, and on the title screen does
+     * what the system's own Back does for a launcher activity.
+     */
+    private void catchBackIfTheKeyStopsComing() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        try {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    new OnBackInvokedCallback() {
+                        @Override
+                        public void onBackInvoked() {
+                            if (game == null || !game.backFromSystem()) {
+                                moveTaskToBack(true);
+                            }
+                        }
+                    });
+        } catch (Throwable ignored) {
+            // The key still arrives on every release that has it.
+        }
     }
 
     @Override

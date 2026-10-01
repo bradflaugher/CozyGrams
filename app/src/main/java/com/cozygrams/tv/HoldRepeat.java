@@ -95,6 +95,13 @@ final class HoldRepeat {
         }
     }
 
+    /** Lets go of whatever this device was holding: it has gone, and its key-up may not come. */
+    void releaseDevice(int deviceId) {
+        if (active && this.deviceId == deviceId) {
+            clear();
+        }
+    }
+
     void clear() {
         active = false;
         who = 0;

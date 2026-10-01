@@ -564,8 +564,23 @@ final class CozySfx {
         return false;
     }
 
+    /**
+     * Plays what has been asked for since the last block. {@link #shutdown} resets both
+     * counters from the UI thread, and a reset that lands between this thread's read and
+     * write of {@link #tail} leaves the tail ahead of the head; {@code tail != head} would
+     * then spin through four billion stale requests. So the loop runs only while requests
+     * are genuinely waiting, catches the tail up after such a reset, and never takes more
+     * than a full queue in one go.
+     */
     private void drain() {
-        while (tail != head) {
+        for (int taken = 0; taken < QUEUE; taken++) {
+            int pending = head - tail;
+            if (pending <= 0) {
+                if (pending < 0) {
+                    tail = head;
+                }
+                return;
+            }
             int request = queue[tail & (QUEUE - 1)];
             tail = tail + 1;
             trigger(request);
