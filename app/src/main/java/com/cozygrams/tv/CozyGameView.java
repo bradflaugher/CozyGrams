@@ -1782,8 +1782,10 @@ public final class CozyGameView extends View {
         }
         // Sound hushed for a call, pulled headphones or another app taking the room stays
         // hushed through an unrelated switch (Larger Text, say); only the Music or Sounds
-        // row itself is somebody asking for sound again.
-        if (row == SettingsScene.ITEM_MUSIC || row == SettingsScene.ITEM_SFX) {
+        // row switched on is somebody asking for sound again. Switching one off is not: it
+        // must not wake the other one up through the speaker.
+        if ((row == SettingsScene.ITEM_MUSIC && ui.musicOn)
+                || (row == SettingsScene.ITEM_SFX && ui.sfxOn)) {
             soundResting = false;
         }
         if (!soundResting) {
