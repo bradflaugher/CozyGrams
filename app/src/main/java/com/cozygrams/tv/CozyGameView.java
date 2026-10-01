@@ -104,6 +104,12 @@ public final class CozyGameView extends View {
     /** When each player's centre press went down, for the hold-to-hint gesture. */
     private final long[] centreDownAt = {0, 0};
 
+    /**
+     * True while {@link #hush} has silenced the game for something outside it — a call,
+     * headphones out, audio focus lost — until {@link #resume} brings the sound back.
+     */
+    private boolean soundResting;
+
     /** When the previous frame was drawn, or 0 before the first one of a session. */
     private long lastFrameAt;
 
@@ -304,6 +310,7 @@ public final class CozyGameView extends View {
      * ever starting a track that would then have to be stopped.
      */
     public void resume(boolean withSound) {
+        soundResting = !withSound;
         music.setEnabled(withSound && ui.musicOn);
         sfx.setEnabled(withSound && ui.sfxOn);
         // Forget the frame we drew before the interruption; the gap since then is however
@@ -323,6 +330,11 @@ public final class CozyGameView extends View {
 
     public void pause() {
         hush();
+        // A key-up that lands while another window has focus never reaches us; a hold
+        // left running would walk the cursor on its own when the game comes back.
+        cursorHolds[0].clear();
+        cursorHolds[1].clear();
+        menuHold.clear();
         // The doze timer is left running: a permanent loss of audio focus pauses the sound
         // with the game still in front of somebody, and that screen still deserves to be
         // allowed to sleep. On a window that is really in the background it is harmless.
@@ -336,6 +348,7 @@ public final class CozyGameView extends View {
      * very much is not. {@link #resume} brings both back.
      */
     public void hush() {
+        soundResting = true;
         music.stop();
         // The mixer's thread outlives the pause, and a chime arriving over whatever
         // interrupted us is exactly what audio focus asked us not to do.
@@ -368,6 +381,11 @@ public final class CozyGameView extends View {
      * a cursor that will never move.
      */
     public void onControllerLost(int deviceId) {
+        // The cancelled key-up for a direction it was holding can arrive after the device
+        // has left the registry, where onKeyUp no longer knows whose it was.
+        cursorHolds[0].releaseDevice(deviceId);
+        cursorHolds[1].releaseDevice(deviceId);
+        menuHold.releaseDevice(deviceId);
         int freed = players.releaseDevice(deviceId);
         padsInTheRoom.remove(deviceId);
         HudScene.setRemoteOnly(players.deviceCount() > 0 && padsInTheRoom.isEmpty());
@@ -564,6 +582,14 @@ public final class CozyGameView extends View {
             HudScene.setTouch(false);
         }
         boolean repeat = event.getRepeatCount() > 0;
+        // Back and Menu mean one press, however long they are held. Auto-repeat would hand
+        // each repeat to whatever screen the first press opened: a held Back walked from the
+        // cozy corner through the puzzle to the title, and a held Menu flicked the corner
+        // open and shut. On the title screen a Back still goes to the platform as it came.
+        if (repeat && (PlayerRegistry.isMenu(key)
+                || (PlayerRegistry.isBack(key) && ui.screen != UiState.HOME))) {
+            return true;
+        }
         // The back gesture on a phone arrives as a key from no controller at all. It is
         // Rose's Back, straight away: it must not be taken for somebody sitting down, which
         // swallowed the first swipe and would have handed a seat to the navigation bar.
@@ -928,7 +954,7 @@ public final class CozyGameView extends View {
         ui.joined[0] = true;
         claimRoseForTouch();
         ui.lastActive[0] = now();
-        BoardLayout board = renderer.board();
+        BoardLayout board = boardInPlay();
         int column = cellColumn(board, x);
         int row = cellRow(board, y);
         if (column < 0 || row < 0) {
@@ -947,8 +973,18 @@ public final class CozyGameView extends View {
                 Theme.CREAM);
     }
 
-    private boolean squaresAreDirect() {
+    /**
+     * The board last drawn, but only while it is still the size of the one in play. A
+     * touch landing between a new picture being dealt and its first frame would otherwise
+     * be aimed with the old board's geometry, and index past the edge of a smaller one.
+     */
+    private BoardLayout boardInPlay() {
         BoardLayout board = renderer.board();
+        return board != null && board.size == game.size ? board : null;
+    }
+
+    private boolean squaresAreDirect() {
+        BoardLayout board = boardInPlay();
         return board != null && board.cell >= mm(TOUCH_DIRECT_MM);
     }
 
@@ -996,7 +1032,7 @@ public final class CozyGameView extends View {
         aimLongPressed = false;
         aimDirect = squaresAreDirect();
         strokeAxis = 0;
-        BoardLayout board = renderer.board();
+        BoardLayout board = boardInPlay();
         aimBoard = board;
         aimCellX = cellColumn(board, x);
         aimCellY = cellRow(board, y);
@@ -1692,6 +1728,15 @@ public final class CozyGameView extends View {
         ui.won = false;
         ui.winAt = 0;
         effects.clear();
+        // A finger or a centre button still down from the last board belongs to that
+        // board: carried over, its squares would land on (or past the edge of) this one.
+        removeCallbacks(aimLongPress);
+        aimPointer = -1;
+        aimBoard = null;
+        for (int who = 0; who < centreDownAt.length; who++) {
+            centreDownAt[who] = 0;
+            forgetHeldSquare(who);
+        }
     }
 
     // ---- Cozy corner ---------------------------------------------------------------
@@ -1703,8 +1748,9 @@ public final class CozyGameView extends View {
             beginMenuHold(0, 1, event.getDeviceId(), key, SettingsScene.ITEM_COUNT);
         } else if (PlayerRegistry.isConfirm(key) && !repeat) {
             chooseSetting();
-        } else if (PlayerRegistry.isBack(key) || PlayerRegistry.isCross(key)
-                || PlayerRegistry.isMenu(key)) {
+        } else if (!repeat && (PlayerRegistry.isBack(key) || PlayerRegistry.isCross(key)
+                || PlayerRegistry.isMenu(key))) {
+            // A held B leaves once; its repeats must not go on to cross squares out.
             leaveSettings();
         }
         // True for the same reason as the title screen: only the game's own keys get this
@@ -1734,7 +1780,15 @@ public final class CozyGameView extends View {
             enterGame();
             return;
         }
-        music.setEnabled(ui.musicOn);
+        // Sound hushed for a call, pulled headphones or another app taking the room stays
+        // hushed through an unrelated switch (Larger Text, say); only the Music or Sounds
+        // row itself is somebody asking for sound again.
+        if (row == SettingsScene.ITEM_MUSIC || row == SettingsScene.ITEM_SFX) {
+            soundResting = false;
+        }
+        if (!soundResting) {
+            music.setEnabled(ui.musicOn);
+        }
         applyPlayerCount();
         // The chime rises for something turned on and falls for something turned off, so
         // the answer is audible even for a row whose effect is on another screen.
@@ -1743,7 +1797,7 @@ public final class CozyGameView extends View {
             // Say goodbye while the mixer is still listening, then make the room quiet.
             sfx.select(CozySfx.ROOM, false);
             sfx.setEnabled(false);
-        } else {
+        } else if (!soundResting) {
             sfx.setEnabled(ui.sfxOn);
             sfx.select(CozySfx.ROOM, switchedOn);
         }
@@ -1940,6 +1994,23 @@ public final class CozyGameView extends View {
             announce(describeMenu());
         }
         store.save(game, ui);
+    }
+
+    /**
+     * Back delivered by the platform rather than as a key — see
+     * {@code MainActivity.catchBackIfTheKeyStopsComing}.
+     *
+     * @return false on the title screen, where Back belongs to the system
+     */
+    public boolean backFromSystem() {
+        noticeSomebody();
+        if (ui.screen == UiState.HOME) {
+            store.save(game, ui);
+            return false;
+        }
+        goBack();
+        invalidate();
+        return true;
     }
 
     /**
@@ -2436,6 +2507,13 @@ public final class CozyGameView extends View {
                 // moved, but the empty seat can show that the room noticed.
                 HudScene.setSeatStirredAt(openSeat(), now());
                 invalidate();
+            }
+            // The stick rule above has already decided this movement means nothing.
+            // Handed back, the platform would turn the same axes into D-pad key presses of
+            // its own, with their own repeat: an unarmed pad's first twitch would take a
+            // seat after all, and a stick drifting inside our dead zone would walk a cursor.
+            if (event.isFromSource(InputDevice.SOURCE_JOYSTICK)) {
+                return true;
             }
             return super.onGenericMotionEvent(event);
         }

@@ -438,7 +438,7 @@ public final class HomeScene {
         /** The focus pulse both menus breathe at, steady when movement is unwelcome. */
         public static float beat(long now) {
             return Comfort.get().calmMotion ? .55f
-                    : (float) Math.abs(Math.sin(now / 900f));
+                    : (float) Math.abs(Math.sin(now / 900.0));
         }
     }
 
@@ -634,7 +634,7 @@ public final class HomeScene {
         float lane = right - left - pad * 2;
 
         float beat = Comfort.get().calmMotion ? .5f
-                : (float) Math.abs(Math.sin(now / 1700f));
+                : (float) Math.abs(Math.sin(now / 1700.0));
         float heartRest = Theme.scale(38);
         float heart = heartRest * (.95f + beat * .10f);
         float heartY = top + Theme.scale(48);
@@ -1087,7 +1087,7 @@ public final class HomeScene {
         // The heartbeat is the one idle movement on this screen, so it is also the first
         // thing calm motion should switch off.
         float beat = Comfort.get().calmMotion ? .5f
-                : (float) Math.abs(Math.sin(now / 1700f));
+                : (float) Math.abs(Math.sin(now / 1700.0));
         float size = Theme.scale(HEART_SIZE) * (.94f + beat * .12f);
         draw.heart(canvas, cx, heartCentre, size, Theme.PINK);
         draw.heart(canvas, cx - size * .07f, heartCentre - size * .07f, size * .80f,

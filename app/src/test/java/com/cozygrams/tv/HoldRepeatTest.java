@@ -88,6 +88,16 @@ public class HoldRepeatTest {
         assertTrue(hold.due(1400, Theme.REPEAT_FIRST_MS, Theme.BOARD_REPEAT_MS));
     }
 
+    @Test
+    public void aControllerThatLeavesLetsGoOfItsHold() {
+        HoldRepeat hold = downAt(1000);
+        hold.releaseDevice(12);
+        assertTrue("another device's departure changes nothing", hold.active);
+        hold.releaseDevice(11);
+        assertFalse(hold.due(1000 + Theme.REPEAT_FIRST_MS,
+                Theme.REPEAT_FIRST_MS, Theme.BOARD_REPEAT_MS));
+    }
+
     private static HoldRepeat downAt(long now) {
         HoldRepeat hold = new HoldRepeat();
         hold.adopt(0, 0, 1, 11, 20, now);

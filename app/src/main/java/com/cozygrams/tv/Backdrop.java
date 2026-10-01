@@ -394,7 +394,9 @@ public final class Backdrop {
                          long now) {
         float targetX = .50f;
         float targetY = .52f;
-        if (playing) {
+        // A zero-sized frame would divide the pool's target into NaN, and the lerp toward
+        // it would carry the NaN on for the rest of the session.
+        if (playing && width > 0 && height > 0) {
             BoardLayout board = measure(width, height, game.puzzle);
             targetX = (board.cardLeft() + board.cardRight()) / 2 / width;
             targetY = (board.cardTop() + board.cardBottom()) / 2 / height;

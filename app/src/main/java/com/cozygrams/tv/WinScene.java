@@ -385,8 +385,8 @@ public final class WinScene {
         float gap = Theme.scale(40);
 
         drawPicture(canvas, middle, left, left + frame, board, game, elapsed, lift, calm);
-        drawPlaque(canvas, left + frame + gap, left + span, middle, game, ui, elapsed,
-                calm);
+        drawPlaque(canvas, left + frame + gap, left + span, middle,
+                Theme.safeBottom(height) - Theme.safeTop(height), game, ui, elapsed, calm);
     }
 
     /**
@@ -881,9 +881,10 @@ public final class WinScene {
      * panel under two lines of text, which reads as a loading placeholder rather than as
      * choreography.
      */
-    private void drawPlaque(Canvas canvas, float left, float right, float middle,
+    private void drawPlaque(Canvas canvas, float left, float right, float middle, float room,
                             GameState game, UiState ui, float elapsed, boolean calm) {
         Plaque p = measurePlaque(left, right, game, ui);
+        fitToRoom(p, room);
         float content = p.content();
         float top = middle - (content + p.padY * 2) / 2;
 
@@ -908,6 +909,31 @@ public final class WinScene {
         for (int row = 0; row < p.rows; row++) {
             y += p.gap[row] + p.high[row];
             drawRow(canvas, p, p.kind[row], y, game, elapsed, calm);
+        }
+    }
+
+    /** The least of its breathing room a plaque keeps when it is squeezed to fit. */
+    private static final float PLAQUE_MIN_AIR = .3f;
+
+    /**
+     * Takes the air out of a plaque that is taller than the safe area: the gaps between
+     * rows and the padding shrink together, the words keep their size. LARGER TEXT on top
+     * of a television's own large font made a chapter's card 726 px tall on a 720 px
+     * screen, which put the chapter number and the way back to the menu off the panel.
+     */
+    private static void fitToRoom(Plaque p, float room) {
+        float air = p.padY * 2;
+        for (int row = 1; row < p.rows; row++) {
+            air += p.gap[row];
+        }
+        float words = p.content() + p.padY * 2 - air;
+        if (air <= 0 || words + air <= room) {
+            return;
+        }
+        float squeeze = Math.max(PLAQUE_MIN_AIR, (room - words) / air);
+        p.padY *= squeeze;
+        for (int row = 1; row < p.rows; row++) {
+            p.gap[row] *= squeeze;
         }
     }
 

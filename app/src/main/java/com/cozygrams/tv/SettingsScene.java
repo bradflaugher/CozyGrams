@@ -745,7 +745,7 @@ public final class SettingsScene {
         if (focused) {
             // A steady glow rather than a heartbeat when movement is unwelcome.
             float beat = Comfort.get().calmMotion ? .55f
-                    : (float) Math.abs(Math.sin(now / 900f));
+                    : (float) Math.abs(Math.sin(now / 900.0));
             float glow = half * .2f;
             draw.roundRect(canvas, left - glow, centreY - half - glow, right + glow,
                     centreY + half + glow, radius + glow,

@@ -849,7 +849,7 @@ public final class CursorRenderer {
     /** A shared heart above the square both players chose — a tiny co-op reward. */
     private void drawTogetherHeart(Canvas canvas, BoardLayout board, Cursor c, long now) {
         float beat = Comfort.get().calmMotion ? .5f
-                : (float) Math.abs(Math.sin(now / Theme.MOTION_WARM_MS));
+                : (float) Math.abs(Math.sin(now / (double) Theme.MOTION_WARM_MS));
         float size = Math.max(board.cell * .26f, Theme.scale(15)) * (.94f + beat * .12f);
         float cy = c.badgeBottom ? c.cy + c.plate + size * 1.05f
                 : c.cy - c.plate - size * 1.05f;
