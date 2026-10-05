@@ -90,14 +90,29 @@ public final class MainActivity extends Activity {
         // Screenshot and test runs launch with this extra to skip the welcome card:
         //   adb shell am start -n com.cozygrams.tv/.MainActivity --ez skip_welcome true
         // It can only ever put the card away, never show it, so it needs no guarding.
-        Intent launch = getIntent();
-        if (launch != null && launch.getBooleanExtra(EXTRA_SKIP_WELCOME, false)) {
-            game.skipWelcome();
-        }
+        skipWelcomeIfAsked(getIntent());
         setContentView(game);
         applyImmersiveMode();
         watchForControllers();
         catchBackIfTheKeyStopsComing();
+    }
+
+    /**
+     * The activity is {@code singleTask}, so launching it again while it is alive arrives
+     * here rather than in {@link #onCreate}: the skip extra has to be honoured on both.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        skipWelcomeIfAsked(intent);
+    }
+
+    private void skipWelcomeIfAsked(Intent launch) {
+        if (game != null && launch != null
+                && launch.getBooleanExtra(EXTRA_SKIP_WELCOME, false)) {
+            game.skipWelcome();
+        }
     }
 
     /**

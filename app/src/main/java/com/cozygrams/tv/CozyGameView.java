@@ -647,12 +647,13 @@ public final class CozyGameView extends View {
         int who = gesture ? 0 : registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
 
-        // The welcome card is put away by any press that means something — and only that:
-        // a direction is ignored rather than steering the screen hidden behind the card.
-        // The press that seats somebody counts too, because the card is the first thing
-        // anybody sees and it would be odd for it to take two presses on a television.
+        // The welcome card says "press any button", so any press puts it away — a direction
+        // on a remote included, since that is the first thing a hand on a remote does. The
+        // press goes no further, so nothing behind the card moves. The press that seats
+        // somebody counts too: the card is the first thing anybody sees, and it would be
+        // odd for it to take two presses on a television.
         if (ui.welcome) {
-            if (!repeat && !PlayerRegistry.isDirection(key)) {
+            if (!repeat) {
                 dismissWelcome();
             }
             invalidate();
@@ -2823,7 +2824,9 @@ public final class CozyGameView extends View {
         ui.lastActive[who] = now();
 
         if (ui.welcome) {
-            // A stick nudge is a direction, and directions leave the card alone.
+            // A stick nudge is a press like any other here: it puts the card away and goes
+            // no further.
+            dismissWelcome();
             invalidate();
             return true;
         }

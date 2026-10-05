@@ -73,7 +73,8 @@ public class HelpSceneTest {
         assertTrue(HelpScene.welcomeControls().startsWith("Tap"));
         assertNotEquals(pad, remote);
         assertNotEquals(pad, touch);
-        assertTrue(padLine.contains("A"));
+        // Before any press the card cannot know which, so it names both.
+        assertTrue(padLine.contains("A") && padLine.contains("OK"));
     }
 
     /** The little pictures on the welcome card are five squares each, and honest. */

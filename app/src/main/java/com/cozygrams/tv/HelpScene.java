@@ -193,7 +193,9 @@ public final class HelpScene {
         if (HudScene.remoteOnly()) {
             return "OK fills, crosses and clears · hold OK for a hint";
         }
-        return "A fills · B crosses out · Y for a hint";
+        // On a first launch nothing has been pressed yet, so the game cannot know whether
+        // a gamepad or a bare remote is in the room; the card names both.
+        return "A or OK fills · B crosses out · Y or hold OK for a hint";
     }
 
     /** Where to find all this again, which is the card's last word. */
