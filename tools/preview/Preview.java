@@ -292,7 +292,16 @@ public final class Preview {
             return;
         }
 
-        Draw.setProbe(AUDIT);
+        // The frames are checked the way the audit checks them — but only when text is
+        // measured in the face those verdicts are calibrated against. Without Liberation
+        // Sans the pictures are still worth having; the verdicts would not be.
+        boolean judging = Paint.harnessCanonicalFont();
+        if (judging) {
+            Draw.setProbe(AUDIT);
+        } else {
+            System.out.println("  text fit  : not checked — Liberation Sans is not installed"
+                    + " (fonts-liberation, liberation-sans-fonts or ttf-liberation)");
+        }
         List<File> written = new ArrayList<>();
         for (Frame frame : frames()) {
             written.add(render(frame));
@@ -2696,7 +2705,8 @@ public final class Preview {
         renderer.setScenes(room, garden);
         AUDIT.begin(w, h);
         frame.shot.draw(canvas, renderer, w, h);
-        for (String problem : AUDIT.finish()) {
+        List<String> found = AUDIT.finish();
+        for (String problem : found) {
             AUDIT_FAILURES.add(frame.name + ": " + problem);
         }
         canvas.release();
