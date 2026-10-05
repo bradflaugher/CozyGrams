@@ -5,8 +5,10 @@ import android.graphics.Paint;
 
 import com.cozygrams.tv.BoardLayout;
 import com.cozygrams.tv.Comfort;
+import com.cozygrams.tv.Draw;
 import com.cozygrams.tv.Effects;
 import com.cozygrams.tv.GameState;
+import com.cozygrams.tv.HelpScene;
 import com.cozygrams.tv.HomeScene;
 import com.cozygrams.tv.HudScene;
 import com.cozygrams.tv.Puzzle;
@@ -481,6 +483,58 @@ public final class Preview {
                 new Frame("sizes/33-touch-home-1600x2560.png",
                         "Shot 33 on a portrait tablet.",
                         Preview::tabletHome, 1600, 2560),
+                new Frame("40-help-basics.png",
+                        "How to play, first page, with a gamepad in the room.",
+                        Preview::helpBasics),
+                new Frame("41-help-controls-remote.png",
+                        "The controls page when only a bare TV remote is in the room.",
+                        Preview::helpControlsRemote),
+                new Frame("42-help-controls-gamepad.png",
+                        "The controls page with a gamepad: A, B, X, Y and a keyboard.",
+                        Preview::helpControlsGamepad),
+                new Frame("43-help-questions-bigtext.png",
+                        "The longest page, Questions, with LARGER TEXT on.",
+                        Preview::helpQuestionsBigText),
+                new Frame("sizes/43-help-questions-bigtext-720p.png",
+                        "The same at 720p, the smallest television panel.",
+                        Preview::helpQuestionsBigText, 1280, 720),
+                new Frame("44-welcome.png",
+                        "The first evening's welcome card over the title screen, gamepad.",
+                        Preview::welcome),
+                new Frame("45-welcome-bigtext-contrast.png",
+                        "The welcome card with LARGER TEXT and EXTRA CONTRAST on.",
+                        Preview::welcomeBigText),
+                new Frame("46-settings-help.png",
+                        "The cozy corner's HELP & ABOUT rows, How to play focused.",
+                        Preview::settingsHelp),
+                new Frame("47-settings-feedback-no-browser.png",
+                        "Send feedback focused on a television with no browser, LARGER TEXT on: "
+                                + "the address is shown in words.",
+                        Preview::settingsFeedbackNoBrowser),
+                new Frame("phone/48-phone-help.png",
+                        "How to play on a phone: tappable tabs and the welcome button.",
+                        Preview::phoneHelp, 2400, 1080),
+                new Frame("phone/49-phone-welcome.png",
+                        "The welcome card on a phone: tap anywhere to begin.",
+                        Preview::phoneWelcome, 2400, 1080),
+                new Frame("sizes/49-phone-welcome-1080x1920.png",
+                        "The welcome card on a portrait window.",
+                        Preview::phoneWelcome, 1080, 1920),
+                new Frame("store/phone-7-help.png",
+                        "Play Store phone shot: How to play, the Story Book page.",
+                        Preview::storePhoneHelp, 1920, 1080),
+                new Frame("store/tablet7-5-welcome.png",
+                        "Play Store 7-inch tablet shot: the welcome card.",
+                        Preview::storeTablet7Welcome, 1920, 1080),
+                new Frame("store/tablet10-5-help.png",
+                        "Play Store 10-inch tablet shot: How to play, first page.",
+                        Preview::storeTablet10Help, 2560, 1440),
+                new Frame("store/feature-graphic.png",
+                        "The Play listing's feature graphic, 1024x500: wordmark and a game in play.",
+                        (canvas, renderer, w, h) -> { }, 1024, 500),
+                new Frame("store/tv-5-help.png",
+                        "Play Store TV shot: How to play, playing with Rose and Sky.",
+                        Preview::storeTvHelp, 1920, 1080),
         };
     }
 
@@ -488,6 +542,107 @@ public final class Preview {
     // what out/README.md prints beside it. Repeating it here as a Javadoc line would give
     // the set two descriptions to drift apart; the comments below are only for the ones
     // that need a reason as well as a description.
+
+    // ---- How to play and the welcome card --------------------------------------------
+
+    private static void helpPage(Canvas canvas, Renderer renderer, int w, int h, int page,
+                                 boolean bigText) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.HELP;
+        ui.helpPage = page;
+        ui.bigTextOn = bigText;
+        ui.joined[0] = true;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void helpBasics(Canvas canvas, Renderer renderer, int w, int h) {
+        helpPage(canvas, renderer, w, h, HelpScene.PAGE_BASICS, false);
+    }
+
+    private static void helpControlsRemote(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setRemoteOnly(true);
+        helpPage(canvas, renderer, w, h, HelpScene.PAGE_CONTROLS, false);
+        HudScene.setRemoteOnly(false);
+    }
+
+    private static void helpControlsGamepad(Canvas canvas, Renderer renderer, int w, int h) {
+        helpPage(canvas, renderer, w, h, HelpScene.PAGE_CONTROLS, false);
+    }
+
+    private static void helpQuestionsBigText(Canvas canvas, Renderer renderer, int w, int h) {
+        helpPage(canvas, renderer, w, h, HelpScene.PAGE_QUESTIONS, true);
+    }
+
+    private static void welcomeScene(Canvas canvas, Renderer renderer, int w, int h,
+                                     boolean big) {
+        GameState game = endless(SUBJECT_SWEETHEART, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.HOME;
+        ui.menu = HomeScene.ITEM_STORY;
+        ui.welcome = true;
+        ui.bigTextOn = big;
+        ui.highContrastOn = big;
+        HomeScene.setPendingChapter(0);
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void welcome(Canvas canvas, Renderer renderer, int w, int h) {
+        welcomeScene(canvas, renderer, w, h, false);
+    }
+
+    private static void welcomeBigText(Canvas canvas, Renderer renderer, int w, int h) {
+        welcomeScene(canvas, renderer, w, h, true);
+    }
+
+    private static void settingsHelp(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.SETTINGS;
+        ui.menu = SettingsScene.ITEM_HELP;
+        ui.joined[0] = true;
+        ui.joined[1] = true;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void settingsFeedbackNoBrowser(Canvas canvas, Renderer renderer, int w,
+                                                  int h) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.SETTINGS;
+        ui.menu = SettingsScene.ITEM_FEEDBACK;
+        ui.canBrowse = false;
+        ui.canShare = false;
+        ui.bigTextOn = true;
+        ui.joined[0] = true;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void phoneHelp(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> helpPage(canvas, renderer, w, h, HelpScene.PAGE_CONTROLS, false));
+    }
+
+    private static void phoneWelcome(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> welcome(canvas, renderer, w, h));
+    }
+
+    // The Story Book page rather than the controls: at a phone's density the controls page
+    // scrolls, and a store shot should show a whole page.
+    private static void storePhoneHelp(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> helpPage(canvas, renderer, w, h, HelpScene.PAGE_STORY, false));
+    }
+
+    private static void storeTablet7Welcome(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> welcome(canvas, renderer, w, h));
+    }
+
+    private static void storeTablet10Help(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> helpPage(canvas, renderer, w, h, HelpScene.PAGE_BASICS, false));
+    }
+
+    private static void storeTvHelp(Canvas canvas, Renderer renderer, int w, int h) {
+        helpPage(canvas, renderer, w, h, HelpScene.PAGE_TOGETHER, false);
+    }
 
     private static void home(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = endless(SUBJECT_OWL, 10);
@@ -2205,7 +2360,8 @@ public final class Preview {
             // What goes to Google Play: no provenance stamp in the pixels, since these are
             // the pictures a stranger judges the game by, and no alpha channel, which Play
             // refuses on a screenshot. MANIFEST.sha256 still ties each one to its tree.
-            image = opaque(image);
+            image = frame.name.equals(FEATURE_GRAPHIC) ? opaque(featureGraphic())
+                    : opaque(captioned(image, STORE_CAPTIONS.get(frame.name)));
         } else if (!Boolean.getBoolean("cozy.preview.clean")) {
             Provenance.stamp(image);
         }
@@ -2221,6 +2377,240 @@ public final class Preview {
         System.out.printf("  %-38s %dx%d  %d bytes%n", frame.name, image.getWidth(),
                 image.getHeight(), file.length());
         return file;
+    }
+
+    /**
+     * What each Play Store shot says above the game: a headline and a gentler second line.
+     * Every store frame must have one; {@link #captioned} refuses a frame that does not, so
+     * a new shot cannot reach the listing silently uncaptioned.
+     */
+    private static final java.util.Map<String, String[]> STORE_CAPTIONS = new java.util.HashMap<>();
+
+    static {
+        String[] thumb = {"Solve it with one thumb", "Tap a square, drag a whole line, or hold for the other mark"};
+        String[] pen = {"Pick up the cross pen", "Rule out the empty squares as you work it out"};
+        String[] home = {"A cozy evening in", "A story, a fresh picture, or a cozier room"};
+        String[] story = {"Twenty-four handmade chapters", "A Story Book that climbs from 5×5 to 20×20"};
+        String[] two = {"Room for two", "Pair a controller and Sky joins the same picture"};
+        String[] keepsake = {"Every picture is a keepsake", "Finished chapters fill the book with hearts"};
+        String[] help = {"New to nonograms?", "How to play walks you through it, gently"};
+        STORE_CAPTIONS.put("store/phone-1-game.png", thumb);
+        STORE_CAPTIONS.put("store/phone-2-cross-pen.png", pen);
+        STORE_CAPTIONS.put("store/phone-3-home.png", home);
+        STORE_CAPTIONS.put("store/phone-4-story.png", story);
+        STORE_CAPTIONS.put("store/phone-5-two-players.png", two);
+        STORE_CAPTIONS.put("store/phone-6-win.png", keepsake);
+        STORE_CAPTIONS.put("store/phone-7-help.png", help);
+        STORE_CAPTIONS.put("store/tablet7-1-game.png",
+                new String[]{"Clues that always add up", "One answer on every board, and never a guess"});
+        STORE_CAPTIONS.put("store/tablet7-2-story.png", story);
+        STORE_CAPTIONS.put("store/tablet7-3-two-players.png", two);
+        STORE_CAPTIONS.put("store/tablet7-4-win.png", keepsake);
+        STORE_CAPTIONS.put("store/tablet7-5-welcome.png",
+                new String[]{"A gentle welcome", "Three little pictures teach the whole idea"});
+        STORE_CAPTIONS.put("store/tablet10-1-game.png",
+                new String[]{"Big boards, calm evenings", "Story Book chapters right up to 20×20"});
+        STORE_CAPTIONS.put("store/tablet10-2-home.png", home);
+        STORE_CAPTIONS.put("store/tablet10-3-two-players.png", two);
+        STORE_CAPTIONS.put("store/tablet10-4-win.png",
+                new String[]{"Endless pictures", "A fresh one whenever you like, at the size you choose"});
+        STORE_CAPTIONS.put("store/tablet10-5-help.png", help);
+        STORE_CAPTIONS.put("store/tv-1-home.png",
+                new String[]{"Made for the couch", "Two controllers, one cozy picture"});
+        STORE_CAPTIONS.put("store/tv-2-game.png",
+                new String[]{"Solve it together", "Rose and Sky each get a cursor, and share the credit"});
+        STORE_CAPTIONS.put("store/tv-3-story.png",
+                new String[]{"Twenty-four handmade chapters", "A Story Book to finish side by side"});
+        STORE_CAPTIONS.put("store/tv-4-win.png", keepsake);
+        STORE_CAPTIONS.put("store/tv-5-help.png",
+                new String[]{"Easy to pick up", "The rules, the controls and co-op, all in How to play"});
+    }
+
+    /**
+     * A Play Store shot: the game's own frame, set a little smaller on a softened, dimmed
+     * copy of itself, under a caption written in the game's own type and colours — the
+     * headline in cream with the game's drop shadow and heart, the second line in the pale
+     * pink the menus use. Drawn through {@link Draw}, so it can only ever look like the app.
+     */
+    private static BufferedImage captioned(BufferedImage frame, String[] caption) {
+        if (caption == null) {
+            throw new IllegalStateException("a store frame has no caption in STORE_CAPTIONS");
+        }
+        int w = frame.getWidth();
+        int h = frame.getHeight();
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            // The backdrop: the frame itself, softened by a trip through a tiny copy.
+            g.drawImage(softened(frame, 5), 0, 0, w, h, null);
+            g.setColor(new Color(16, 11, 28, 150));
+            g.fillRect(0, 0, w, h);
+
+            // The game, framed: 78% of the height, centred under the caption.
+            float scale = .78f;
+            int fw = Math.round(w * scale);
+            int fh = Math.round(h * scale);
+            int fx = (w - fw) / 2;
+            int fy = h - fh - Math.round(h * .045f);
+            float radius = h * .028f;
+            for (int ring = 6; ring >= 1; ring--) {
+                g.setColor(new Color(10, 6, 18, 22));
+                float spread = ring * h * .004f;
+                g.fill(new java.awt.geom.RoundRectangle2D.Float(fx - spread, fy - spread + h * .006f,
+                        fw + spread * 2, fh + spread * 2, (radius + spread) * 2, (radius + spread) * 2));
+            }
+            java.awt.Shape card = new java.awt.geom.RoundRectangle2D.Float(fx, fy, fw, fh,
+                    radius * 2, radius * 2);
+            java.awt.Shape oldClip = g.getClip();
+            g.setClip(card);
+            g.drawImage(frame, fx, fy, fw, fh, null);
+            g.setClip(oldClip);
+            g.setColor(new Color(255, 245, 227, 170));
+            g.setStroke(new java.awt.BasicStroke(Math.max(2f, h * .0022f)));
+            g.draw(card);
+        } finally {
+            g.dispose();
+        }
+
+        // The words, through the game's own drawing code.
+        Bitmap bitmap = Bitmap.wrap(out);
+        Canvas canvas = new Canvas(bitmap);
+        Draw draw = new Draw();
+        float headSize = h * .058f;
+        float subSize = h * .031f;
+        float room = w * .86f;
+        headSize = draw.fit(caption[0], headSize, room - headSize * 1.4f, true, h * .04f);
+        subSize = draw.fit(caption[1], subSize, room, false, h * .024f);
+        float headBase = h * .095f;
+        float headWidth = draw.measure(caption[0], headSize, true);
+        float heart = headSize * .62f;
+        float total = heart * 1.1f + headSize * .35f + headWidth;
+        float x = (w - total) / 2;
+        draw.heart(canvas, x + heart * .55f, headBase - headSize * .36f, heart, Theme.PINK);
+        draw.shadowedText(canvas, caption[0], x + heart * 1.1f + headSize * .35f, headBase,
+                headSize, Theme.CREAM, Paint.Align.LEFT, true);
+        draw.text(canvas, caption[1], w / 2f, headBase + subSize * 1.55f, subSize,
+                Theme.PINK_LIGHT, Paint.Align.CENTER, false);
+        canvas.release();
+        return bitmap.image();
+    }
+
+    /**
+     * A blurred copy, by halving {@code steps} times and growing back the same way. Each
+     * bilinear halving averages four pixels, so the result is smooth rather than blocky.
+     */
+    private static BufferedImage softened(BufferedImage source, int steps) {
+        BufferedImage image = source;
+        int[] widths = new int[steps + 1];
+        int[] heights = new int[steps + 1];
+        widths[0] = source.getWidth();
+        heights[0] = source.getHeight();
+        for (int i = 1; i <= steps; i++) {
+            widths[i] = Math.max(1, widths[i - 1] / 2);
+            heights[i] = Math.max(1, heights[i - 1] / 2);
+            image = resized(image, widths[i], heights[i]);
+        }
+        for (int i = steps - 1; i >= 0; i--) {
+            image = resized(image, widths[i], heights[i]);
+        }
+        return image;
+    }
+
+    private static BufferedImage resized(BufferedImage source, int w, int h) {
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = out.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(source, 0, 0, w, h, null);
+        g.dispose();
+        return out;
+    }
+
+    /** The listing's feature graphic, which Play shows at the top of the page. */
+    private static final String FEATURE_GRAPHIC = "store/feature-graphic.png";
+
+    /**
+     * The feature graphic, 1024x500: the living room, the wordmark and a line about the
+     * game on the left, and two players halfway through a picture on the right. Nothing
+     * that matters sits in the outer edge Play may crop or cover with a play button.
+     */
+    private static BufferedImage featureGraphic() {
+        int w = 1024;
+        int h = 500;
+        // The game, at the size a television draws it.
+        Bitmap scratch = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888);
+        Canvas scratchCanvas = new Canvas(scratch);
+        Renderer renderer = new Renderer();
+        renderer.setScenes(room, garden);
+        forgetSceneMemory();
+        gameTen(scratchCanvas, renderer, 1920, 1080);
+        scratchCanvas.release();
+        BufferedImage game = scratch.image();
+
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            BufferedImage backdrop = room.image();
+            float cover = Math.max(w / (float) backdrop.getWidth(), h / (float) backdrop.getHeight());
+            int bw = Math.round(backdrop.getWidth() * cover);
+            int bh = Math.round(backdrop.getHeight() * cover);
+            g.drawImage(backdrop, (w - bw) / 2, (h - bh) / 2, bw, bh, null);
+            // Darker on the left, where the words go.
+            g.setPaint(new java.awt.GradientPaint(0, 0, new Color(16, 11, 28, 215),
+                    w * .62f, 0, new Color(16, 11, 28, 90)));
+            g.fillRect(0, 0, w, h);
+
+            // The board card, cropped from the game frame around the board and its rail.
+            int cx = 258;
+            int cy = 82;
+            int cw = 962;
+            int ch = 888;
+            float scale = 380f / ch;
+            int dw = Math.round(cw * scale);
+            int dh = Math.round(ch * scale);
+            int dx = w - dw - 78;
+            int dy = (h - dh) / 2;
+            java.awt.Shape card = new java.awt.geom.RoundRectangle2D.Float(dx, dy, dw, dh, 28, 28);
+            for (int ring = 5; ring >= 1; ring--) {
+                g.setColor(new Color(10, 6, 18, 26));
+                g.fill(new java.awt.geom.RoundRectangle2D.Float(dx - ring * 2.5f,
+                        dy - ring * 2.5f + 4, dw + ring * 5, dh + ring * 5, 28 + ring * 5,
+                        28 + ring * 5));
+            }
+            java.awt.Shape clip = g.getClip();
+            g.setClip(card);
+            g.drawImage(game, dx, dy, dx + dw, dy + dh, cx, cy, cx + cw, cy + ch, null);
+            g.setClip(clip);
+            g.setColor(new Color(255, 245, 227, 170));
+            g.setStroke(new java.awt.BasicStroke(2f));
+            g.draw(card);
+        } finally {
+            g.dispose();
+        }
+
+        Bitmap bitmap = Bitmap.wrap(out);
+        Canvas canvas = new Canvas(bitmap);
+        Draw draw = new Draw();
+        float textCentre = 272;
+        draw.heart(canvas, textCentre, 128, 40, Theme.PINK);
+        float word = draw.fit("COZYGRAMS", 66, 360, true, 40);
+        draw.tracked(canvas, "COZYGRAMS", textCentre + 3, 222 + 3, word,
+                Draw.withAlpha(Theme.SHADOW_INK, 120), .09f, true);
+        draw.tracked(canvas, "COZYGRAMS", textCentre, 222, word, Theme.CREAM, .09f, true);
+        draw.roundRect(canvas, textCentre - 70, 246, textCentre + 70, 252, 3, Theme.PINK);
+        draw.text(canvas, "Cozy nonograms for two", textCentre, 302, 31, Theme.BLUE_LIGHT,
+                Paint.Align.CENTER, false);
+        draw.text(canvas, "For the TV, phones and tablets", textCentre, 344, 22,
+                Theme.SOFT_TEXT, Paint.Align.CENTER, false);
+        canvas.release();
+        return bitmap.image();
     }
 
     /** The sub-directory whose frames are the Play Store listing's screenshots. */

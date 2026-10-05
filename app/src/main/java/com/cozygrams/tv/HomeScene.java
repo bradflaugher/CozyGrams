@@ -934,7 +934,7 @@ public final class HomeScene {
         switch (Math.floorMod(item, ITEM_COUNT)) {
             case ITEM_STORY: return PuzzleLibrary.name(chapterToShow(game));
             case ITEM_SIZE: return "A new cozy picture";
-            default: return "Sound, hints, and comfort";
+            default: return "Comfort, sound, and how to play";
         }
     }
 

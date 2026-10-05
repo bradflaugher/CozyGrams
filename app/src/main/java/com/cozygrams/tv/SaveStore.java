@@ -73,6 +73,12 @@ public final class SaveStore {
     private static final String KEY_BOLD_CURSOR = "boldCursor";
     private static final String KEY_CALM_MOTION = "calmMotion";
     private static final String KEY_TWO_PLAYERS = "twoPlayers";
+    /** Whether the welcome card is owed: see {@link #welcomeOwed}. */
+    private static final String KEY_WELCOME = "welcome";
+
+    static final int WELCOME_UNKNOWN = 0;
+    static final int WELCOME_OWED = 1;
+    static final int WELCOME_SEEN = 2;
 
     // The look the game ships with lives on UiState, so a first run and "put everything
     // back" can never drift apart, and so the drawing code never has to know about
@@ -225,6 +231,51 @@ public final class SaveStore {
      */
     public static void restoreDefaults(UiState ui) {
         ui.restoreDefaults();
+    }
+
+    /**
+     * True when the welcome card should greet this evening, and settles the question for
+     * every evening after it. Call once, after {@link #loadGame}.
+     *
+     * <p>Only a genuine first evening is owed the card. Somebody who played before the card
+     * existed has already learned what it teaches, so the first time this is asked on their
+     * save it is answered "seen" for good. A first evening is written down as owed straight
+     * away, so a card that was never put away — the app closed under it — is still waiting
+     * next time, rather than lost because the visit count has moved on.
+     */
+    public boolean welcomeOwed() {
+        int stored = readInt(KEY_WELCOME, WELCOME_UNKNOWN);
+        int state = settleWelcome(stored, journey.visits);
+        if (state != stored) {
+            writeWelcome(state);
+        }
+        return state == WELCOME_OWED;
+    }
+
+    /**
+     * The welcome card's state once this evening has been counted: an unknown save is owed
+     * the card on its first visit and has seen it on any later one; anything already
+     * decided — or a value from nowhere, which is taken as seen — stays decided.
+     */
+    static int settleWelcome(int stored, int visits) {
+        if (stored == WELCOME_UNKNOWN) {
+            return visits <= 1 ? WELCOME_OWED : WELCOME_SEEN;
+        }
+        return stored == WELCOME_OWED ? WELCOME_OWED : WELCOME_SEEN;
+    }
+
+    /** The welcome card has been put away, or skipped on purpose; it is not shown again. */
+    public void welcomeSeen() {
+        writeWelcome(WELCOME_SEEN);
+    }
+
+    private void writeWelcome(int state) {
+        try {
+            prefs.edit().putInt(KEY_WELCOME, state).apply();
+        } catch (RuntimeException ignored) {
+            // A preference file that will not take a write still gets to play; at worst the
+            // card is shown again, which is a kindness rather than a fault.
+        }
     }
 
     /**

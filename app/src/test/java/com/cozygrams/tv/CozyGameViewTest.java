@@ -125,6 +125,20 @@ public class CozyGameViewTest {
                 .startsWith(Theme.playerName(1) + ", row 4, column 4"));
     }
 
+    /** The clues crossing a square are read out with it; a finished line just says so. */
+    @Test
+    public void aSquareIsReadWithTheCluesThatCrossIt() {
+        GameState game = new GameState(4242, 10);
+        game.cursorX[0] = 2;
+        game.cursorY[0] = 3;
+        String spoken = CozyGameView.describeSquare(game, 0);
+        assertTrue(spoken.startsWith(CozyGameView.describeCursor(game, 0) + ". Row "));
+        assertTrue(spoken.contains(". Column "));
+        assertEquals("clues 3 1", CozyGameView.clueWords(new int[]{3, 1}, false));
+        assertEquals("clue 0", CozyGameView.clueWords(new int[]{0}, false));
+        assertEquals("finished", CozyGameView.clueWords(new int[]{2}, true));
+    }
+
     @Test
     public void everySquareStateHasAWordForIt() {
         assertEquals("empty", CozyGameView.markWord(Puzzle.UNKNOWN));

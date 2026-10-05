@@ -19,6 +19,7 @@ public final class Renderer {
     private final HudScene hud = new HudScene(draw);
     private final HomeScene home = new HomeScene(draw);
     private final SettingsScene settings = new SettingsScene(draw);
+    private final HelpScene help = new HelpScene(draw);
     private final WinScene win = new WinScene(draw);
     /** The board card's rectangle, reused so the back button can keep off it. */
     private final float[] avoidRect = new float[4];
@@ -73,6 +74,11 @@ public final class Renderer {
         return settings;
     }
 
+    /** How to play and the welcome card as last drawn, for the same reason. */
+    public HelpScene help() {
+        return help;
+    }
+
     public void draw(Canvas canvas, float width, float height, GameState game, UiState ui,
                      Effects effects, long now) {
         // LARGER TEXT is a setting about type, so it is applied to type. It used to be
@@ -97,6 +103,9 @@ public final class Renderer {
             case UiState.SETTINGS:
                 settings.draw(canvas, width, height, ui, now);
                 break;
+            case UiState.HELP:
+                help.draw(canvas, width, height, ui, now);
+                break;
             default:
                 drawGame(canvas, width, height, game, ui, effects, now);
                 break;
@@ -104,11 +113,23 @@ public final class Renderer {
         // On a touch screen the way back is a button, drawn last so nothing covers it.
         // The title screen has none: back from there leaves the game, and that is the
         // phone's own business.
+        if (ui.screen != UiState.HELP) {
+            help.forget();
+        }
+        if (ui.welcome) {
+            // The welcome card goes over everything, back button included: any tap on it
+            // is the answer, so nothing underneath may look as if it could be pressed.
+            help.drawWelcome(canvas, width, height, ui, now);
+            HudScene.forgetBackButton();
+            return;
+        }
         String back = backLabel(ui);
         if (HudScene.touch() && back != null) {
             float[] avoid = null;
             if (ui.screen == UiState.SETTINGS) {
                 avoid = settings.panelRect(width, height);
+            } else if (ui.screen == UiState.HELP) {
+                avoid = help.panelRect(width, height);
             } else if (lastBoard != null && !ui.won) {
                 avoidRect[0] = lastBoard.cardLeft();
                 avoidRect[1] = lastBoard.cardTop();
@@ -124,7 +145,7 @@ public final class Renderer {
 
     /** What the on-screen back button says on this screen, or null for no button. */
     static String backLabel(UiState ui) {
-        if (ui.screen == UiState.SETTINGS) {
+        if (ui.screen == UiState.SETTINGS || ui.screen == UiState.HELP) {
             return "BACK";
         }
         return ui.screen == UiState.GAME ? "HOME" : null;

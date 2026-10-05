@@ -42,12 +42,32 @@ public final class SettingsScene {
     public static final int ITEM_TWO_PLAYERS = 9;
     public static final int ITEM_DEFAULTS = 10;
     public static final int ITEM_START_STORY = 11;
-    public static final int ITEM_PRIVACY = 12;
-    public static final int ITEM_BACK = 13;
-    public static final int ITEM_COUNT = 14;
+    /** Opens How to play, which is also where the welcome card can be seen again. */
+    public static final int ITEM_HELP = 12;
+    /** Hands a line and the Google Play link to the device's share sheet. */
+    public static final int ITEM_SHARE = 13;
+    /** Opens the project's new-issue page in a browser, for ideas and bugs. */
+    public static final int ITEM_FEEDBACK = 14;
+    public static final int ITEM_PRIVACY = 15;
+    public static final int ITEM_BACK = 16;
+    public static final int ITEM_COUNT = 17;
 
     /** Where the privacy policy lives; shown on the row, because a TV may have no browser. */
     static final String PRIVACY_URL = "bradflaugher.com/privacy/cozygrams";
+
+    /**
+     * Where ideas and bugs go, written the way somebody would type it into a phone. Shown
+     * on the row when this device has no browser to open it in — most televisions — so the
+     * row still answers rather than doing nothing.
+     */
+    static final String FEEDBACK_URL = "github.com/bradflaugher/CozyGrams";
+
+    /**
+     * What a row asked the view to do that only the view can do — open another screen, or
+     * hand an intent to Android — or {@code -1} for nothing. The scene stays free of
+     * {@code Context}; {@link #consumeRequest} is how the view finds out.
+     */
+    private static int request = -1;
 
     /** The last row that carries a switch; everything after it is an action. */
     private static final int LAST_SWITCH = ITEM_TWO_PLAYERS;
@@ -138,6 +158,9 @@ public final class SettingsScene {
                 "Two players",
                 defaultsArmed() ? "Reset all settings?" : "Reset settings",
                 storyRestartArmed() ? "Start the story over?" : "Start story over",
+                "How to play",
+                "Share CozyGrams",
+                "Send feedback",
                 "Privacy policy",
                 ui.screenBeforeSettings == UiState.GAME
                         ? "Back to the puzzle" : "Back to the menu"
@@ -168,6 +191,10 @@ public final class SettingsScene {
                         : "just you — every controller plays as Rose",
                 "every option back the way it started",
                 "chapter one, a fresh book",
+                "the rules, the controls, and questions",
+                ui.canShare ? "send a friend the Google Play link"
+                        : "find us on Google Play: search CozyGrams",
+                ui.canBrowse ? "an idea or a bug? tell us on GitHub" : FEEDBACK_URL,
                 PRIVACY_URL,
                 ui.screenBeforeSettings == UiState.GAME
                         ? "we'll keep your place" : "back to choosing a picture"
@@ -190,8 +217,16 @@ public final class SettingsScene {
                 false,
                 false,
                 false,
+                false,
+                false,
+                false,
                 false
         };
+    }
+
+    /** True for the rows that take the player somewhere else: How to play, Share, Feedback. */
+    static boolean opensSomething(int item) {
+        return item == ITEM_HELP || item == ITEM_SHARE || item == ITEM_FEEDBACK;
     }
 
     /** True when the row shows a switch, rather than being something you simply do. */
@@ -254,6 +289,13 @@ public final class SettingsScene {
                 return putEverythingBack(ui, now);
             case ITEM_START_STORY:
                 return askToStartTheStoryAgain(now);
+            case ITEM_HELP:
+            case ITEM_SHARE:
+            case ITEM_FEEDBACK:
+                disarmDefaults();
+                disarmStoryRestart();
+                request = item;
+                return true;
             case ITEM_PRIVACY:
                 disarmDefaults();
                 disarmStoryRestart();
@@ -315,6 +357,17 @@ public final class SettingsScene {
         disarmDefaults();
         armStoryRestart(now);
         return true;
+    }
+
+    /**
+     * The row whose work belongs to the view — {@link #ITEM_HELP}, {@link #ITEM_SHARE} or
+     * {@link #ITEM_FEEDBACK} — or -1. Reading it clears it, so a later visit cannot replay
+     * a share sheet nobody asked for.
+     */
+    public static int consumeRequest() {
+        int asked = request;
+        request = -1;
+        return asked;
     }
 
     /** A confirmation must still be fresh when the second press arrives. */
@@ -433,6 +486,7 @@ public final class SettingsScene {
         defaultsArmedAt = 0;
         storyRestartArmedAt = 0;
         storyRestartConfirmed = false;
+        request = -1;
         note = "";
         noteAt = 0;
         tidyingPlayer = -1;
@@ -469,7 +523,7 @@ public final class SettingsScene {
         if (selected <= ITEM_HINTS) return "HELPING HANDS";
         if (selected <= ITEM_CALM_MOTION) return "COMFORT & ACCESS";
         if (selected == ITEM_TWO_PLAYERS) return "PLAYERS";
-        if (selected == ITEM_PRIVACY) return "ABOUT";
+        if (selected >= ITEM_HELP && selected <= ITEM_PRIVACY) return "HELP & ABOUT";
         return "STORY & RESET";
     }
 
@@ -688,7 +742,8 @@ public final class SettingsScene {
         } else {
             if (focused) {
                 drawActionAccessory(canvas, right - edge, centreY,
-                        item == ITEM_BACK ? "RETURN" : "CHOOSE", stateSize,
+                        item == ITEM_BACK ? "RETURN" : opensSomething(item) ? "OPEN" : "CHOOSE",
+                        stateSize,
                         Theme.textOn(fill));
             }
         }

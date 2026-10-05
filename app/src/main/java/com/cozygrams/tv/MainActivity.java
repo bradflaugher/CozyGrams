@@ -64,6 +64,9 @@ public final class MainActivity extends Activity {
                     | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
 
+    /** A launch extra that puts the welcome card away unseen; see {@link #onCreate}. */
+    static final String EXTRA_SKIP_WELCOME = "skip_welcome";
+
     private CozyGameView game;
     private AudioManager audio;
     private AudioManager.OnAudioFocusChangeListener focusListener;
@@ -84,6 +87,13 @@ public final class MainActivity extends Activity {
         // Nobody wants the TV to sleep while they are staring at a half-finished puzzle.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         game = new CozyGameView(this);
+        // Screenshot and test runs launch with this extra to skip the welcome card:
+        //   adb shell am start -n com.cozygrams.tv/.MainActivity --ez skip_welcome true
+        // It can only ever put the card away, never show it, so it needs no guarding.
+        Intent launch = getIntent();
+        if (launch != null && launch.getBooleanExtra(EXTRA_SKIP_WELCOME, false)) {
+            game.skipWelcome();
+        }
         setContentView(game);
         applyImmersiveMode();
         watchForControllers();

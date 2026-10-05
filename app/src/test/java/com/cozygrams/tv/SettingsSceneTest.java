@@ -455,4 +455,45 @@ public class SettingsSceneTest {
         double part = value / 255.0;
         return part <= .03928 ? part / 12.92 : Math.pow((part + .055) / 1.055, 2.4);
     }
+
+    /** How to play, Share and Send feedback hand their work to the view, exactly once. */
+    @Test
+    public void helpShareAndFeedbackAskTheViewOnce() {
+        UiState ui = new UiState();
+        for (int item : new int[]{SettingsScene.ITEM_HELP, SettingsScene.ITEM_SHARE,
+                SettingsScene.ITEM_FEEDBACK}) {
+            assertTrue(SettingsScene.toggle(ui, item));
+            assertEquals(item, SettingsScene.consumeRequest());
+            assertEquals(-1, SettingsScene.consumeRequest());
+            assertFalse(SettingsScene.hasSwitch(item));
+            assertEquals("HELP & ABOUT", SettingsScene.sectionName(item));
+        }
+        // An ordinary switch asks for nothing.
+        SettingsScene.toggle(ui, SettingsScene.ITEM_MUSIC);
+        assertEquals(-1, SettingsScene.consumeRequest());
+    }
+
+    /** A television with no browser or share sheet is told the address in words. */
+    @Test
+    public void aDeviceWithNoBrowserIsGivenTheAddress() {
+        UiState ui = new UiState();
+        ui.canBrowse = false;
+        ui.canShare = false;
+        assertEquals(SettingsScene.FEEDBACK_URL,
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
+        assertTrue(SettingsScene.descriptions(ui)[SettingsScene.ITEM_SHARE]
+                .contains("Google Play"));
+        ui.canBrowse = true;
+        assertNotEquals(SettingsScene.FEEDBACK_URL,
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
+    }
+
+    /** Nothing in the corner asks for a rating or a review. */
+    @Test
+    public void noRowAsksForARating() {
+        for (String label : SettingsScene.labels()) {
+            String lower = label.toLowerCase(java.util.Locale.ROOT);
+            assertFalse(label, lower.contains("rate") || lower.contains("review"));
+        }
+    }
 }

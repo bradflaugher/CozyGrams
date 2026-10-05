@@ -1,10 +1,13 @@
 package com.cozygrams.tv;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.net.Uri;
 import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
@@ -219,6 +222,15 @@ public final class CozyGameView extends View {
         // rather than a lifetime figure that never visibly moves.
         HudScene.setPuzzlesBeforeTonight(game.solved);
         greetAFreshStart();
+        // Asked once, up front: whether there is a share sheet and a browser to hand off
+        // to. A television usually has neither, and the cozy corner says so in words.
+        ui.canShare = resolves(shareIntent());
+        ui.canBrowse = resolves(feedbackIntent());
+        if (store.welcomeOwed()) {
+            ui.welcome = true;
+            // Posted, because a view that is not attached yet has nobody to speak to.
+            post(() -> announce(HelpScene.spokenWelcome()));
+        }
 
         renderer.setScenes(
                 BitmapFactory.decodeResource(getResources(), R.drawable.cozy_room),
@@ -233,6 +245,16 @@ public final class CozyGameView extends View {
             applyInsets(insets);
             return insets;
         });
+    }
+
+    /**
+     * Puts the welcome card away for good without showing it — for an automated run that
+     * launches the app to take a picture of the game rather than of the card.
+     */
+    public void skipWelcome() {
+        ui.welcome = false;
+        store.welcomeSeen();
+        invalidate();
     }
 
     /**
@@ -514,6 +536,32 @@ public final class CozyGameView extends View {
                 + ", " + markWord(game.markUnder(player));
     }
 
+    /**
+     * Where a player is, and the clues that cross there — so somebody who cannot see the
+     * gutters still has the whole of what the puzzle is asking at the square they are on.
+     * A finished line says so instead of reading its numbers again.
+     */
+    static String describeSquare(GameState game, int player) {
+        int row = game.cursorY[player];
+        int column = game.cursorX[player];
+        return describeCursor(game, player)
+                + ". Row " + clueWords(game.puzzle.rowClues(row), game.puzzle.rowSolved(row))
+                + ". Column " + clueWords(game.puzzle.colClues(column),
+                game.puzzle.colSolved(column)) + ".";
+    }
+
+    /** A line's clues as they would be read out: "clues 3 1", "clue 0", "finished". */
+    static String clueWords(int[] clues, boolean solved) {
+        if (solved) {
+            return "finished";
+        }
+        StringBuilder words = new StringBuilder(clues.length == 1 ? "clue" : "clues");
+        for (int clue : clues) {
+            words.append(' ').append(clue);
+        }
+        return words.toString();
+    }
+
     /** What a square is, in a word. */
     static String markWord(byte mark) {
         switch (mark) {
@@ -599,6 +647,18 @@ public final class CozyGameView extends View {
         int who = gesture ? 0 : registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
 
+        // The welcome card is put away by any press that means something — and only that:
+        // a direction is ignored rather than steering the screen hidden behind the card.
+        // The press that seats somebody counts too, because the card is the first thing
+        // anybody sees and it would be odd for it to take two presses on a television.
+        if (ui.welcome) {
+            if (!repeat && !PlayerRegistry.isDirection(key)) {
+                dismissWelcome();
+            }
+            invalidate();
+            return true;
+        }
+
         // “Press a button to join” should do exactly one thing. Letting that same press
         // fall through could start a chapter, flip a setting, or mark a square before the
         // new player had even seen which seat they claimed.
@@ -623,6 +683,9 @@ public final class CozyGameView extends View {
                 break;
             case UiState.SETTINGS:
                 handled = handleSettingsKey(key, event, repeat);
+                break;
+            case UiState.HELP:
+                handled = handleHelpKey(key, event, repeat);
                 break;
             default:
                 handled = handleGameKey(key, event, who, repeat);
@@ -802,6 +865,10 @@ public final class CozyGameView extends View {
             ui.settingsScroll = SettingsScene.windowStart(ui.menu);
         }
         HudScene.setTouch(true);
+        if (welcomeTouch(event)) {
+            invalidate();
+            return true;
+        }
         // The finger on the glass is Rose. A controller that arrives later takes Sky's seat.
         ui.joined[0] = true;
         claimRoseForTouch();
@@ -834,6 +901,36 @@ public final class CozyGameView extends View {
                 break;
         }
         invalidate();
+        return true;
+    }
+
+    /** True from a finger landing on the welcome card until every finger has lifted. */
+    private boolean welcomeTouched;
+
+    /**
+     * One tap anywhere puts the welcome card away. It goes on the finger's lift rather than
+     * its landing, so the rest of that touch cannot fall through onto the row or the square
+     * the card was covering.
+     *
+     * @return true while this touch belongs to the card
+     */
+    private boolean welcomeTouch(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (!welcomeTouched) {
+            if (!ui.welcome || action != MotionEvent.ACTION_DOWN) {
+                return false;
+            }
+            welcomeTouched = true;
+            releaseAllTouches();
+            return true;
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            welcomeTouched = false;
+            if (action == MotionEvent.ACTION_UP && ui.welcome) {
+                dismissWelcome();
+                performClick();
+            }
+        }
         return true;
     }
 
@@ -1296,7 +1393,7 @@ public final class CozyGameView extends View {
         sfx.move(who, dx, dy, false);
         noticeTheOtherCushion(who);
         if (speaking()) {
-            announce(describeCursor(game, who));
+            announce(describeSquare(game, who));
         }
     }
 
@@ -1324,6 +1421,16 @@ public final class CozyGameView extends View {
      * A drag that starts on a row lets go of it, so scrolling is never taken for a tap.
      */
     private void slideMenu(float x, float y) {
+        if (ui.screen == UiState.HELP) {
+            if (!menuMoved && Math.hypot(x - menuDownX, y - menuDownY) < touchSlop()) {
+                return;
+            }
+            menuMoved = true;
+            // A tall page follows the finger, as any page on a phone does.
+            ui.helpScroll = clampHelpScroll(ui.helpScroll - (y - menuLastY));
+            menuLastY = y;
+            return;
+        }
         if (ui.screen != UiState.SETTINGS) {
             return;
         }
@@ -1377,6 +1484,19 @@ public final class CozyGameView extends View {
             }
             chooseHomeItem(0);
             return true;
+        }
+        if (ui.screen == UiState.HELP) {
+            HelpScene help = renderer.help();
+            int tab = help.tabAt(x, y);
+            if (tab >= 0) {
+                showHelpPage(tab);
+                return true;
+            }
+            if (help.welcomeAgainAt(x, y)) {
+                showWelcome();
+                return true;
+            }
+            return false;
         }
         if (ui.screen == UiState.SETTINGS) {
             int item = renderer.settings().itemAt(x, y);
@@ -1770,6 +1890,11 @@ public final class CozyGameView extends View {
             leaveSettings();
             return;
         }
+        int asked = SettingsScene.consumeRequest();
+        if (asked >= 0) {
+            actOnRequest(asked);
+            return;
+        }
         if (SettingsScene.consumeStoryRestart()) {
             // Only the book starts over. The pictures already on the wall (and the
             // endless count and tonight's tally that read them) stay where they are.
@@ -1854,6 +1979,176 @@ public final class CozyGameView extends View {
             announce(ui.screen == UiState.GAME ? "Back to the puzzle" : describeMenu());
         }
         store.save(game, ui);
+    }
+
+    /**
+     * The cozy corner rows whose work is done out here: How to play opens a screen, and
+     * Share and Send feedback hand an intent to Android. Neither intent can fail loudly: a
+     * television with no share sheet or no browser gets the address in words instead.
+     */
+    private void actOnRequest(int row) {
+        sfx.play(CozySfx.Sound.SELECT);
+        switch (row) {
+            case SettingsScene.ITEM_HELP:
+                openHelp();
+                return;
+            case SettingsScene.ITEM_SHARE:
+                if (!launch(Intent.createChooser(shareIntent(), "Share CozyGrams"),
+                        shareIntent())) {
+                    ui.canShare = false;
+                    SettingsScene.say("Tell a friend: CozyGrams is on Google Play", now());
+                    announce("There's nothing to share with here. Tell a friend: "
+                            + "CozyGrams is on Google Play.");
+                }
+                return;
+            case SettingsScene.ITEM_FEEDBACK:
+                if (!launch(feedbackIntent(), feedbackIntent())) {
+                    ui.canBrowse = false;
+                    SettingsScene.say(SettingsScene.FEEDBACK_URL, now());
+                    announce("There's no browser here. Visit "
+                            + SettingsScene.FEEDBACK_URL + " on a phone or computer.");
+                }
+                return;
+            default:
+                return;
+        }
+    }
+
+    /** The Google Play page, which is the one link the share sheet carries. */
+    static final String PLAY_URL =
+            "https://play.google.com/store/apps/details?id=com.cozygrams.tv";
+
+    /** The new-issue page, where an idea or a bug can be written down. */
+    static final String FEEDBACK_PAGE = "https://github.com/bradflaugher/CozyGrams/issues/new";
+
+    /** What a share says: one warm line and the link. */
+    static String shareText() {
+        return "CozyGrams is a cozy nonogram puzzle game for TV, phone and tablet, "
+                + "made to solve together: " + PLAY_URL;
+    }
+
+    private static Intent shareIntent() {
+        return new Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_SUBJECT, "CozyGrams")
+                .putExtra(Intent.EXTRA_TEXT, shareText());
+    }
+
+    private static Intent feedbackIntent() {
+        return new Intent(Intent.ACTION_VIEW, Uri.parse(FEEDBACK_PAGE))
+                .addCategory(Intent.CATEGORY_BROWSABLE);
+    }
+
+    /** True when some app on this device would take the intent. */
+    private boolean resolves(Intent intent) {
+        try {
+            return intent.resolveActivity(getContext().getPackageManager()) != null;
+        } catch (RuntimeException problem) {
+            return false;
+        }
+    }
+
+    /**
+     * Starts {@code intent} if {@code probe} has somewhere to go, and says whether it did.
+     * Every way this can fail is caught, because a television that has no browser must
+     * answer with words, never with a crash.
+     */
+    private boolean launch(Intent intent, Intent probe) {
+        if (!resolves(probe)) {
+            return false;
+        }
+        try {
+            Context context = getContext();
+            if (!(context instanceof Activity)) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
+            context.startActivity(intent);
+            return true;
+        } catch (ActivityNotFoundException | SecurityException problem) {
+            return false;
+        }
+    }
+
+    // ---- How to play ---------------------------------------------------------------
+
+    private void openHelp() {
+        ui.screen = UiState.HELP;
+        ui.helpScroll = 0;
+        ui.helpPage = 0;
+        announce(HelpScene.spoken(ui.helpPage));
+    }
+
+    /** Back to the cozy corner, with How to play still highlighted. */
+    private void leaveHelp() {
+        ui.screen = UiState.SETTINGS;
+        ui.menu = SettingsScene.ITEM_HELP;
+        ui.settingsScroll = SettingsScene.clampScroll(ui.menu - SettingsScene.VISIBLE_ROWS / 2);
+        if (speaking()) {
+            announce(describeMenu());
+        }
+    }
+
+    private void showHelpPage(int page) {
+        int next = Math.floorMod(page, HelpScene.PAGE_COUNT);
+        if (next != ui.helpPage) {
+            sfx.play(CozySfx.Sound.MOVE);
+        }
+        ui.helpPage = next;
+        ui.helpScroll = 0;
+        announce(HelpScene.spoken(ui.helpPage));
+    }
+
+    private float clampHelpScroll(float pixels) {
+        return Math.max(0, Math.min(renderer.help().scrollMax(), pixels));
+    }
+
+    private boolean handleHelpKey(int key, KeyEvent event, boolean repeat) {
+        if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            // A hat switch has already turned the page for this press; see handleHomeKey.
+            if (players.stickSteppedRecently(event.getDeviceId(), now())) {
+                return true;
+            }
+            if (menuStepIsAllowed(repeat)) {
+                showHelpPage(ui.helpPage + (key == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1));
+            }
+        } else if (key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (players.stickSteppedRecently(event.getDeviceId(), now())) {
+                return true;
+            }
+            scrollHelp(key == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+        } else if (PlayerRegistry.isConfirm(key) && !repeat) {
+            sfx.play(CozySfx.Sound.SELECT);
+            showWelcome();
+        } else if (!repeat && (PlayerRegistry.isBack(key) || PlayerRegistry.isCross(key)
+                || PlayerRegistry.isMenu(key))) {
+            leaveHelp();
+        }
+        // Ours either way, for the same fallback-BACK reason as the other menus.
+        return true;
+    }
+
+    /** Moves a tall page by a few lines; a page that fits does not move at all. */
+    private void scrollHelp(int direction) {
+        HelpScene help = renderer.help();
+        ui.helpScroll = clampHelpScroll(ui.helpScroll + direction * help.lineStep() * 2);
+    }
+
+    // ---- The welcome card ----------------------------------------------------------
+
+    private void showWelcome() {
+        ui.welcome = true;
+        releaseAllTouches();
+        announce(HelpScene.spokenWelcome());
+    }
+
+    private void dismissWelcome() {
+        ui.welcome = false;
+        store.welcomeSeen();
+        sfx.play(CozySfx.Sound.SELECT);
+        if (speaking()) {
+            announce(ui.screen == UiState.HELP ? HelpScene.spoken(ui.helpPage)
+                    : describeMenu());
+        }
     }
 
     // ---- Playing -------------------------------------------------------------------
@@ -2007,7 +2302,7 @@ public final class CozyGameView extends View {
      */
     public boolean backFromSystem() {
         noticeSomebody();
-        if (ui.screen == UiState.HOME) {
+        if (ui.screen == UiState.HOME && !ui.welcome) {
             store.save(game, ui);
             return false;
         }
@@ -2021,7 +2316,11 @@ public final class CozyGameView extends View {
      * the same paths, so the button and the gesture can never disagree.
      */
     private void goBack() {
-        if (ui.screen == UiState.SETTINGS) {
+        if (ui.welcome) {
+            dismissWelcome();
+        } else if (ui.screen == UiState.HELP) {
+            leaveHelp();
+        } else if (ui.screen == UiState.SETTINGS) {
             leaveSettings();
         } else if (ui.screen == UiState.GAME && ui.won) {
             handleWinKey(KeyEvent.KEYCODE_BACK, false);
@@ -2082,7 +2381,7 @@ public final class CozyGameView extends View {
         sfx.move(who, dx, dy, wrapped);
         noticeTheOtherCushion(who);
         if (speaking()) {
-            announce(describeCursor(game, who));
+            announce(describeSquare(game, who));
         }
     }
 
@@ -2523,6 +2822,20 @@ public final class CozyGameView extends View {
         int who = registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
 
+        if (ui.welcome) {
+            // A stick nudge is a direction, and directions leave the card alone.
+            invalidate();
+            return true;
+        }
+        if (ui.screen == UiState.HELP) {
+            if (step[0] != 0) {
+                showHelpPage(ui.helpPage + step[0]);
+            } else if (step[1] != 0) {
+                scrollHelp(step[1]);
+            }
+            invalidate();
+            return true;
+        }
         if (ui.screen == UiState.GAME && !ui.won) {
             beginCursorHold(who, step[0], step[1], event.getDeviceId(),
                     HoldRepeat.FROM_STICK);
@@ -2561,6 +2874,13 @@ public final class CozyGameView extends View {
      */
     private boolean scrollMenu(float amount) {
         int count;
+        if (ui.welcome) {
+            return true;
+        }
+        if (ui.screen == UiState.HELP) {
+            ui.helpScroll = clampHelpScroll(ui.helpScroll - amount * renderer.help().lineStep());
+            return true;
+        }
         if (ui.screen == UiState.HOME) {
             count = HomeScene.ITEM_COUNT;
         } else if (ui.screen == UiState.SETTINGS) {

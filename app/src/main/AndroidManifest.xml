@@ -12,6 +12,23 @@
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <!-- sensorLandscape would otherwise imply landscape is required and filter devices out. -->
     <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
+    <!--
+      Share CozyGrams and Send feedback hand off to the share sheet and a browser. Asking
+      whether either exists needs these declared (package visibility); a television that has
+      neither gets the address in words instead. No permission is involved, and the app
+      still has no internet access of its own.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
     <application
         android:allowBackup="true"
         android:appCategory="game"
