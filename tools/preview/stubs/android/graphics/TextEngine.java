@@ -80,6 +80,19 @@ final class TextEngine {
             break;
         }
 
+        if (physicalRegular == null) {
+            // Not at any of the paths above — macOS, Windows, a font installed for one user:
+            // ask the platform for the family by name.
+            for (String family : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getAvailableFontFamilyNames()) {
+                if (family.equals("Liberation Sans")) {
+                    physicalRegular = new Font(family, Font.PLAIN, 1);
+                    physicalBold = new Font(family, Font.BOLD, 1);
+                    break;
+                }
+            }
+        }
+
         // The logical family is a composite font, so it covers glyphs (☰) that no single
         // installed face carries. It is always the last resort in the chain.
         Font logicalRegular = new Font(Font.SANS_SERIF, Font.PLAIN, 1);

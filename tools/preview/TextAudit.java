@@ -153,13 +153,19 @@ final class TextAudit implements Draw.Probe {
         s.clip = canvas.harnessClip();
         surfaces.add(s);
         if (alpha >= COVER_ALPHA) {
+            // Only what the surface really paints over: inside its rounded outline, and
+            // inside whatever clip it was drawn through — a row scrolled half out of a
+            // list hides nothing beyond the list's edge.
+            float[] painted = s.clip == null ? rect : intersect(rect, s.clip);
             for (Text t : texts) {
-                if (!t.hidden && inside(t.ink, rect, 0)) {
+                if (!t.hidden && inside(t.ink, painted, 0)
+                        && outsideRounded(t.ink, rect, s.radius, 0) <= 0) {
                     t.hidden = true;
                 }
             }
             for (Surface under : surfaces) {
-                if (under != s && under.kind == Draw.KEYCAP && inside(under.rect, rect, 0)) {
+                if (under != s && under.kind == Draw.KEYCAP && inside(under.rect, painted, 0)
+                        && outsideRounded(under.rect, rect, s.radius, 0) <= 0) {
                     under.alpha = 0;
                 }
             }
