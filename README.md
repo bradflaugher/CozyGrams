@@ -212,8 +212,9 @@ system font, in the words of a fresh TV, a gamepad, a bare remote, a keyboard an
 finger. `./gradlew test` runs it (task `textFitAudit`), so CI fails on any overflow, and
 `render.sh` fails on any overflow in the frames it writes.
 
-Text is measured in Liberation Sans, metrically Arial and a little wider than the
-devices' Roboto, so a pass errs on the safe side. Install it (`fonts-liberation` on
+Text is measured in Liberation Sans, which every committed render uses and which is
+within a few percent of the devices' Roboto (the containment check keeps a little air for
+that). Install it (`fonts-liberation` on
 Debian and Ubuntu, `liberation-sans-fonts` on Fedora, `ttf-liberation` on Arch) before
 running the tests; without it the audit stops and says so rather than judge with a
 different ruler.
