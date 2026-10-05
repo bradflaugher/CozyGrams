@@ -2,9 +2,12 @@ package com.cozygrams.tv;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.net.Uri;
@@ -19,7 +22,9 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -224,10 +229,13 @@ public final class CozyGameView extends View {
         greetAFreshStart();
         // Asked once, up front: whether there is a share sheet and a browser to hand off
         // to. A television usually has neither, and the cozy corner says so in words.
-        ui.canShare = resolves(shareIntent());
-        ui.canBrowse = resolves(feedbackIntent());
+        // Android TV's placeholder "browser" and "email" activities answer these intents
+        // without being able to do anything, so they do not count (see Handoff).
+        ui.canShare = resolves(shareIntent(), true);
+        ui.canBrowse = resolves(feedbackIntent(), false);
         // No store app and no browser means nothing to rate in, so the row is left out.
-        SettingsScene.setRateShown(resolves(rateIntent()) || resolves(ratePageIntent()));
+        SettingsScene.setRateShown(resolves(rateIntent(), false)
+                || resolves(ratePageIntent(), false));
         ui.tips.seen = store.tipsSeen();
         if (store.welcomeOwed()) {
             ui.tutorial = true;
@@ -2040,24 +2048,22 @@ public final class CozyGameView extends View {
                 openHelp();
                 return;
             case SettingsScene.ITEM_SHARE:
-                if (!launch(Intent.createChooser(shareIntent(), "Share CozyGrams"),
-                        shareIntent())) {
+                if (!share()) {
                     ui.canShare = false;
-                    SettingsScene.say("Tell a friend: CozyGrams is on Google Play", now());
+                    SettingsScene.say(SettingsScene.PLAY_LINK, now());
                     announce("There's nothing to share with here. Tell a friend: "
-                            + "CozyGrams is on Google Play.");
+                            + "CozyGrams is on Google Play, at " + PLAY_URL);
                 }
                 return;
             case SettingsScene.ITEM_RATE:
                 // The store app if there is one, its web page if not.
-                if (!launch(rateIntent(), rateIntent())
-                        && !launch(ratePageIntent(), ratePageIntent())) {
+                if (!open(rateIntent()) && !open(ratePageIntent())) {
                     SettingsScene.say("CozyGrams is on Google Play", now());
                     announce("There's no store here. CozyGrams is on Google Play.");
                 }
                 return;
             case SettingsScene.ITEM_FEEDBACK:
-                if (!launch(feedbackIntent(), feedbackIntent())) {
+                if (!open(feedbackIntent())) {
                     ui.canBrowse = false;
                     SettingsScene.say(SettingsScene.FEEDBACK_URL, now());
                     announce("There's no browser here. Visit "
@@ -2106,24 +2112,87 @@ public final class CozyGameView extends View {
                 .addCategory(Intent.CATEGORY_BROWSABLE);
     }
 
-    /** True when some app on this device would take the intent. */
-    private boolean resolves(Intent intent) {
+    /**
+     * The activities that would really take {@code intent}: every handler Android lists,
+     * less the placeholders {@link Handoff} knows about, and for a share less Bluetooth's
+     * file sender. Empty when there are none, or when the question cannot be asked.
+     */
+    private List<ResolveInfo> realHandlers(Intent intent, boolean share) {
+        List<ResolveInfo> real = new ArrayList<>();
+        for (ResolveInfo handler : allHandlers(intent)) {
+            ActivityInfo activity = handler.activityInfo;
+            if (activity == null) {
+                continue;
+            }
+            if (share ? Handoff.shares(activity.packageName, activity.name)
+                    : Handoff.opens(activity.packageName, activity.name)) {
+                real.add(handler);
+            }
+        }
+        return real;
+    }
+
+    /** Every activity Android would offer for {@code intent}, placeholders included. */
+    private List<ResolveInfo> allHandlers(Intent intent) {
         try {
-            return intent.resolveActivity(getContext().getPackageManager()) != null;
+            List<ResolveInfo> all = getContext().getPackageManager()
+                    .queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY);
+            return all == null ? new ArrayList<>() : all;
         } catch (RuntimeException problem) {
-            return false;
+            return new ArrayList<>();
         }
     }
 
+    /** True when some app on this device would really take the intent. */
+    private boolean resolves(Intent intent, boolean share) {
+        return !realHandlers(intent, share).isEmpty();
+    }
+
     /**
-     * Starts {@code intent} if {@code probe} has somewhere to go, and says whether it did.
-     * Every way this can fail is caught, because a television that has no browser must
-     * answer with words, never with a crash.
+     * Opens a link or a store page in a real app, and says whether it did. Where a
+     * placeholder is among the handlers it could be Android's default, so the intent is
+     * pointed at the first real one; anywhere else it goes out exactly as built.
      */
-    private boolean launch(Intent intent, Intent probe) {
-        if (!resolves(probe)) {
+    private boolean open(Intent intent) {
+        List<ResolveInfo> real = realHandlers(intent, false);
+        if (real.isEmpty()) {
             return false;
         }
+        if (real.size() < allHandlers(intent).size()) {
+            intent.setPackage(real.get(0).activityInfo.packageName);
+        }
+        return start(intent);
+    }
+
+    /**
+     * Opens the share sheet when there is somewhere real to share to, and says whether it
+     * did. Placeholders are left off the sheet, so it can never auto-launch one.
+     */
+    private boolean share() {
+        Intent send = shareIntent();
+        if (realHandlers(send, true).isEmpty()) {
+            return false;
+        }
+        Intent chooser = Intent.createChooser(send, "Share CozyGrams");
+        ArrayList<ComponentName> stubs = new ArrayList<>();
+        for (ResolveInfo handler : allHandlers(send)) {
+            ActivityInfo activity = handler.activityInfo;
+            if (activity != null && !Handoff.opens(activity.packageName, activity.name)) {
+                stubs.add(new ComponentName(activity.packageName, activity.name));
+            }
+        }
+        if (!stubs.isEmpty()) {
+            chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS,
+                    stubs.toArray(new ComponentName[0]));
+        }
+        return start(chooser);
+    }
+
+    /**
+     * Starts {@code intent} and says whether it did. Every way this can fail is caught,
+     * because a television that has no browser must answer with words, never with a crash.
+     */
+    private boolean start(Intent intent) {
         try {
             Context context = getContext();
             if (!(context instanceof Activity)) {

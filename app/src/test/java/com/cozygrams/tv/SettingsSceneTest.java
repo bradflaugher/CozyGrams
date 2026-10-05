@@ -481,8 +481,9 @@ public class SettingsSceneTest {
         ui.canShare = false;
         assertEquals(SettingsScene.FEEDBACK_URL,
                 SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
-        assertTrue(SettingsScene.descriptions(ui)[SettingsScene.ITEM_SHARE]
-                .contains("Google Play"));
+        assertEquals(SettingsScene.PLAY_LINK,
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_SHARE]);
+        assertTrue(SettingsScene.PLAY_LINK.startsWith("play.google.com"));
         ui.canBrowse = true;
         assertNotEquals(SettingsScene.FEEDBACK_URL,
                 SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
