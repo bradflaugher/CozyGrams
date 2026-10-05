@@ -62,3 +62,29 @@ android {
 dependencies {
     testImplementation 'junit:junit:4.13.2'
 }
+
+// The text-fit guard. Every screen, at every size the game ships to (TV 1080p and 720p,
+// phones and 7" and 10" tablets each way up), with LARGER TEXT off, on, and on over a
+// large system font, in the words of every kind of controller, is drawn on the desktop
+// through the preview harness's Java2D stubs, and the build fails if any line of words
+// runs past its pill, panel or button, collides with another, or leaves the safe area.
+// Unit tests cannot see this: they run with returnDefaultValues, where every text
+// measures zero. See tools/preview/TextAudit.java.
+def textFitReport = layout.buildDirectory.file('reports/text-fit/text-fit.txt')
+def textFitAudit = tasks.register('textFitAudit', Exec) {
+    description = 'Fails when any text in any screen state overflows its container.'
+    group = 'verification'
+    inputs.files(fileTree('src/main/java'))
+    inputs.files(fileTree(rootProject.file('tools/preview')) {
+        exclude 'build/**', 'out/**', 'clips/**'
+    })
+    outputs.file(textFitReport)
+    def javaHome = System.getProperty('java.home')
+    def script = rootProject.file('tools/preview/audit.sh').absolutePath
+    def scratch = layout.buildDirectory.dir('text-fit').get().asFile.absolutePath
+    def report = textFitReport.get().asFile.absolutePath
+    environment 'JAVA_HOME', javaHome
+    environment 'COZY_BUILD_DIR', scratch
+    commandLine 'bash', script, report
+}
+tasks.matching { it.name == 'test' }.configureEach { dependsOn textFitAudit }

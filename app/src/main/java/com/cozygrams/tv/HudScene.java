@@ -1069,7 +1069,13 @@ public final class HudScene {
      * unmeasured, which is exactly why they were the only two that ran off the card.
      */
     private float eyebrowSize(String text, float lane) {
-        return fit(text, lane, labelSize(), labelSize() * EYEBROW_FLOOR, true);
+        // The floor is the one the same eyebrow has with LARGER TEXT off, as it is for the
+        // rest of the rail (see fitRail): the rail is pinned to the screen, so larger type
+        // grows a line only as far as the lane allows and never shrinks it below where it
+        // started. A floor that rose with the setting put "PLAYING TOGETHER" 17 px and
+        // "ENDLESS #12 · 20 × 20" 75 px off the card at the largest size.
+        return fit(text, lane, labelSize(),
+                labelSize() / Theme.textScale() * EYEBROW_FLOOR, true);
     }
 
     private void drawSidePanel(Canvas canvas, float screenHeight, BoardLayout board,
@@ -1119,7 +1125,11 @@ public final class HudScene {
                 headEyebrow = false;
                 if (panelHeight(game, ui, name, legendRows) > available) {
                     headEyebrow = true;
-                    name = oneLine;
+                    // The very last resort, on a phone held to 48dp thumb rows with LARGER
+                    // TEXT and both seats taken: one line, allowed a tenth under the floor
+                    // rather than nine pixels off the card. At 3x that is still 11sp.
+                    name = wrapToFit(game.puzzle.name, lane, Theme.textSize(Theme.SUBHEAD),
+                            BoardLayout.dp(Theme.MIN_PROSE_SP, screenHeight) * .9f, 1);
                 }
             } else {
                 name = oneLine;

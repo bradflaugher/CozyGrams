@@ -2219,7 +2219,7 @@ public final class CozyGameView extends View {
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_HELP;
         ui.settingsScroll = SettingsScene.clampScroll(
-                SettingsScene.slotOf(ui.menu) - SettingsScene.VISIBLE_ROWS / 2);
+                SettingsScene.slotOf(ui.menu) - SettingsScene.visibleRows() / 2);
         if (speaking()) {
             announce(describeMenu());
         }

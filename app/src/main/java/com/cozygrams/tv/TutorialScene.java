@@ -3,8 +3,6 @@ package com.cozygrams.tv;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Draws the first-evening tour over whatever screen is behind it.
@@ -199,7 +197,10 @@ public final class TutorialScene {
                     + " skip";
             float hint = Theme.textSize(Theme.MIN_PROSE_SP) * .8f;
             float room = lefts[1] - (left + widths[0]) - gap * 2;
-            hint = draw.fit(how, hint, room, false, Theme.scale(14));
+            // Never smaller than it is with LARGER TEXT off: with the setting on, the hint
+            // used to shrink to a third of the buttons' size to squeeze between them. When
+            // it does not fit at that, it is left out; the buttons name themselves.
+            hint = draw.fit(how, hint, room, false, hint / Theme.textScale());
             if (draw.measure(how, hint, false) <= room) {
                 draw.text(canvas, how, (left + widths[0] + lefts[1]) / 2,
                         (top + bottom) / 2 + draw.capCentreOffset(hint), hint,
@@ -498,25 +499,6 @@ public final class TutorialScene {
     }
 
     private String[] wrap(String text, float size, float width, boolean strong) {
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : text.split(" ")) {
-            if (word.isEmpty()) {
-                continue;
-            }
-            String tried = line.length() == 0 ? word : line + " " + word;
-            if (line.length() > 0 && draw.measure(tried, size, strong) > width) {
-                lines.add(line.toString());
-                line.setLength(0);
-                line.append(word);
-            } else {
-                line.setLength(0);
-                line.append(tried);
-            }
-        }
-        if (line.length() > 0) {
-            lines.add(line.toString());
-        }
-        return lines.toArray(new String[0]);
+        return draw.wrap(text, size, width, strong);
     }
 }

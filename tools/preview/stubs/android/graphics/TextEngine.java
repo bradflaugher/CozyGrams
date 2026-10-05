@@ -42,6 +42,13 @@ final class TextEngine {
     private static final String[][] CANDIDATES = {
             {"/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
                     "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf"},
+            // Debian and Ubuntu, which is what CI runs the text-fit audit on: without this
+            // the JDK's own SansSerif there is DejaVu Sans, a tenth wider, and the audit
+            // would fail on CI for lines that fit everywhere else.
+            {"/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"},
+            {"/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"},
             {"/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf", null},
             {"/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", null},
             {"/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
@@ -181,6 +188,35 @@ final class TextEngine {
             total += advance(run.font, run.text);
         }
         return total;
+    }
+
+    /**
+     * The ink {@code text} really covers, as {left, top, right, bottom} relative to a
+     * left-aligned origin on the baseline — the glyph outlines, not the advance box, so a
+     * line with no descenders really does end at the baseline. Harness only: this is what
+     * the text-fit audit measures against.
+     */
+    static float[] ink(String text, Typeface typeface, float size) {
+        float[] box = {Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
+        if (text == null || text.isEmpty() || size <= 0) {
+            return new float[]{0, 0, 0, 0};
+        }
+        float cursor = 0;
+        for (Run run : split(text, typeface, size)) {
+            java.awt.geom.Rectangle2D bounds =
+                    run.font.createGlyphVector(FRC, run.text).getVisualBounds();
+            if (!bounds.isEmpty()) {
+                box[0] = Math.min(box[0], cursor + (float) bounds.getMinX());
+                box[1] = Math.min(box[1], (float) bounds.getMinY());
+                box[2] = Math.max(box[2], cursor + (float) bounds.getMaxX());
+                box[3] = Math.max(box[3], (float) bounds.getMaxY());
+            }
+            cursor += advance(run.font, run.text);
+        }
+        if (box[0] > box[2]) {
+            return new float[]{0, 0, 0, 0};
+        }
+        return box;
     }
 
     /**

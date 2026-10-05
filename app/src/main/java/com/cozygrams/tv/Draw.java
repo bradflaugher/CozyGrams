@@ -5,6 +5,9 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Small drawing primitives shared by every scene.
  *
@@ -52,9 +55,172 @@ public final class Draw {
         return paint;
     }
 
+    // ---- The text-fit probe -----------------------------------------------------------
+
+    /**
+     * Something that wants to know about every line of text and every surface this frame
+     * draws. Null on a device, where it costs one field read per call; the preview
+     * harness installs one ({@code tools/preview/TextAudit.java}) and fails the render
+     * when a line of words runs past the pill, panel or button it was set in, collides
+     * with another line or a button cap, or leaves the safe area.
+     *
+     * <p>The container of a line is found rather than declared: it is the innermost
+     * surface drawn before it this frame that contains the point the caller anchored it
+     * to — the left end of left-aligned text, the middle of centred text, the right end of
+     * right-aligned text. That is the box the caller meant, even when the words have run
+     * out of it. {@link #beginBox} names one explicitly where there is no surface to find,
+     * such as one column of a panel.
+     */
+    public interface Probe {
+        /** A new frame is starting on {@code canvas}: forget the last one. */
+        void frame(Canvas canvas);
+
+        /**
+         * A line of text, its baseline at {@code y}. {@code spacing} is letterspacing
+         * added across the whole line, in pixels (zero but for the wordmark), and
+         * {@code box} is a declared lane, or null to let the probe find the surface.
+         */
+        void text(Canvas canvas, String value, float x, float y, float size, int color,
+                  Paint.Align align, boolean strong, float spacing, float[] box);
+
+        /**
+         * A filled surface text may sit in, or a button cap text may not run into.
+         * {@code kind} is one of {@link #SURFACE}, {@link #KEYCAP}.
+         */
+        void surface(Canvas canvas, float left, float top, float right, float bottom,
+                     float radius, int color, int kind);
+    }
+
+    /** A pill, a card, a panel: something words are set inside. */
+    public static final int SURFACE = 0;
+    /** A drawn button cap: words are set inside it, and nothing else may touch it. */
+    public static final int KEYCAP = 1;
+
+    private static Probe probe;
+
+    /** Installs the harness's probe; null (the default, and always on a device) for none. */
+    public static void setProbe(Probe listener) {
+        probe = listener;
+    }
+
+    /** Declared lanes, innermost last: left, top, right, bottom per entry. */
+    private final float[] boxes = new float[4 * 8];
+    private int boxDepth;
+    private final float[] declared = new float[4];
+
+    /**
+     * Declares the lane the text drawn until {@link #endBox} has to stay inside, for words
+     * that have no surface of their own under them. Nests; costs nothing but four floats.
+     */
+    public void beginBox(float left, float top, float right, float bottom) {
+        if (boxDepth * 4 >= boxes.length) {
+            throw new IllegalStateException("text boxes nested too deep");
+        }
+        int at = boxDepth * 4;
+        boxes[at] = left;
+        boxes[at + 1] = top;
+        boxes[at + 2] = right;
+        boxes[at + 3] = bottom;
+        boxDepth++;
+    }
+
+    public void endBox() {
+        if (boxDepth == 0) {
+            throw new IllegalStateException("endBox without beginBox");
+        }
+        boxDepth--;
+    }
+
+    /**
+     * Called once at the top of every frame. A lane left open by the last frame is a bug
+     * that would quietly loosen every check after it, so it is refused here.
+     */
+    public void beginFrame(Canvas canvas) {
+        frameTextCount = 0;
+        if (boxDepth != 0) {
+            boxDepth = 0;
+            if (probe != null) {
+                throw new IllegalStateException("a text box was left open by the last frame");
+            }
+        }
+        if (probe != null) {
+            probe.frame(canvas);
+        }
+    }
+
+    /**
+     * Where every line of text this frame has drawn so far sits, roughly — its advance box
+     * from cap height to descender — four floats each. A one-time tip reads this to keep
+     * off the words of whatever screen it is laid over; see {@code Tips.draw}.
+     */
+    private final float[] frameText = new float[4 * 160];
+    private final int[] frameGroups = new int[160];
+    private int frameTextCount;
+
+    public float[] frameTextRects() {
+        return frameText;
+    }
+
+    /** All zero: words recorded here never step aside. */
+    public int[] frameTextGroups() {
+        return frameGroups;
+    }
+
+    public int frameTextCount() {
+        return frameTextCount;
+    }
+
+    private void recordText(String value, float x, float y, float size, Paint.Align align,
+                            boolean strong, float spacing) {
+        if (frameTextCount >= frameGroups.length || value.isEmpty()) {
+            return;
+        }
+        float width = measure(value, size, strong) + spacing;
+        float left = align == Paint.Align.LEFT ? x
+                : align == Paint.Align.CENTER ? x - width / 2 : x - width;
+        int at = frameTextCount * 4;
+        frameText[at] = left;
+        frameText[at + 1] = y - size * .76f;
+        frameText[at + 2] = left + width;
+        frameText[at + 3] = y + size * .22f;
+        frameTextCount++;
+    }
+
+    /** How many {@link #beginBox} calls are still open; zero between frames. */
+    public int openBoxes() {
+        return boxDepth;
+    }
+
+    private float[] declaredBox() {
+        if (boxDepth == 0) {
+            return null;
+        }
+        System.arraycopy(boxes, (boxDepth - 1) * 4, declared, 0, 4);
+        return declared;
+    }
+
+    private void surface(Canvas canvas, float left, float top, float right, float bottom,
+                         float radius, int color, int kind) {
+        if (probe != null) {
+            probe.surface(canvas, left, top, right, bottom, radius, color, kind);
+        }
+    }
+
     // ---- Text ----------------------------------------------------------------------
 
     public void text(Canvas canvas, String value, float x, float y, float size, int color,
+                     Paint.Align align, boolean strong) {
+        if (probe != null) {
+            probe.text(canvas, value, x, y, size, color, align, strong, 0, declaredBox());
+        }
+        if ((color >>> 24) >= 40) {
+            recordText(value, x, y, size, align, strong, 0);
+        }
+        ink(canvas, value, x, y, size, color, align, strong);
+    }
+
+    /** The drawing half of {@link #text}, for a copy of a line the probe has already seen. */
+    private void ink(Canvas canvas, String value, float x, float y, float size, int color,
                      Paint.Align align, boolean strong) {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(color);
@@ -62,6 +228,81 @@ public final class Draw {
         paint.setTextAlign(align);
         paint.setTypeface(strong ? Theme.bold() : Theme.regular());
         canvas.drawText(value, x, y, paint);
+    }
+
+    /**
+     * Draws {@code value} at the largest size up to {@code size} that fits {@code maxWidth},
+     * never below {@code floor}, and returns the size it used. The one-line form of
+     * {@link #fit} followed by {@link #text}, which is what nearly every caller wanted.
+     */
+    public float fitText(Canvas canvas, String value, float x, float y, float size,
+                         float floor, float maxWidth, int color, Paint.Align align,
+                         boolean strong) {
+        float fitted = fit(value, size, maxWidth, strong, floor);
+        text(canvas, value, x, y, fitted, color, align, strong);
+        return fitted;
+    }
+
+    /**
+     * Greedy word wrap of {@code value} at {@code size} into lines no wider than
+     * {@code width}. A single word wider than the lane stays whole on its own line rather
+     * than being broken mid-word; the probe then reports it, which is the point — the
+     * answer to that is a shorter word or a wider lane, never half a word.
+     *
+     * <p>Three scenes carried an identical private copy of this.
+     */
+    public String[] wrap(String value, float size, float width, boolean strong) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String piece : value.split(" ")) {
+            if (piece.isEmpty()) {
+                continue;
+            }
+            String word = piece;
+            // An address has no spaces to break at, but it reads fine broken after a slash.
+            while (measure(word, size, strong) > width && word.indexOf('/') > 0) {
+                int cut = -1;
+                for (int at = word.indexOf('/'); at > 0 && at < word.length() - 1;
+                     at = word.indexOf('/', at + 1)) {
+                    if (measure(word.substring(0, at + 1), size, strong) <= width) {
+                        cut = at + 1;
+                    }
+                }
+                if (cut < 0) {
+                    break;
+                }
+                if (line.length() > 0) {
+                    lines.add(line.toString());
+                    line.setLength(0);
+                }
+                lines.add(word.substring(0, cut));
+                word = word.substring(cut);
+            }
+            String tried = line.length() == 0 ? word : line + " " + word;
+            if (line.length() > 0 && measure(tried, size, strong) > width) {
+                lines.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            } else {
+                line.setLength(0);
+                line.append(tried);
+            }
+        }
+        if (line.length() > 0) {
+            lines.add(line.toString());
+        }
+        return lines.toArray(new String[0]);
+    }
+
+    /**
+     * The width of the widest of {@code lines} at {@code size}.
+     */
+    public float widest(String[] lines, float size, boolean strong) {
+        float widest = 0;
+        for (String line : lines) {
+            widest = Math.max(widest, measure(line, size, strong));
+        }
+        return widest;
     }
 
     /** Width of the shared rounded keycap used anywhere the UI names a real button. */
@@ -77,6 +318,8 @@ public final class Draw {
         float glyph = keycapGlyphSize(label, height);
         roundRect(canvas, left, centreY - height / 2, left + width,
                 centreY + height / 2, height / 2, color);
+        surface(canvas, left, centreY - height / 2, left + width, centreY + height / 2,
+                height / 2, color, KEYCAP);
         int alpha = color >>> 24;
         text(canvas, label, left + width / 2, centreY + capCentreOffset(glyph), glyph,
                 withAlpha(Theme.textOn(color), alpha), Paint.Align.CENTER, true);
@@ -87,6 +330,8 @@ public final class Draw {
                            int color) {
         roundRect(canvas, left, centreY - height / 2, left + height,
                 centreY + height / 2, height / 2, color);
+        surface(canvas, left, centreY - height / 2, left + height, centreY + height / 2,
+                height / 2, color, KEYCAP);
         int mark = withAlpha(Theme.textOn(color), color >>> 24);
         float cx = left + height / 2;
         float arm = height * .58f;
@@ -108,7 +353,7 @@ public final class Draw {
     public void shadowedText(Canvas canvas, String value, float x, float y, float size,
                              int color, Paint.Align align, boolean strong) {
         float offset = Math.max(1.5f, size * .06f);
-        text(canvas, value, x + offset, y + offset, size,
+        ink(canvas, value, x + offset, y + offset, size,
                 withAlpha(Theme.SHADOW_INK, 120), align, strong);
         text(canvas, value, x, y, size, color, align, strong);
     }
@@ -136,6 +381,13 @@ public final class Draw {
         }
         float extra = size * tracking;
         float total = measure(value, size, strong) + extra * (count - 1);
+        recordText(value, centreX, baseline, size, Paint.Align.CENTER, strong,
+                extra * (count - 1));
+        if (probe != null) {
+            // Reported as the span it really covers: the letterspaced width, centred.
+            probe.text(canvas, value, centreX, baseline, size, color, Paint.Align.CENTER,
+                    strong, extra * (count - 1), declaredBox());
+        }
 
         value.getChars(0, count, glyphs, 0);
         paint.setStyle(Paint.Style.FILL);
@@ -227,6 +479,8 @@ public final class Draw {
                       int alpha) {
         float radius = Theme.scale(Theme.PANEL_RADIUS);
         shadow(canvas, left, top, right, bottom, radius, Theme.scale(10));
+        surface(canvas, left, top, right, bottom, radius, withAlpha(Theme.PANEL, alpha),
+                SURFACE);
 
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(withAlpha(Theme.PANEL, alpha));
@@ -384,6 +638,7 @@ public final class Draw {
 
     public void roundRect(Canvas canvas, float left, float top, float right, float bottom,
                           float radius, int color) {
+        surface(canvas, left, top, right, bottom, radius, color, SURFACE);
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(color);
         rect.set(left, top, right, bottom);
@@ -428,6 +683,8 @@ public final class Draw {
     }
 
     public void circle(Canvas canvas, float cx, float cy, float radius, int color) {
+        surface(canvas, cx - radius, cy - radius, cx + radius, cy + radius, radius, color,
+                SURFACE);
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(color);
         canvas.drawCircle(cx, cy, radius, paint);
