@@ -310,6 +310,20 @@ public final class HudScene {
      */
     private static boolean padSeen;
 
+    /**
+     * True while the last key came from a real typing keyboard — a Chromebook's, a tablet's
+     * case — so help and the tour name Enter and X rather than a remote's OK.
+     */
+    private static boolean keyboard;
+
+    public static void setKeyboard(boolean typing) {
+        keyboard = typing;
+    }
+
+    public static boolean keyboard() {
+        return keyboard && !touch;
+    }
+
     public static void setPadSeen(boolean seen) {
         padSeen = seen;
     }

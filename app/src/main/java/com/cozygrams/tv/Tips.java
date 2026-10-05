@@ -60,6 +60,9 @@ public final class Tips {
             case PEN:
                 return "The pen: choose whether a tap fills or crosses out";
             case LEGEND:
+                if (hands == Tutorial.HANDS_KEYBOARD) {
+                    return "Your keys: Enter fills, X crosses out, H lights up a square";
+                }
                 return hands == Tutorial.HANDS_REMOTE
                         ? "Your buttons are listed here: hold OK when you're stuck"
                         : "Your buttons are listed here: Y lights up a square";
@@ -76,6 +79,8 @@ public final class Tips {
                 return "OK";
             case Tutorial.HANDS_UNKNOWN:
                 return "A or OK";
+            case Tutorial.HANDS_KEYBOARD:
+                return "Enter";
             default:
                 return "A";
         }

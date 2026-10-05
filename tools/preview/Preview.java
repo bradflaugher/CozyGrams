@@ -2849,6 +2849,7 @@ public final class Preview {
         forgetTheRail();
         HudScene.setRemoteOnly(false);
         HudScene.setPadSeen(false);
+        HudScene.setKeyboard(false);
         HudScene.setJoinedAt(0);
         HudScene.setSeatStirredAt(0, 0);
         HudScene.setSeatStirredAt(1, 0);

@@ -112,7 +112,7 @@ public class TutorialTest {
     @Test
     public void everyStepHasWordsForEveryHand() {
         int[] hands = {Tutorial.HANDS_PAD, Tutorial.HANDS_REMOTE, Tutorial.HANDS_TOUCH,
-                Tutorial.HANDS_UNKNOWN};
+                Tutorial.HANDS_UNKNOWN, Tutorial.HANDS_KEYBOARD};
         for (int step = 0; step < Tutorial.STEP_COUNT; step++) {
             Tutorial tour = tourAt(step);
             assertFalse(tour.title().isEmpty());
@@ -126,6 +126,8 @@ public class TutorialTest {
         assertTrue(fill.prompt(Tutorial.HANDS_PAD).contains("A"));
         assertTrue(fill.prompt(Tutorial.HANDS_REMOTE).contains("OK"));
         assertTrue(fill.prompt(Tutorial.HANDS_TOUCH).startsWith("Tap"));
+        assertTrue(fill.prompt(Tutorial.HANDS_KEYBOARD).contains("Enter"));
+        assertTrue(Tutorial.controls(Tutorial.HANDS_KEYBOARD)[1].contains("X"));
         Tutorial together = tourAt(Tutorial.STEP_TOGETHER);
         assertNotEquals(together.body(Tutorial.HANDS_PAD), together.body(Tutorial.HANDS_TOUCH));
         assertEquals(4, Tutorial.controls(Tutorial.HANDS_REMOTE).length);

@@ -330,6 +330,8 @@ public final class Tutorial {
     static final int HANDS_TOUCH = 2;
     /** Nothing pressed yet on a television: a pad or a remote, so both are named. */
     static final int HANDS_UNKNOWN = 3;
+    /** A typing keyboard: arrows or WASD, Enter, X, H, M and Esc. */
+    static final int HANDS_KEYBOARD = 4;
 
     public String title() {
         switch (step) {
@@ -395,6 +397,8 @@ public final class Tutorial {
                     return "Press OK to fill the glowing square";
                 case HANDS_UNKNOWN:
                     return "Press A or OK to fill the glowing square";
+                case HANDS_KEYBOARD:
+                    return "Press Enter to fill the glowing square";
                 default:
                     return "Press A to fill the glowing square";
             }
@@ -407,12 +411,17 @@ public final class Tutorial {
                     return "Press OK twice: fill, then cross";
                 case HANDS_UNKNOWN:
                     return "Press B to cross it out, or OK twice on a remote";
+                case HANDS_KEYBOARD:
+                    return "Press X to cross it out";
                 default:
                     return "Press B or X to cross it out";
             }
         }
         if (step == STEP_WELCOME) {
-            return hands == HANDS_TOUCH ? "Skip the tour any time"
+            if (hands == HANDS_TOUCH) {
+                return "Skip the tour any time";
+            }
+            return hands == HANDS_KEYBOARD ? "Skip the tour any time with Esc"
                     : "Skip the tour any time with Back";
         }
         if (step == STEP_TOGETHER) {
@@ -436,6 +445,12 @@ public final class Tutorial {
                         "OK fills, then crosses, then clears",
                         "Hold OK to light up one square",
                         "Menu opens the Cozy Corner · Back steps out"};
+            case HANDS_KEYBOARD:
+                return new String[]{
+                        "Arrow keys or WASD move; hold to keep going",
+                        "Enter or Space fills · X or C crosses out",
+                        "H lights up one square when you are stuck",
+                        "M or Tab opens the Cozy Corner · Esc steps back"};
             case HANDS_UNKNOWN:
                 return new String[]{
                         "D-pad or left stick moves; hold to keep going",

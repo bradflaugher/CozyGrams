@@ -312,6 +312,7 @@ public final class CozyGameView extends View {
         SettingsScene.disarmStoryRestart();
         HudScene.setRemoteOnly(false);
         HudScene.setPadSeen(false);
+        HudScene.setKeyboard(false);
         SettingsScene.disarmDefaults();
         SettingsScene.setTidyingPlayer(-1);
     }
@@ -633,6 +634,9 @@ public final class CozyGameView extends View {
         }
         ui.tips.dismiss(now());
         boolean keyboard = fromAKeyboard(event);
+        if (keyboard || fromAController(event)) {
+            HudScene.setKeyboard(keyboard);
+        }
         // A controller picked up on a phone brings back the controller's legend, and so
         // does a keyboard on a Chromebook or a tablet in its case. The back gesture also
         // arrives as a key, but from neither, so it changes nothing.
@@ -2239,7 +2243,7 @@ public final class CozyGameView extends View {
                     tourActed(tour.fill(moment));
                     return;
                 }
-                if (hands != Tutorial.HANDS_PAD) {
+                if (hands == Tutorial.HANDS_REMOTE || hands == Tutorial.HANDS_UNKNOWN) {
                     boolean done = tour.cycle(moment);
                     sfx.play(CozySfx.Sound.SELECT);
                     if (tour.acted) {

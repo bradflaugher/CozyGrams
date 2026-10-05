@@ -68,6 +68,9 @@ public final class TutorialScene {
         if (HudScene.touch()) {
             return Tutorial.HANDS_TOUCH;
         }
+        if (HudScene.keyboard()) {
+            return Tutorial.HANDS_KEYBOARD;
+        }
         if (HudScene.remoteOnly()) {
             return Tutorial.HANDS_REMOTE;
         }
@@ -190,8 +193,10 @@ public final class TutorialScene {
         buttonsDrawn = true;
         if (!HudScene.touch()) {
             // How to move between them, small, between Skip and Back.
-            String how = "◂ ▸ choose  ·  " + HomeScene.confirmName() + " press  ·  "
-                    + (HudScene.remoteOnly() ? "Back" : "⧉") + " skip";
+            boolean typing = HudScene.keyboard();
+            String how = "◂ ▸ choose  ·  " + (typing ? "Enter" : HomeScene.confirmName())
+                    + " press  ·  " + (typing ? "Esc" : HudScene.remoteOnly() ? "Back" : "⧉")
+                    + " skip";
             float hint = Theme.textSize(Theme.MIN_PROSE_SP) * .8f;
             float room = lefts[1] - (left + widths[0]) - gap * 2;
             hint = draw.fit(how, hint, room, false, Theme.scale(14));

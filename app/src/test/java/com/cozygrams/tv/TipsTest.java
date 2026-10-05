@@ -68,7 +68,7 @@ public class TipsTest {
     @Test
     public void everyTipHasWords() {
         for (int tip = 0; tip < Tips.COUNT; tip++) {
-            for (int hands = 0; hands < 4; hands++) {
+            for (int hands = 0; hands < 5; hands++) {
                 assertFalse(Tips.text(tip, hands).isEmpty());
             }
         }

@@ -121,8 +121,27 @@ public final class HelpScene {
         }
     }
 
+    /** The confirm button's name as it should be read out. */
+    private static String confirmWord() {
+        if (HudScene.keyboard()) {
+            return "Enter";
+        }
+        return HudScene.remoteOnly() ? "OK" : "A";
+    }
+
     /** The controls page, in the names of whatever is in the room. */
     private static String[][] controls() {
+        if (HudScene.keyboard()) {
+            return new String[][]{
+                    {"Moving", "Arrow keys or WASD. Hold to keep going; the cursor wraps "
+                            + "around the edges."},
+                    {"Enter and X", "Enter or Space fills a square. X or C crosses it out."},
+                    {"H", "Lights up one square when you are stuck."},
+                    {"M and Esc", "M or Tab opens the Cozy Corner. Esc steps back."},
+                    {"A mouse", "Click to fill, right-click to cross out, the wheel to "
+                            + "scroll a menu."}
+            };
+        }
         if (HudScene.touch()) {
             return new String[][]{
                     {"The pen", "Tap FILL or CROSS. The pen decides what touching the "
@@ -167,8 +186,9 @@ public final class HelpScene {
             words.append(entry[0]).append(": ").append(entry[1]).append(' ');
         }
         words.append(HudScene.touch()
-                ? "Tap a tab to turn the page."
-                : "Left and right turn the page. Back closes.");
+                ? "Tap a tab to turn the page. The button at the bottom takes the tour again."
+                : "Left and right turn the page. " + confirmWord()
+                + " takes the tour again. Back closes.");
         return words.toString().trim();
     }
 
@@ -208,7 +228,7 @@ public final class HelpScene {
     public float[] panelRect(float width, float height) {
         panel[0] = helpInset(width);
         panel[1] = panelTop(height);
-        panel[2] = width - helpInset(width);
+        panel[2] = helpRight(width);
         panel[3] = panelBottom(height);
         return panel;
     }
@@ -238,6 +258,15 @@ public final class HelpScene {
      * button sits in the top-left corner, so the panel steps clear of it — on both sides,
      * so it stays centred — rather than letting the chevron cover the heading.
      */
+    /**
+     * The right edge: the same clearance as the left, so the panel stays centred, but never
+     * past the safe edge — a navigation bar or cutout on the right can be wider than the
+     * back button's corner on the left.
+     */
+    private static float helpRight(float width) {
+        return Math.min(panelRight(width), width - helpInset(width));
+    }
+
     private static float helpInset(float width) {
         float inset = panelLeft(width);
         if (HudScene.touch()) {
@@ -263,7 +292,7 @@ public final class HelpScene {
         boolean bold = ui.highContrastOn;
         int page = Math.floorMod(ui.helpPage, PAGE_COUNT);
         float left = helpInset(width);
-        float right = width - helpInset(width);
+        float right = helpRight(width);
         float top = panelTop(height);
         float bottom = panelBottom(height);
         draw.panel(canvas, left, top, right, bottom, bold ? 244 : 232);

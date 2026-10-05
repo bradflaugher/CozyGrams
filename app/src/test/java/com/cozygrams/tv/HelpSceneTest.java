@@ -20,6 +20,7 @@ public class HelpSceneTest {
     public void tidyUp() {
         HudScene.setTouch(false);
         HudScene.setRemoteOnly(false);
+        HudScene.setKeyboard(false);
     }
 
     @Test
@@ -66,5 +67,10 @@ public class HelpSceneTest {
         String touch = HelpScene.entries(HelpScene.PAGE_CONTROLS)[0][1];
         assertNotEquals(pad, remote);
         assertNotEquals(pad, touch);
+        HudScene.setTouch(false);
+        HudScene.setKeyboard(true);
+        assertTrue(HelpScene.entries(HelpScene.PAGE_CONTROLS)[1][1].contains("Enter"));
+        // A screen reader is told that the confirm key takes the tour again.
+        assertTrue(HelpScene.spoken(0).contains("Enter takes the tour again"));
     }
 }
