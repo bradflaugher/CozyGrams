@@ -211,6 +211,20 @@ public final class HomeScene {
         }
     }
 
+    private final float[] rowRect = new float[4];
+
+    /** A row's rectangle as last drawn, for a tip to point at; null before it is drawn. */
+    public float[] rowRect(int item) {
+        if (!rowsDrawn || item < 0 || item >= ITEM_COUNT) {
+            return null;
+        }
+        rowRect[0] = rowsLeft;
+        rowRect[1] = rowCentre[item] - rowPitch / 2;
+        rowRect[2] = rowsRight;
+        rowRect[3] = rowCentre[item] + rowPitch / 2;
+        return rowRect;
+    }
+
     /** The row under a point, or -1. Only rows that have actually been drawn answer. */
     public int itemAt(float x, float y) {
         if (!rowsDrawn || x < rowsLeft || x > rowsRight) {

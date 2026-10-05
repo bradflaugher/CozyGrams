@@ -484,7 +484,7 @@ public class SaveStoreTest {
         assertFalse(Comfort.get().calmMotion);
     }
 
-    /** The welcome card greets a first evening only, and stays put away once seen. */
+    /** The tour greets a first evening only, and stays put away once seen. */
     @Test
     public void theWelcomeCardIsOwedToAFirstEveningOnly() {
         assertEquals(SaveStore.WELCOME_OWED,

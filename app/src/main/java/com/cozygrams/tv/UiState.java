@@ -26,12 +26,16 @@ public final class UiState {
     public float helpScroll;
 
     /**
-     * True while the welcome card is up: the first evening's three-picture "how nonograms
-     * work", drawn over whatever screen is showing. Any press or tap puts it away, and it
-     * can be brought back from How to play. Never set by the preview harness unless a frame
-     * asks for it, so screenshots and tests see the game rather than the card.
+     * True while the first-evening tour is up, drawn over whatever screen is showing; its
+     * progress is {@link #tour}. Never set by the preview harness unless a frame asks for
+     * it, so screenshots and tests see the game rather than the tour.
      */
-    public boolean welcome;
+    public boolean tutorial;
+    public final Tutorial tour = new Tutorial();
+
+    /** The one-time tips, and when the screen they would point at last changed. */
+    public final Tips tips = new Tips();
+    public long screenSince;
 
     /**
      * Whether this device has somewhere to send a share, and a browser for the feedback

@@ -34,12 +34,21 @@ legend changes to match whatever is actually in the room.
 
 ### Learning the game
 
-A first evening opens on a welcome card: three tiny pictures of how nonogram clues work,
-and the buttons in your hands. Any press or tap puts it away. **How to play**, in the Cozy
-Corner, has five pages — the basics, the controls (for whatever is in the room: gamepad,
-remote or touch), playing together as Rose and Sky, the Story Book and Endless, and common
-questions — turned with left and right or by tapping a tab, and can show the welcome card
-again. Screenshot and test runs skip the card with a launch extra:
+A first evening opens on a short **guided tour** that solves a real 5×5 heart
+with you: it reads a clue and fills the row it gives away, hands you one square
+to fill and one to cross out with whatever is in your hands (A and B on a
+gamepad, OK on a bare remote, a tap and a hold on a touch screen), shows the
+finished picture, then the controls, how a second controller joins as Sky, and
+where to go next. **Skip tour**, **Back** and **Next** are reached with left and
+right; Back or Menu leaves at any step. After it, **one-time tips** point at the
+Story Book row, the Cozy Corner, the clues, the pen and HINT the first time you
+meet them, and go away with your next press.
+
+**How to play**, in the Cozy Corner, has five pages — the basics, the controls
+(for whatever is in the room), playing together as Rose and Sky, the Story Book
+and Endless, and common questions — turned with left and right or by tapping a
+tab, and takes the tour again. Screenshot and test runs skip the tour and the
+tips with a launch extra:
 
 ```sh
 adb shell am start -n com.cozygrams.tv/.MainActivity --ez skip_welcome true
@@ -104,12 +113,13 @@ falling asleep and waking up with a new device id.
 - Illustrated living-room and moonlit-garden scenes that stay visible while you play.
 - Comfort options: larger text, extra contrast, colour-blind-friendly player identity,
   bolder cursors, calmer animation, gentle mistake checking, and put-everything-back.
-- TalkBack hears the menus, How to play, the welcome card, and every square the cursor
+- TalkBack hears the menus, How to play, the tour, the tips, and every square the cursor
   lands on together with the row and column clues that cross it.
-- **Share CozyGrams** hands a line and the Google Play link to the share sheet, and **Send
+- **Share CozyGrams** hands a line and the Google Play link to the share sheet, **Send
   feedback** opens the [new-issue page](https://github.com/bradflaugher/CozyGrams/issues/new)
-  in a browser. A television with no share sheet or no browser shows the address instead.
-  There is no rating prompt and never will be.
+  in a browser, and **Rate on Google Play** opens the store page. A television with no
+  share sheet or no browser shows the address instead, and one with no store leaves the
+  Rate row out. The game never asks for a rating on its own.
 - Progress that survives anything — a versioned save with a fingerprint of the hidden
   picture, so a stale or mismatched save deals a fresh board instead of corrupting one.
 - Native landscape interface for the TV (no touchscreen required, nothing below the safe
@@ -163,7 +173,7 @@ settled, the page turn between chapters, and the layout cases that break things 
 widest message, Larger Text, Extra Contrast, and one title screen carrying every long
 string at once — plus a touch tablet, and a window under a status bar, a navigation bar and
 a camera cutout, which are the frames to read at portrait, square and 4:3 sizes such as
-`1600 2560`, `1200 1200` or `800 600`. Thirty-six of them render at whatever resolution
+`1600 2560`, `1200 1200` or `800 600`. Forty-four of them render at whatever resolution
 you ask for; `sizes/` holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a
 scaling regression turns up as a picture rather than as an argument, and a portrait tablet
 pinned at 1600×2560; `phone/` pins the phone shapes, and `store/` holds the Google Play
@@ -173,10 +183,15 @@ listing's screenshots at the 16:9 sizes Play asks for — a phone at 3×, a 7-in
 of itself, under a headline and a second line drawn with the game's own `Draw` code, type
 and colours (the captions live in `STORE_CAPTIONS` in `Preview.java`, and a store frame
 without one fails the render). `store/feature-graphic.png` is the 1024×500 feature graphic.
-How to play's pages and the welcome card are in the set too, at LARGER TEXT and at 720p.
+How to play's pages, every step of the tour and the one-time tips are in the set too, at
+LARGER TEXT, at 720p and on a phone.
 These are written ready to upload, with no alpha channel and no stamp (below), and are what
 `fastlane/metadata/android/en-US/images/` is copied from. The README's own shots in
-`docs/screenshots/` stay uncaptioned.
+`docs/screenshots/` stay uncaptioned. The listing has no promo video yet: Play takes
+only a YouTube link, and the clips `record.sh` renders (below) are the place to start one.
+
+What the closed test suggested, and what was done with each suggestion, is in
+[docs/tester-feedback](docs/tester-feedback/README.md).
 
 Nothing in the set is posed. The frames that show the game reacting — the particles, the
 win — press the button and let the same calls the real input path makes decide what comes

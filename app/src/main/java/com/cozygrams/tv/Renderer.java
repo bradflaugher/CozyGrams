@@ -20,6 +20,7 @@ public final class Renderer {
     private final HomeScene home = new HomeScene(draw);
     private final SettingsScene settings = new SettingsScene(draw);
     private final HelpScene help = new HelpScene(draw);
+    private final TutorialScene tutorial = new TutorialScene(draw);
     private final WinScene win = new WinScene(draw);
     /** The board card's rectangle, reused so the back button can keep off it. */
     private final float[] avoidRect = new float[4];
@@ -74,9 +75,14 @@ public final class Renderer {
         return settings;
     }
 
-    /** How to play and the welcome card as last drawn, for the same reason. */
+    /** How to play as last drawn, for the same reason. */
     public HelpScene help() {
         return help;
+    }
+
+    /** The tour as last drawn, for the same reason. */
+    public TutorialScene tutorial() {
+        return tutorial;
     }
 
     public void draw(Canvas canvas, float width, float height, GameState game, UiState ui,
@@ -116,13 +122,14 @@ public final class Renderer {
         if (ui.screen != UiState.HELP) {
             help.forget();
         }
-        if (ui.welcome) {
-            // The welcome card goes over everything, back button included: any tap on it
-            // is the answer, so nothing underneath may look as if it could be pressed.
-            help.drawWelcome(canvas, width, height, ui, now);
+        if (ui.tutorial) {
+            // The tour goes over everything, back button included: it has its own Skip,
+            // and nothing underneath may look as if it could be pressed.
+            tutorial.draw(canvas, width, height, ui.tour, ui, now);
             HudScene.forgetBackButton();
             return;
         }
+        tutorial.forget();
         String back = backLabel(ui);
         if (HudScene.touch() && back != null) {
             float[] avoid = null;
@@ -141,6 +148,63 @@ public final class Renderer {
         } else {
             HudScene.forgetBackButton();
         }
+        // A one-time tip, last of all, beside the control it is about.
+        if (ui.tips.showing >= 0) {
+            float[] anchor = tipAnchor(ui.tips.showing, ui);
+            if (anchor != null) {
+                ui.tips.draw(canvas, draw, width, height, anchor,
+                        Tips.text(ui.tips.showing, TutorialScene.hands()),
+                        now - ui.tips.shownAt, ui.highContrastOn);
+            }
+        }
+    }
+
+    private final float[] tipRect = new float[4];
+
+    /**
+     * What a tip points at, from the frame last drawn, or null when that thing is not on
+     * screen — in which case the view does not offer the tip yet.
+     */
+    public float[] tipAnchor(int tip, UiState ui) {
+        switch (tip) {
+            case Tips.STORY:
+                return ui.screen == UiState.HOME ? home.rowRect(HomeScene.ITEM_STORY) : null;
+            case Tips.CORNER:
+                return ui.screen == UiState.HOME ? home.rowRect(HomeScene.ITEM_SETTINGS) : null;
+            case Tips.PEN: {
+                float[] fill = HudScene.touchRect(HudScene.TOUCH_FILL);
+                float[] cross = HudScene.touchRect(HudScene.TOUCH_CROSS);
+                if (fill == null || cross == null) {
+                    return null;
+                }
+                tipRect[0] = fill[0];
+                tipRect[1] = fill[1];
+                tipRect[2] = cross[2];
+                tipRect[3] = cross[3];
+                return tipRect;
+            }
+            case Tips.HINT:
+                return HudScene.touchRect(HudScene.TOUCH_HINT);
+            default:
+                break;
+        }
+        BoardLayout board = lastBoard;
+        if (board == null || ui.screen != UiState.GAME || ui.won) {
+            return null;
+        }
+        if (tip == Tips.CLUES) {
+            // The column clues along the top of the board.
+            tipRect[0] = board.left;
+            tipRect[1] = board.clueTop();
+            tipRect[2] = board.right;
+            tipRect[3] = board.top;
+            return tipRect;
+        }
+        tipRect[0] = board.panelLeft;
+        tipRect[1] = board.panelTop();
+        tipRect[2] = board.panelRight;
+        tipRect[3] = board.panelBottom();
+        return tipRect;
     }
 
     /** What the on-screen back button says on this screen, or null for no button. */
@@ -200,6 +264,14 @@ public final class Renderer {
      * whatever phase it happened to reach — which reads as a bug rather than as calm.
      */
     public boolean animating(GameState game, UiState ui, Effects effects, long now) {
+        if (ui.tutorial) {
+            // The tour's squares arrive one by one and its focus breathes; with calm motion
+            // nothing on it moves at all.
+            return !Comfort.get().calmMotion;
+        }
+        if (ui.tips.showing >= 0) {
+            return true;
+        }
         if (ui.won) {
             // The win card is a fixed choreography with a stated end, so it is asked when
             // it stops rather than guessed at. Folded in with the menus it answered

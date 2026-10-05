@@ -4,8 +4,9 @@ CozyGrams is a relaxing nonogram puzzle game (also known as griddlers, hanjie, p
 
 NEW TO NONOGRAMS?
 • Every number is a run of filled squares in its row or column, in order. Work out which squares must be filled, cross out the ones that must stay empty, and a little picture appears.
-• A gentle welcome card shows the idea in three tiny pictures on your first evening.
-• How to play, in the Cozy Corner, covers the rules, the controls, playing together, the Story Book and common questions, and can show the welcome card again.
+• A short guided tour solves your first tiny puzzle with you: it reads a clue, lets you fill and cross out a square with your own controller, remote or finger, and shows how a second player joins. Skip it any time, or take it again later.
+• Friendly one-time tips point out the clues, the pen and the hint button the first time you meet them.
+• How to play, in the Cozy Corner, covers the rules, the controls, playing together, the Story Book and common questions.
 
 TWO ON THE COUCH
 • Each controller keeps its own player, cursor and color. The first controller to press a button is Rose and the next is Sky, and they keep their seats even if a controller falls asleep.

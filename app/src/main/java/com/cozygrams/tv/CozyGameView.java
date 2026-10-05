@@ -226,10 +226,14 @@ public final class CozyGameView extends View {
         // to. A television usually has neither, and the cozy corner says so in words.
         ui.canShare = resolves(shareIntent());
         ui.canBrowse = resolves(feedbackIntent());
+        // No store app and no browser means nothing to rate in, so the row is left out.
+        SettingsScene.setRateShown(resolves(rateIntent()) || resolves(ratePageIntent()));
+        ui.tips.seen = store.tipsSeen();
         if (store.welcomeOwed()) {
-            ui.welcome = true;
+            ui.tutorial = true;
+            ui.tour.start(now());
             // Posted, because a view that is not attached yet has nobody to speak to.
-            post(() -> announce(HelpScene.spokenWelcome()));
+            post(() -> announce(ui.tour.spoken(TutorialScene.hands())));
         }
 
         renderer.setScenes(
@@ -248,12 +252,15 @@ public final class CozyGameView extends View {
     }
 
     /**
-     * Puts the welcome card away for good without showing it — for an automated run that
-     * launches the app to take a picture of the game rather than of the card.
+     * Puts the tour and every one-time tip away for good without showing them — for an
+     * automated run that launches the app to take a picture of the game rather than of them.
      */
     public void skipWelcome() {
-        ui.welcome = false;
+        ui.tutorial = false;
         store.welcomeSeen();
+        ui.tips.seen = Tips.ALL;
+        ui.tips.hide(now());
+        store.writeTips(Tips.ALL);
         invalidate();
     }
 
@@ -304,6 +311,7 @@ public final class CozyGameView extends View {
         HomeScene.setPendingChapter(-1);
         SettingsScene.disarmStoryRestart();
         HudScene.setRemoteOnly(false);
+        HudScene.setPadSeen(false);
         SettingsScene.disarmDefaults();
         SettingsScene.setTidyingPlayer(-1);
     }
@@ -411,6 +419,7 @@ public final class CozyGameView extends View {
         int freed = players.releaseDevice(deviceId);
         padsInTheRoom.remove(deviceId);
         HudScene.setRemoteOnly(players.deviceCount() > 0 && padsInTheRoom.isEmpty());
+        HudScene.setPadSeen(!padsInTheRoom.isEmpty());
         // The registry counts the finger too, so a pad going away cannot take Rose's seat
         // from somebody who has been playing her on the glass.
         for (int player = 0; player < ui.joined.length; player++) {
@@ -622,6 +631,7 @@ public final class CozyGameView extends View {
             // past. They go back to the platform exactly as they arrived.
             return super.onKeyDown(keyCode, event);
         }
+        ui.tips.dismiss(now());
         boolean keyboard = fromAKeyboard(event);
         // A controller picked up on a phone brings back the controller's legend, and so
         // does a keyboard on a Chromebook or a tablet in its case. The back gesture also
@@ -647,14 +657,12 @@ public final class CozyGameView extends View {
         int who = gesture ? 0 : registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
 
-        // The welcome card says "press any button", so any press puts it away — a direction
-        // on a remote included, since that is the first thing a hand on a remote does. The
-        // press goes no further, so nothing behind the card moves. The press that seats
-        // somebody counts too: the card is the first thing anybody sees, and it would be
-        // odd for it to take two presses on a television.
-        if (ui.welcome) {
+        // The tour takes every press while it is up, and none of them reaches the screen
+        // behind it. The press that seats somebody counts too: the tour is the first thing
+        // anybody sees, and it would be odd for it to ignore the first button on a sofa.
+        if (ui.tutorial) {
             if (!repeat) {
-                dismissWelcome();
+                handleTourKey(key);
             }
             invalidate();
             return true;
@@ -750,6 +758,7 @@ public final class CozyGameView extends View {
             padsInTheRoom.add(deviceId);
         }
         HudScene.setRemoteOnly(players.deviceCount() > 0 && padsInTheRoom.isEmpty());
+        HudScene.setPadSeen(!padsInTheRoom.isEmpty());
         music.setPresence(players.playerCount() >= 2 ? 2 : 1);
         if (players.justJoined() == who && !ui.joined[who]) {
             ui.joined[who] = true;
@@ -866,7 +875,10 @@ public final class CozyGameView extends View {
             ui.settingsScroll = SettingsScene.windowStart(ui.menu);
         }
         HudScene.setTouch(true);
-        if (welcomeTouch(event)) {
+        if (ui.tips.dismiss(now())) {
+            invalidate();
+        }
+        if (tourTouch(event)) {
             invalidate();
             return true;
         }
@@ -905,34 +917,63 @@ public final class CozyGameView extends View {
         return true;
     }
 
-    /** True from a finger landing on the welcome card until every finger has lifted. */
-    private boolean welcomeTouched;
+    /** True from a finger landing on the tour until every finger has lifted. */
+    private boolean tourTouched;
+    private boolean tourHeld;
+    private final Runnable tourLongPress = this::tourHoldFired;
 
     /**
-     * One tap anywhere puts the welcome card away. It goes on the finger's lift rather than
-     * its landing, so the rest of that touch cannot fall through onto the row or the square
-     * the card was covering.
+     * A finger on the tour: its buttons, and the glowing square. Acted on at the lift, so
+     * the rest of the touch cannot fall through onto whatever the tour was covering; a
+     * finger held on the glowing square of the cross step crosses it, as a long press does
+     * on the board.
      *
-     * @return true while this touch belongs to the card
+     * @return true while this touch belongs to the tour
      */
-    private boolean welcomeTouch(MotionEvent event) {
+    private boolean tourTouch(MotionEvent event) {
         int action = event.getActionMasked();
-        if (!welcomeTouched) {
-            if (!ui.welcome || action != MotionEvent.ACTION_DOWN) {
+        if (!tourTouched) {
+            if (!ui.tutorial || action != MotionEvent.ACTION_DOWN) {
                 return false;
             }
-            welcomeTouched = true;
+            tourTouched = true;
+            tourHeld = false;
             releaseAllTouches();
+            if (ui.tour.step == Tutorial.STEP_CROSS
+                    && renderer.tutorial().targetAt(event.getX(), event.getY())) {
+                postDelayed(tourLongPress, TOUCH_LONG_PRESS_MS);
+            }
             return true;
         }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            welcomeTouched = false;
-            if (action == MotionEvent.ACTION_UP && ui.welcome) {
-                dismissWelcome();
-                performClick();
+            tourTouched = false;
+            removeCallbacks(tourLongPress);
+            if (action == MotionEvent.ACTION_UP && ui.tutorial && !tourHeld) {
+                float x = event.getX();
+                float y = event.getY();
+                int button = renderer.tutorial().buttonAt(x, y);
+                if (button >= 0 && ui.tour.enabled(button)) {
+                    ui.tour.focus = button;
+                    pressTourButton(button);
+                    performClick();
+                } else if (ui.tour.step == Tutorial.STEP_FILL
+                        && renderer.tutorial().targetAt(x, y)) {
+                    tourActed(ui.tour.fill(now()));
+                    performClick();
+                }
             }
         }
         return true;
+    }
+
+    private void tourHoldFired() {
+        if (!tourTouched || !ui.tutorial) {
+            return;
+        }
+        tourHeld = true;
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        tourActed(ui.tour.cross(now()));
+        invalidate();
     }
 
     /**
@@ -1493,8 +1534,8 @@ public final class CozyGameView extends View {
                 showHelpPage(tab);
                 return true;
             }
-            if (help.welcomeAgainAt(x, y)) {
-                showWelcome();
+            if (help.tourAgainAt(x, y)) {
+                startTour();
                 return true;
             }
             return false;
@@ -1690,7 +1731,8 @@ public final class CozyGameView extends View {
         if (!menuStepIsAllowed(repeat)) {
             return;
         }
-        ui.menu = Math.floorMod(ui.menu + direction, itemCount);
+        ui.menu = ui.screen == UiState.SETTINGS ? SettingsScene.step(ui.menu, direction)
+                : Math.floorMod(ui.menu + direction, itemCount);
         sfx.play(CozySfx.Sound.MOVE);
         if (speaking()) {
             announce(describeMenu());
@@ -2002,6 +2044,14 @@ public final class CozyGameView extends View {
                             + "CozyGrams is on Google Play.");
                 }
                 return;
+            case SettingsScene.ITEM_RATE:
+                // The store app if there is one, its web page if not.
+                if (!launch(rateIntent(), rateIntent())
+                        && !launch(ratePageIntent(), ratePageIntent())) {
+                    SettingsScene.say("CozyGrams is on Google Play", now());
+                    announce("There's no store here. CozyGrams is on Google Play.");
+                }
+                return;
             case SettingsScene.ITEM_FEEDBACK:
                 if (!launch(feedbackIntent(), feedbackIntent())) {
                     ui.canBrowse = false;
@@ -2033,6 +2083,18 @@ public final class CozyGameView extends View {
                 .setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT, "CozyGrams")
                 .putExtra(Intent.EXTRA_TEXT, shareText());
+    }
+
+    /** The Play Store app's own page for the game. */
+    private static Intent rateIntent() {
+        return new Intent(Intent.ACTION_VIEW,
+                Uri.parse("market://details?id=com.cozygrams.tv"));
+    }
+
+    /** The same page on the web, for a device with a browser but no store app. */
+    private static Intent ratePageIntent() {
+        return new Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_URL))
+                .addCategory(Intent.CATEGORY_BROWSABLE);
     }
 
     private static Intent feedbackIntent() {
@@ -2083,7 +2145,8 @@ public final class CozyGameView extends View {
     private void leaveHelp() {
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_HELP;
-        ui.settingsScroll = SettingsScene.clampScroll(ui.menu - SettingsScene.VISIBLE_ROWS / 2);
+        ui.settingsScroll = SettingsScene.clampScroll(
+                SettingsScene.slotOf(ui.menu) - SettingsScene.VISIBLE_ROWS / 2);
         if (speaking()) {
             announce(describeMenu());
         }
@@ -2119,7 +2182,7 @@ public final class CozyGameView extends View {
             scrollHelp(key == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
         } else if (PlayerRegistry.isConfirm(key) && !repeat) {
             sfx.play(CozySfx.Sound.SELECT);
-            showWelcome();
+            startTour();
         } else if (!repeat && (PlayerRegistry.isBack(key) || PlayerRegistry.isCross(key)
                 || PlayerRegistry.isMenu(key))) {
             leaveHelp();
@@ -2134,21 +2197,139 @@ public final class CozyGameView extends View {
         ui.helpScroll = clampHelpScroll(ui.helpScroll + direction * help.lineStep() * 2);
     }
 
-    // ---- The welcome card ----------------------------------------------------------
+    // ---- The tour ------------------------------------------------------------------
 
-    private void showWelcome() {
-        ui.welcome = true;
+    /** Starts the little tour from its first step, over whatever is showing. */
+    private void startTour() {
+        ui.tutorial = true;
+        ui.tour.start(now());
+        ui.tips.hide(now());
         releaseAllTouches();
-        announce(HelpScene.spokenWelcome());
+        announce(ui.tour.spoken(TutorialScene.hands()));
     }
 
-    private void dismissWelcome() {
-        ui.welcome = false;
+    /** Finishes or skips the tour; either way it is not offered again on its own. */
+    private void endTour() {
+        ui.tutorial = false;
+        removeCallbacks(tourLongPress);
         store.welcomeSeen();
+        ui.screenSince = now();
         sfx.play(CozySfx.Sound.SELECT);
         if (speaking()) {
             announce(ui.screen == UiState.HELP ? HelpScene.spoken(ui.helpPage)
                     : describeMenu());
+        }
+    }
+
+    /**
+     * A key on the tour. Left and right move between Skip, Back and Next; the confirm
+     * button presses the one in focus — or, on a step that asks for it, fills the glowing
+     * square first. B and X cross it out where crossing is asked for, a remote's OK gets
+     * there through fill as it does on the board, and Back or Menu leave the tour.
+     */
+    private void handleTourKey(int key) {
+        Tutorial tour = ui.tour;
+        long moment = now();
+        int hands = TutorialScene.hands();
+        if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            moveTourFocus(key == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+        } else if (PlayerRegistry.isConfirm(key)) {
+            if (tour.awaitingAction() && tour.focus == Tutorial.FOCUS_NEXT) {
+                if (tour.step == Tutorial.STEP_FILL) {
+                    tourActed(tour.fill(moment));
+                    return;
+                }
+                if (hands != Tutorial.HANDS_PAD) {
+                    boolean done = tour.cycle(moment);
+                    sfx.play(CozySfx.Sound.SELECT);
+                    if (tour.acted) {
+                        tourActed(done);
+                    }
+                    return;
+                }
+            }
+            pressTourButton(tour.focus);
+        } else if (PlayerRegistry.isCross(key)) {
+            tourActed(tour.cross(moment));
+        } else if (PlayerRegistry.isBack(key) || PlayerRegistry.isMenu(key)) {
+            endTour();
+        }
+    }
+
+    private void moveTourFocus(int direction) {
+        int before = ui.tour.focus;
+        ui.tour.moveFocus(direction);
+        if (ui.tour.focus != before) {
+            sfx.play(CozySfx.Sound.MOVE);
+            announce(Tutorial.buttonName(ui.tour.focus, ui.tour.isLast()) + " button");
+        }
+    }
+
+    private void pressTourButton(int button) {
+        long moment = now();
+        switch (button) {
+            case Tutorial.FOCUS_SKIP:
+                endTour();
+                return;
+            case Tutorial.FOCUS_BACK:
+                ui.tour.back(moment);
+                sfx.play(CozySfx.Sound.MOVE);
+                break;
+            default:
+                if (!ui.tour.next(moment)) {
+                    endTour();
+                    return;
+                }
+                sfx.play(CozySfx.Sound.SELECT);
+                break;
+        }
+        announce(ui.tour.spoken(TutorialScene.hands()));
+    }
+
+    /** The player filled or crossed the glowing square: a chime, and the words change. */
+    private void tourActed(boolean acted) {
+        if (!acted) {
+            return;
+        }
+        sfx.play(ui.tour.step == Tutorial.STEP_FILL ? CozySfx.Sound.FILL : CozySfx.Sound.CROSS);
+        announce(ui.tour.title() + ". " + ui.tour.body(TutorialScene.hands()));
+    }
+
+    // ---- One-time tips --------------------------------------------------------------
+
+    private int tipScreen = -1;
+    private boolean tipWon;
+
+    /**
+     * Offers the next tip that belongs on this screen, once the screen has settled, and
+     * lets the one showing go when its time is up. Called before each frame is drawn.
+     */
+    private void updateTips(long moment) {
+        if (ui.tutorial) {
+            return;
+        }
+        if (ui.screen != tipScreen || ui.won != tipWon) {
+            tipScreen = ui.screen;
+            tipWon = ui.won;
+            ui.screenSince = moment;
+        }
+        boolean touch = HudScene.touch();
+        ui.tips.tick(moment, ui, touch);
+        if (ui.tips.showing >= 0) {
+            return;
+        }
+        int tip = ui.tips.next(ui, touch);
+        if (tip < 0) {
+            return;
+        }
+        if (ui.tips.ready(moment, ui.screenSince) && renderer.tipAnchor(tip, ui) != null) {
+            ui.tips.show(tip, moment);
+            store.writeTips(ui.tips.seen);
+            announce(Tips.text(tip, TutorialScene.hands()));
+        } else if (moment - ui.screenSince < 15_000) {
+            // A tip is due on this screen; make sure a frame comes to show it, even when
+            // the screen has otherwise gone still.
+            postInvalidateDelayed(Tips.GAP_MS / 2);
         }
     }
 
@@ -2303,7 +2484,7 @@ public final class CozyGameView extends View {
      */
     public boolean backFromSystem() {
         noticeSomebody();
-        if (ui.screen == UiState.HOME && !ui.welcome) {
+        if (ui.screen == UiState.HOME && !ui.tutorial) {
             store.save(game, ui);
             return false;
         }
@@ -2317,8 +2498,8 @@ public final class CozyGameView extends View {
      * the same paths, so the button and the gesture can never disagree.
      */
     private void goBack() {
-        if (ui.welcome) {
-            dismissWelcome();
+        if (ui.tutorial) {
+            endTour();
         } else if (ui.screen == UiState.HELP) {
             leaveHelp();
         } else if (ui.screen == UiState.SETTINGS) {
@@ -2823,10 +3004,12 @@ public final class CozyGameView extends View {
         int who = registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
 
-        if (ui.welcome) {
-            // A stick nudge is a press like any other here: it puts the card away and goes
-            // no further.
-            dismissWelcome();
+        ui.tips.dismiss(now());
+        if (ui.tutorial) {
+            // The stick moves the tour's focus, as the D-pad does.
+            if (step[0] != 0) {
+                moveTourFocus(step[0]);
+            }
             invalidate();
             return true;
         }
@@ -2877,7 +3060,7 @@ public final class CozyGameView extends View {
      */
     private boolean scrollMenu(float amount) {
         int count;
-        if (ui.welcome) {
+        if (ui.tutorial) {
             return true;
         }
         if (ui.screen == UiState.HELP) {
@@ -2940,6 +3123,7 @@ public final class CozyGameView extends View {
         super.onDraw(canvas);
         long now = now();
         applyTextScale();
+        updateTips(now);
         ui.animateCursors(game, frameGap(lastFrameAt, now));
         lastFrameAt = now;
         renderer.draw(canvas, getWidth(), getHeight(), game, ui, effects, now);

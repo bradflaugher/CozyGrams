@@ -488,12 +488,46 @@ public class SettingsSceneTest {
                 SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
     }
 
-    /** Nothing in the corner asks for a rating or a review. */
+    /**
+     * Rating is one quiet row, like Share: choosing it asks the view to open the store,
+     * and nothing else in the corner mentions ratings at all.
+     */
     @Test
-    public void noRowAsksForARating() {
-        for (String label : SettingsScene.labels()) {
-            String lower = label.toLowerCase(java.util.Locale.ROOT);
-            assertFalse(label, lower.contains("rate") || lower.contains("review"));
+    public void rateIsOneQuietRow() {
+        UiState ui = new UiState();
+        assertTrue(SettingsScene.toggle(ui, SettingsScene.ITEM_RATE));
+        assertEquals(SettingsScene.ITEM_RATE, SettingsScene.consumeRequest());
+        assertEquals("HELP & ABOUT", SettingsScene.sectionName(SettingsScene.ITEM_RATE));
+        String[] labels = SettingsScene.labels();
+        for (int item = 0; item < SettingsScene.ITEM_COUNT; item++) {
+            String lower = labels[item].toLowerCase(java.util.Locale.ROOT);
+            if (item != SettingsScene.ITEM_RATE) {
+                assertFalse(labels[item], lower.contains("rate") || lower.contains("review"));
+            }
         }
+    }
+
+    /** A device with no store leaves the Rate row out, and the list closes up around it. */
+    @Test
+    public void aHiddenRateRowIsSkipped() {
+        try {
+            SettingsScene.setRateShown(false);
+            assertEquals(SettingsScene.ITEM_COUNT - 1, SettingsScene.count());
+            assertEquals(SettingsScene.ITEM_PRIVACY,
+                    SettingsScene.step(SettingsScene.ITEM_FEEDBACK, 1));
+            assertEquals(SettingsScene.ITEM_FEEDBACK,
+                    SettingsScene.step(SettingsScene.ITEM_PRIVACY, -1));
+            assertEquals(SettingsScene.ITEM_MUSIC,
+                    SettingsScene.step(SettingsScene.ITEM_BACK, 1));
+            for (int slot = 0; slot < SettingsScene.count(); slot++) {
+                assertNotEquals(SettingsScene.ITEM_RATE, SettingsScene.itemAtSlot(slot));
+                assertEquals(slot, SettingsScene.slotOf(SettingsScene.itemAtSlot(slot)));
+            }
+            assertEquals(SettingsScene.count() - SettingsScene.VISIBLE_ROWS,
+                    SettingsScene.windowStart(SettingsScene.ITEM_BACK));
+        } finally {
+            SettingsScene.setRateShown(true);
+        }
+        assertEquals(SettingsScene.ITEM_RATE, SettingsScene.step(SettingsScene.ITEM_FEEDBACK, 1));
     }
 }

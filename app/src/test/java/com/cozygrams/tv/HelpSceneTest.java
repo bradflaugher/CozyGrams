@@ -10,7 +10,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 /**
- * How to play and the welcome card: every page has something to say, says it aloud as
+ * How to play: every page has something to say, says it aloud as
  * well as on screen, and names the buttons that are actually in the room.
  */
 public class HelpSceneTest {
@@ -53,53 +53,18 @@ public class HelpSceneTest {
                 assertTrue(spoken.contains(entry[1]));
             }
         }
-        String welcome = HelpScene.spokenWelcome();
-        for (String[] step : HelpScene.WELCOME_STEPS) {
-            assertTrue(welcome.contains(step[1]));
-        }
     }
 
-    /** The controls page and the welcome card name whatever is in the player's hands. */
+    /** The controls page names whatever is in the player's hands. */
     @Test
     public void controlsFollowWhateverIsInTheRoom() {
         String pad = HelpScene.entries(HelpScene.PAGE_CONTROLS)[1][1];
-        String padLine = HelpScene.welcomeControls();
         HudScene.setRemoteOnly(true);
         String remote = HelpScene.entries(HelpScene.PAGE_CONTROLS)[1][1];
-        assertTrue(HelpScene.welcomeControls().contains("OK"));
         HudScene.setRemoteOnly(false);
         HudScene.setTouch(true);
         String touch = HelpScene.entries(HelpScene.PAGE_CONTROLS)[0][1];
-        assertTrue(HelpScene.welcomeControls().startsWith("Tap"));
         assertNotEquals(pad, remote);
         assertNotEquals(pad, touch);
-        // Before any press the card cannot know which, so it names both.
-        assertTrue(padLine.contains("A") && padLine.contains("OK"));
-    }
-
-    /** The little pictures on the welcome card are five squares each, and honest. */
-    @Test
-    public void theWelcomeLessonsMatchTheirClues() {
-        assertEquals(HelpScene.WELCOME_STEPS.length, HelpScene.LESSON_CLUES.length);
-        assertEquals(HelpScene.WELCOME_STEPS.length, HelpScene.LESSON_MARKS.length);
-        for (int step = 0; step < HelpScene.LESSON_MARKS.length; step++) {
-            String marks = HelpScene.LESSON_MARKS[step];
-            assertEquals(5, marks.length());
-            boolean[] filled = new boolean[5];
-            for (int i = 0; i < 5; i++) {
-                filled[i] = marks.charAt(i) == 'F';
-            }
-            StringBuilder clue = new StringBuilder();
-            for (int run : Puzzle.clues(filled)) {
-                clue.append(clue.length() == 0 ? "" : " ").append(run);
-            }
-            if (step == 1) {
-                // The middle three of a 4: certain squares, not the whole run.
-                assertEquals("3", clue.toString());
-                assertEquals("4", HelpScene.LESSON_CLUES[step]);
-            } else {
-                assertEquals(HelpScene.LESSON_CLUES[step], clue.toString());
-            }
-        }
     }
 }

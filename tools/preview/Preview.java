@@ -17,6 +17,8 @@ import com.cozygrams.tv.PuzzleLibrary;
 import com.cozygrams.tv.Renderer;
 import com.cozygrams.tv.SettingsScene;
 import com.cozygrams.tv.Theme;
+import com.cozygrams.tv.Tips;
+import com.cozygrams.tv.Tutorial;
 import com.cozygrams.tv.UiState;
 import com.cozygrams.tv.WinScene;
 
@@ -389,60 +391,6 @@ public final class Preview {
                 new Frame("phone/31-phone-five.png",
                         "A 5x5 on a phone, the shortest rail: the pad shrinks rather than spills.",
                         Preview::phoneFive, 2400, 1080),
-                new Frame("store/phone-1-game.png",
-                        "Play Store phone shot, 16:9: a 15x15 solo with the FILL | CROSS pen, MARK and HOME.",
-                        Preview::phoneGame, 1920, 1080),
-                new Frame("store/phone-2-cross-pen.png",
-                        "Play Store phone shot: the CROSS pen picked up on a 20x20.",
-                        Preview::phoneCrossPen, 1920, 1080),
-                new Frame("store/phone-3-home.png",
-                        "Play Store phone shot: the title screen on chapter one of the Story Book.",
-                        Preview::storeHome, 1920, 1080),
-                new Frame("store/phone-4-story.png",
-                        "Play Store phone shot: a Story Book chapter part way through, one player.",
-                        Preview::storeStory, 1920, 1080),
-                new Frame("store/phone-5-two-players.png",
-                        "Play Store phone shot: the Cozy Corner with a finger on Two players.",
-                        Preview::storeTwoPlayersSwitch, 1920, 1080),
-                new Frame("store/phone-6-win.png",
-                        "Play Store phone shot: a Story Book chapter finished, its hearts filling in.",
-                        Preview::storeStoryWin, 1920, 1080),
-                new Frame("store/tablet7-1-game.png",
-                        "Play Store 7-inch tablet shot, 16:9 at 600dp: a 15x15 with the pen.",
-                        Preview::storeTablet7Game, 1920, 1080),
-                new Frame("store/tablet7-2-story.png",
-                        "Play Store 7-inch tablet shot: a Story Book chapter part way through.",
-                        Preview::storeTablet7Story, 1920, 1080),
-                new Frame("store/tablet7-3-two-players.png",
-                        "Play Store 7-inch tablet shot: the Cozy Corner with a finger on Two players.",
-                        Preview::storeTablet7Settings, 1920, 1080),
-                new Frame("store/tablet7-4-win.png",
-                        "Play Store 7-inch tablet shot: a Story Book chapter finished.",
-                        Preview::storeTablet7Win, 1920, 1080),
-                new Frame("store/tablet10-1-game.png",
-                        "Play Store 10-inch tablet shot, 16:9 at 800dp: a Story Book chapter with the pen.",
-                        Preview::storeTablet10Game, 2560, 1440),
-                new Frame("store/tablet10-2-home.png",
-                        "Play Store 10-inch tablet shot: the title screen.",
-                        Preview::storeTablet10Home, 2560, 1440),
-                new Frame("store/tablet10-3-two-players.png",
-                        "Play Store 10-inch tablet shot: the Cozy Corner with a finger on Two players.",
-                        Preview::storeTablet10Settings, 2560, 1440),
-                new Frame("store/tablet10-4-win.png",
-                        "Play Store 10-inch tablet shot: a finished endless picture.",
-                        Preview::storeTablet10Win, 2560, 1440),
-                new Frame("store/tv-1-home.png",
-                        "Play Store TV shot: the title screen with Rose and Sky both ready.",
-                        Preview::homeTogether, 1920, 1080),
-                new Frame("store/tv-2-game.png",
-                        "Play Store TV shot: the reference 10x10, both playing, gamepad legend.",
-                        Preview::gameTen, 1920, 1080),
-                new Frame("store/tv-3-story.png",
-                        "Play Store TV shot: a Story Book chapter part way through, both playing.",
-                        Preview::gameStory, 1920, 1080),
-                new Frame("store/tv-4-win.png",
-                        "Play Store TV shot: a Story Book chapter finished together.",
-                        Preview::winStory, 1920, 1080),
                 new Frame("phone/30-phone-small.png",
                         "A 16:9 phone at 1920x1080 with a 20x20 board.",
                         Preview::phoneTwenty, 1920, 1080),
@@ -498,12 +446,6 @@ public final class Preview {
                 new Frame("sizes/43-help-questions-bigtext-720p.png",
                         "The same at 720p, the smallest television panel.",
                         Preview::helpQuestionsBigText, 1280, 720),
-                new Frame("44-welcome.png",
-                        "The first evening's welcome card over the title screen, gamepad.",
-                        Preview::welcome),
-                new Frame("45-welcome-bigtext-contrast.png",
-                        "The welcome card with LARGER TEXT and EXTRA CONTRAST on.",
-                        Preview::welcomeBigText),
                 new Frame("46-settings-help.png",
                         "The cozy corner's HELP & ABOUT rows, How to play focused.",
                         Preview::settingsHelp),
@@ -514,27 +456,129 @@ public final class Preview {
                 new Frame("phone/48-phone-help.png",
                         "How to play on a phone: tappable tabs and the welcome button.",
                         Preview::phoneHelp, 2400, 1080),
-                new Frame("phone/49-phone-welcome.png",
-                        "The welcome card on a phone: tap anywhere to begin.",
-                        Preview::phoneWelcome, 2400, 1080),
-                new Frame("sizes/49-phone-welcome-1080x1920.png",
-                        "The welcome card on a portrait window.",
-                        Preview::phoneWelcome, 1080, 1920),
+                new Frame("44-tour-welcome.png",
+                        "The tour's first step over the title screen, before any controller has spoken.",
+                        Preview::tourWelcome),
+                new Frame("45-tour-read.png",
+                        "The tour reading a clue, 700 ms in: the row's squares arriving one by one.",
+                        Preview::tourRead),
+                new Frame("46-tour-fill-pad.png",
+                        "The tour's fill step with a gamepad, waiting: the glowing square and Rose's ring.",
+                        Preview::tourFillPad),
+                new Frame("47-tour-cross-remote.png",
+                        "The cross step on a bare remote, after one OK: filled on its way to a cross.",
+                        Preview::tourCrossRemote),
+                new Frame("48-tour-solved.png",
+                        "The finished heart, settled, with every line ticked.",
+                        Preview::tourSolved),
+                new Frame("49-tour-controls.png",
+                        "The controls step, gamepad wording.",
+                        Preview::tourControls),
+                new Frame("50-tour-together.png",
+                        "Playing together: Rose and Sky on the little board.",
+                        Preview::tourTogether),
+                new Frame("51-tour-next-bigtext-contrast.png",
+                        "The last step with LARGER TEXT and EXTRA CONTRAST, focus on Let's begin.",
+                        Preview::tourNextBig),
+                new Frame("sizes/52-tour-fill-bigtext-720p.png",
+                        "The fill step at 720p with LARGER TEXT: the tightest the tour gets.",
+                        Preview::tourFillBig, 1280, 720),
+                new Frame("phone/53-phone-tour-cross.png",
+                        "The cross step on a phone: hold the glowing square.",
+                        Preview::phoneTourCross, 2400, 1080),
+                new Frame("sizes/53-phone-tour-cross-1080x1920.png",
+                        "The same on a portrait window.",
+                        Preview::phoneTourCross, 1080, 1920),
+                new Frame("54-tip-clues.png",
+                        "A first puzzle with the one-time tip on the clues, gamepad.",
+                        Preview::tipClues),
+                new Frame("phone/55-phone-tip-pen.png",
+                        "A first puzzle on a phone with the tip on the FILL | CROSS pen.",
+                        Preview::phoneTipPen, 2400, 1080),
+                new Frame("56-tip-story.png",
+                        "The title screen with the one-time tip on the Story Book row.",
+                        Preview::tipStory),
+                new Frame("store/phone-1-two-players.png",
+                        "Play Store phone shot: a paired controller playing Sky beside the finger's Rose.",
+                        Preview::phoneTwoPlayers, 1920, 1080),
+                new Frame("store/phone-2-game.png",
+                        "Play Store phone shot: a 15x15 solo with the FILL | CROSS pen, MARK and HOME.",
+                        Preview::phoneGame, 1920, 1080),
+                new Frame("store/phone-3-tour.png",
+                        "Play Store phone shot: the tour's fill step.",
+                        Preview::storePhoneTour, 1920, 1080),
+                new Frame("store/phone-4-story.png",
+                        "Play Store phone shot: a Story Book chapter part way through, one player.",
+                        Preview::storeStory, 1920, 1080),
+                new Frame("store/phone-5-cross-pen.png",
+                        "Play Store phone shot: the CROSS pen picked up on a 20x20.",
+                        Preview::phoneCrossPen, 1920, 1080),
+                new Frame("store/phone-6-win.png",
+                        "Play Store phone shot: a Story Book chapter finished, its hearts filling in.",
+                        Preview::storeStoryWin, 1920, 1080),
                 new Frame("store/phone-7-help.png",
                         "Play Store phone shot: How to play, the Story Book page.",
                         Preview::storePhoneHelp, 1920, 1080),
-                new Frame("store/tablet7-5-welcome.png",
-                        "Play Store 7-inch tablet shot: the welcome card.",
-                        Preview::storeTablet7Welcome, 1920, 1080),
-                new Frame("store/tablet10-5-help.png",
+                new Frame("store/phone-8-home.png",
+                        "Play Store phone shot: the title screen on chapter one of the Story Book.",
+                        Preview::storeHome, 1920, 1080),
+                new Frame("store/tablet7-1-two-players.png",
+                        "Play Store 7-inch tablet shot, 16:9 at 600dp: Rose by touch and Sky on a controller.",
+                        Preview::storeTablet7Together, 1920, 1080),
+                new Frame("store/tablet7-2-game.png",
+                        "Play Store 7-inch tablet shot: a 15x15 with the pen.",
+                        Preview::storeTablet7Game, 1920, 1080),
+                new Frame("store/tablet7-3-story.png",
+                        "Play Store 7-inch tablet shot: a Story Book chapter part way through.",
+                        Preview::storeTablet7Story, 1920, 1080),
+                new Frame("store/tablet7-4-tour.png",
+                        "Play Store 7-inch tablet shot: the tour reading a clue.",
+                        Preview::storeTablet7Tour, 1920, 1080),
+                new Frame("store/tablet7-5-win.png",
+                        "Play Store 7-inch tablet shot: a Story Book chapter finished.",
+                        Preview::storeTablet7Win, 1920, 1080),
+                new Frame("store/tablet10-1-two-players.png",
+                        "Play Store 10-inch tablet shot, 16:9 at 800dp: Rose and Sky in the garden.",
+                        Preview::storeTablet10Together, 2560, 1440),
+                new Frame("store/tablet10-2-story.png",
+                        "Play Store 10-inch tablet shot: a Story Book chapter with the pen.",
+                        Preview::storeTablet10Game, 2560, 1440),
+                new Frame("store/tablet10-3-home.png",
+                        "Play Store 10-inch tablet shot: the title screen.",
+                        Preview::storeTablet10Home, 2560, 1440),
+                new Frame("store/tablet10-4-tour.png",
+                        "Play Store 10-inch tablet shot: the tour's finished heart.",
+                        Preview::storeTablet10Tour, 2560, 1440),
+                new Frame("store/tablet10-5-win.png",
+                        "Play Store 10-inch tablet shot: a finished endless picture.",
+                        Preview::storeTablet10Win, 2560, 1440),
+                new Frame("store/tablet10-6-help.png",
                         "Play Store 10-inch tablet shot: How to play, first page.",
                         Preview::storeTablet10Help, 2560, 1440),
+                new Frame("store/tv-1-coop.png",
+                        "Play Store TV shot: the reference 10x10 with two gamepads, both cursors on the board.",
+                        Preview::storeTvCoop, 1920, 1080),
+                new Frame("store/tv-2-home.png",
+                        "Play Store TV shot: the title screen with Rose and Sky both ready.",
+                        Preview::storeTvHome, 1920, 1080),
+                new Frame("store/tv-3-garden.png",
+                        "Play Store TV shot: a 15x15 together in the moonlit garden.",
+                        Preview::storeTvGarden, 1920, 1080),
+                new Frame("store/tv-4-story.png",
+                        "Play Store TV shot: a Story Book chapter part way through, both playing.",
+                        Preview::storeTvStory, 1920, 1080),
+                new Frame("store/tv-5-win.png",
+                        "Play Store TV shot: a Story Book chapter finished together.",
+                        Preview::storeTvWin, 1920, 1080),
+                new Frame("store/tv-6-tour.png",
+                        "Play Store TV shot: the tour's page about playing together.",
+                        Preview::storeTvTour, 1920, 1080),
+                new Frame("store/tv-7-help.png",
+                        "Play Store TV shot: How to play, playing with Rose and Sky.",
+                        Preview::storeTvHelp, 1920, 1080),
                 new Frame("store/feature-graphic.png",
                         "The Play listing's feature graphic, 1024x500: wordmark and a game in play.",
                         (canvas, renderer, w, h) -> { }, 1024, 500),
-                new Frame("store/tv-5-help.png",
-                        "Play Store TV shot: How to play, playing with Rose and Sky.",
-                        Preview::storeTvHelp, 1920, 1080),
         };
     }
 
@@ -574,25 +618,200 @@ public final class Preview {
         helpPage(canvas, renderer, w, h, HelpScene.PAGE_QUESTIONS, true);
     }
 
-    private static void welcomeScene(Canvas canvas, Renderer renderer, int w, int h,
-                                     boolean big) {
+    // ---- The tour and the one-time tips ------------------------------------------------
+
+    private interface Tweak {
+        void apply(UiState ui);
+    }
+
+    /**
+     * The tour over the title screen, on {@code step}, which began {@code ago} ms before
+     * the frame; {@code actedAgo} is when the player did the step's one thing, or -1.
+     */
+    private static void tourScene(Canvas canvas, Renderer renderer, int w, int h, int step,
+                                  long ago, long actedAgo, Tweak tweak) {
         GameState game = endless(SUBJECT_SWEETHEART, 10);
         UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
-        ui.welcome = true;
-        ui.bigTextOn = big;
-        ui.highContrastOn = big;
         HomeScene.setPendingChapter(0);
+        ui.tutorial = true;
+        ui.tour.go(step, T0 - ago);
+        if (actedAgo >= 0) {
+            ui.tour.acted = true;
+            ui.tour.actedAt = T0 - actedAgo;
+        }
+        if (tweak != null) {
+            tweak.apply(ui);
+        }
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
 
-    private static void welcome(Canvas canvas, Renderer renderer, int w, int h) {
-        welcomeScene(canvas, renderer, w, h, false);
+    private static void tourWelcome(Canvas canvas, Renderer renderer, int w, int h) {
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_WELCOME, 3000, -1, null);
     }
 
-    private static void welcomeBigText(Canvas canvas, Renderer renderer, int w, int h) {
-        welcomeScene(canvas, renderer, w, h, true);
+    private static void tourRead(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_READ, 800, -1, null);
+    }
+
+    private static void tourFillPad(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_FILL, 3000, -1, null);
+    }
+
+    private static void tourCrossRemote(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setRemoteOnly(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_CROSS, 3000, -1,
+                ui -> ui.tour.cycle(T0 - 400));
+    }
+
+    private static void tourSolved(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_SOLVED, 4000, -1, null);
+    }
+
+    private static void tourControls(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_HANDS, 4000, -1, null);
+    }
+
+    private static void tourTogether(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_TOGETHER, 1300, -1, null);
+    }
+
+    private static void tourNextBig(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_NEXT, 3000, -1, ui -> {
+            ui.bigTextOn = true;
+            ui.highContrastOn = true;
+        });
+    }
+
+    private static void tourFillBig(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_FILL, 3000, -1,
+                ui -> ui.bigTextOn = true);
+    }
+
+    private static void phoneTourCross(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> tourScene(canvas, renderer, w, h, Tutorial.STEP_CROSS, 3000, -1, null));
+    }
+
+    /** A first board with a tip showing, 900 ms after it appeared. */
+    private static void tipBoard(Canvas canvas, Renderer renderer, int w, int h, int tip) {
+        GameState game = endless(SUBJECT_SWEETHEART, 10);
+        fillPicture(game, .15f);
+        UiState ui = playing(false);
+        ui.twoPlayers = !handheld;
+        placeCursors(game, ui, 3, 4, 7, 2);
+        ui.tips.show(tip, T0 - 900);
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void tipClues(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tipBoard(canvas, renderer, w, h, Tips.CLUES);
+    }
+
+    private static void phoneTipPen(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> tipBoard(canvas, renderer, w, h, Tips.PEN));
+    }
+
+    private static void tipStory(Canvas canvas, Renderer renderer, int w, int h) {
+        GameState game = endless(SUBJECT_SWEETHEART, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.HOME;
+        ui.menu = HomeScene.ITEM_STORY;
+        ui.joined[0] = true;
+        HomeScene.setPendingChapter(0);
+        HudScene.setPadSeen(true);
+        // A frame first, so the rows the tip points at have been laid out.
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0 - 16);
+        ui.tips.show(Tips.STORY, T0 - 900);
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    // ---- Store scenes ------------------------------------------------------------------
+
+    /** Rose on the glass and Sky on a paired controller, on a 15x15. */
+    private static void touchTogether(Canvas canvas, Renderer renderer, int w, int h,
+                                      boolean garden) {
+        GameState game = endless(SUBJECT_RAIN, 15);
+        if (garden) {
+            game.solved = 3;
+        }
+        fillPicture(game, .55f);
+        scatterCrosses(game, 4);
+        UiState ui = playing(true);
+        ui.twoPlayers = true;
+        placeCursors(game, ui, 5, 7, 11, 3);
+        ui.showToast("Sky joined the puzzle  ♥", Comfort.skyColor(), T0 - 900);
+        tonight(() -> renderer.draw(canvas, w, h, game, ui, new Effects(), T0));
+    }
+
+    private static void storePhoneTour(Canvas canvas, Renderer renderer, int w, int h) {
+        asPhone(() -> tourScene(canvas, renderer, w, h, Tutorial.STEP_FILL, 3000, -1, null));
+    }
+
+    private static void storeTablet7Together(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> touchTogether(canvas, renderer, w, h, false));
+    }
+
+    private static void storeTablet7Tour(Canvas canvas, Renderer renderer, int w, int h) {
+        asSevenInch(h, () -> tourScene(canvas, renderer, w, h, Tutorial.STEP_READ, 3000, -1,
+                null));
+    }
+
+    private static void storeTablet10Together(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> touchTogether(canvas, renderer, w, h, true));
+    }
+
+    private static void storeTablet10Tour(Canvas canvas, Renderer renderer, int w, int h) {
+        asTenInch(h, () -> tourScene(canvas, renderer, w, h, Tutorial.STEP_SOLVED, 4000, -1,
+                null));
+    }
+
+    private static void storeTvCoop(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        gameTen(canvas, renderer, w, h);
+    }
+
+    private static void storeTvHome(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        homeTogether(canvas, renderer, w, h);
+    }
+
+    /** Both at the table in the moonlit garden, the other of the game's two rooms. */
+    private static void storeTvGarden(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        GameState game = endless(SUBJECT_RAIN, 15);
+        game.solved = 3;
+        fillPicture(game, .6f);
+        scatterCrosses(game, 5);
+        game.moves[0] = 102;
+        game.moves[1] = 95;
+        UiState ui = playing(true);
+        placeCursors(game, ui, 4, 6, 10, 9);
+        ui.showToast("Lovely, Sky — that column is finished", Comfort.skyColor(), T0 - 1200);
+        tonight(() -> renderer.draw(canvas, w, h, game, ui, new Effects(), T0));
+    }
+
+    private static void storeTvStory(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        gameStory(canvas, renderer, w, h);
+    }
+
+    private static void storeTvWin(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        winStory(canvas, renderer, w, h);
+    }
+
+    private static void storeTvTour(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
+        tourScene(canvas, renderer, w, h, Tutorial.STEP_TOGETHER, 1300, -1, null);
     }
 
     private static void settingsHelp(Canvas canvas, Renderer renderer, int w, int h) {
@@ -622,9 +841,6 @@ public final class Preview {
         asPhone(() -> helpPage(canvas, renderer, w, h, HelpScene.PAGE_CONTROLS, false));
     }
 
-    private static void phoneWelcome(Canvas canvas, Renderer renderer, int w, int h) {
-        asPhone(() -> welcome(canvas, renderer, w, h));
-    }
 
     // The Story Book page rather than the controls: at a phone's density the controls page
     // scrolls, and a store shot should show a whole page.
@@ -632,9 +848,6 @@ public final class Preview {
         asPhone(() -> helpPage(canvas, renderer, w, h, HelpScene.PAGE_STORY, false));
     }
 
-    private static void storeTablet7Welcome(Canvas canvas, Renderer renderer, int w, int h) {
-        asSevenInch(h, () -> welcome(canvas, renderer, w, h));
-    }
 
     private static void storeTablet10Help(Canvas canvas, Renderer renderer, int w, int h) {
         asTenInch(h, () -> helpPage(canvas, renderer, w, h, HelpScene.PAGE_BASICS, false));
@@ -1086,6 +1299,7 @@ public final class Preview {
             UiState ui = playing(true);
             ui.twoPlayers = true;
             placeCursors(game, ui, 5, 7, 11, 3);
+            ui.showToast("Sky joined the puzzle  ♥", Comfort.skyColor(), T0 - 900);
             renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
         });
     }
@@ -1119,24 +1333,6 @@ public final class Preview {
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
 
-    /**
-     * The Cozy Corner scrolled so its Two players row sits whole in the list, with a finger
-     * just lifted from it: the switch is on and the line under the list says what it does.
-     */
-    private static void twoPlayersSwitch(Canvas canvas, Renderer renderer, int w, int h) {
-        GameState game = endless(SUBJECT_OWL, 10);
-        UiState ui = newUi();
-        ui.screen = UiState.SETTINGS;
-        ui.screenBeforeSettings = UiState.GAME;
-        ui.joined[0] = true;
-        ui.musicOn = true;
-        ui.sfxOn = true;
-        ui.hintsOn = true;
-        ui.twoPlayers = true;
-        ui.settingsScroll = STORE_SETTINGS_SCROLL;
-        ui.settingsTouched = SettingsScene.ITEM_TWO_PLAYERS;
-        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
-    }
 
     /**
      * Draws a frame the way the running game would, with tonight's baseline set.
@@ -1152,8 +1348,6 @@ public final class Preview {
         frame.run();
     }
 
-    /** Whole rows, so no row is cut in half at the top of the list. */
-    private static final float STORE_SETTINGS_SCROLL = 4f;
 
     private static void storeHome(Canvas canvas, Renderer renderer, int w, int h) {
         asPhone(() -> storeHomeScene(canvas, renderer, w, h));
@@ -1163,9 +1357,6 @@ public final class Preview {
         asPhone(() -> gameStory(canvas, renderer, w, h));
     }
 
-    private static void storeTwoPlayersSwitch(Canvas canvas, Renderer renderer, int w, int h) {
-        asPhone(() -> twoPlayersSwitch(canvas, renderer, w, h));
-    }
 
     private static void storeStoryWin(Canvas canvas, Renderer renderer, int w, int h) {
         asPhone(() -> winStory(canvas, renderer, w, h));
@@ -1181,9 +1372,6 @@ public final class Preview {
         asSevenInch(h, () -> gameStory(canvas, renderer, w, h));
     }
 
-    private static void storeTablet7Settings(Canvas canvas, Renderer renderer, int w, int h) {
-        asSevenInch(h, () -> twoPlayersSwitch(canvas, renderer, w, h));
-    }
 
     private static void storeTablet7Win(Canvas canvas, Renderer renderer, int w, int h) {
         asSevenInch(h, () -> winStory(canvas, renderer, w, h));
@@ -1197,9 +1385,6 @@ public final class Preview {
         asTenInch(h, () -> storeHomeScene(canvas, renderer, w, h));
     }
 
-    private static void storeTablet10Settings(Canvas canvas, Renderer renderer, int w, int h) {
-        asTenInch(h, () -> twoPlayersSwitch(canvas, renderer, w, h));
-    }
 
     private static void storeTablet10Win(Canvas canvas, Renderer renderer, int w, int h) {
         asTenInch(h, () -> winSettled(canvas, renderer, w, h));
@@ -2387,43 +2572,51 @@ public final class Preview {
     private static final java.util.Map<String, String[]> STORE_CAPTIONS = new java.util.HashMap<>();
 
     static {
-        String[] thumb = {"Solve it with one thumb", "Tap a square, drag a whole line, or hold for the other mark"};
-        String[] pen = {"Pick up the cross pen", "Rule out the empty squares as you work it out"};
-        String[] home = {"A cozy evening in", "A story, a fresh picture, or a cozier room"};
         String[] story = {"Twenty-four handmade chapters", "A Story Book that climbs from 5×5 to 20×20"};
-        String[] two = {"Room for two", "Pair a controller and Sky joins the same picture"};
         String[] keepsake = {"Every picture is a keepsake", "Finished chapters fill the book with hearts"};
-        String[] help = {"New to nonograms?", "How to play walks you through it, gently"};
-        STORE_CAPTIONS.put("store/phone-1-game.png", thumb);
-        STORE_CAPTIONS.put("store/phone-2-cross-pen.png", pen);
-        STORE_CAPTIONS.put("store/phone-3-home.png", home);
+        String[] help = {"Help is always nearby", "How to play covers the rules, controls and co-op"};
+        String[] home = {"A cozy evening in", "A story, a fresh picture, or a cozier room"};
+        String[] two = {"Hand a friend a controller", "A paired controller joins as Sky, on the same picture"};
+        STORE_CAPTIONS.put("store/phone-1-two-players.png", two);
+        STORE_CAPTIONS.put("store/phone-2-game.png",
+                new String[]{"Solve it with one thumb", "Tap a square, drag a whole line, or hold for the other mark"});
+        STORE_CAPTIONS.put("store/phone-3-tour.png",
+                new String[]{"A guided first puzzle", "A short tour solves a little heart with you, step by step"});
         STORE_CAPTIONS.put("store/phone-4-story.png", story);
-        STORE_CAPTIONS.put("store/phone-5-two-players.png", two);
+        STORE_CAPTIONS.put("store/phone-5-cross-pen.png",
+                new String[]{"Pick up the cross pen", "Rule out the empty squares as you work it out"});
         STORE_CAPTIONS.put("store/phone-6-win.png", keepsake);
         STORE_CAPTIONS.put("store/phone-7-help.png", help);
-        STORE_CAPTIONS.put("store/tablet7-1-game.png",
+        STORE_CAPTIONS.put("store/phone-8-home.png", home);
+        STORE_CAPTIONS.put("store/tablet7-1-two-players.png", two);
+        STORE_CAPTIONS.put("store/tablet7-2-game.png",
                 new String[]{"Clues that always add up", "One answer on every board, and never a guess"});
-        STORE_CAPTIONS.put("store/tablet7-2-story.png", story);
-        STORE_CAPTIONS.put("store/tablet7-3-two-players.png", two);
-        STORE_CAPTIONS.put("store/tablet7-4-win.png", keepsake);
-        STORE_CAPTIONS.put("store/tablet7-5-welcome.png",
-                new String[]{"A gentle welcome", "Three little pictures teach the whole idea"});
-        STORE_CAPTIONS.put("store/tablet10-1-game.png",
+        STORE_CAPTIONS.put("store/tablet7-3-story.png", story);
+        STORE_CAPTIONS.put("store/tablet7-4-tour.png",
+                new String[]{"Learn as you play", "The tour reads a clue out loud, then hands you the pen"});
+        STORE_CAPTIONS.put("store/tablet7-5-win.png", keepsake);
+        STORE_CAPTIONS.put("store/tablet10-1-two-players.png",
+                new String[]{"Two cursors, one picture", "Your finger is Rose; a controller brings Sky to the table"});
+        STORE_CAPTIONS.put("store/tablet10-2-story.png",
                 new String[]{"Big boards, calm evenings", "Story Book chapters right up to 20×20"});
-        STORE_CAPTIONS.put("store/tablet10-2-home.png", home);
-        STORE_CAPTIONS.put("store/tablet10-3-two-players.png", two);
-        STORE_CAPTIONS.put("store/tablet10-4-win.png",
+        STORE_CAPTIONS.put("store/tablet10-3-home.png", home);
+        STORE_CAPTIONS.put("store/tablet10-4-tour.png",
+                new String[]{"A guided first puzzle", "Every line ticks off as the little heart appears"});
+        STORE_CAPTIONS.put("store/tablet10-5-win.png",
                 new String[]{"Endless pictures", "A fresh one whenever you like, at the size you choose"});
-        STORE_CAPTIONS.put("store/tablet10-5-help.png", help);
-        STORE_CAPTIONS.put("store/tv-1-home.png",
-                new String[]{"Made for the couch", "Two controllers, one cozy picture"});
-        STORE_CAPTIONS.put("store/tv-2-game.png",
-                new String[]{"Solve it together", "Rose and Sky each get a cursor, and share the credit"});
-        STORE_CAPTIONS.put("store/tv-3-story.png",
-                new String[]{"Twenty-four handmade chapters", "A Story Book to finish side by side"});
-        STORE_CAPTIONS.put("store/tv-4-win.png", keepsake);
-        STORE_CAPTIONS.put("store/tv-5-help.png",
-                new String[]{"Easy to pick up", "The rules, the controls and co-op, all in How to play"});
+        STORE_CAPTIONS.put("store/tablet10-6-help.png", help);
+        STORE_CAPTIONS.put("store/tv-1-coop.png",
+                new String[]{"Two controllers, one picture", "Rose and Sky each get a cursor, and share the credit"});
+        STORE_CAPTIONS.put("store/tv-2-home.png",
+                new String[]{"Made for the couch", "A calm, big-type menu you can read from across the room"});
+        STORE_CAPTIONS.put("store/tv-3-garden.png",
+                new String[]{"Two hand-painted rooms", "A lamp-lit living room, a moonlit garden, and a music box score"});
+        STORE_CAPTIONS.put("store/tv-4-story.png",
+                new String[]{"A Story Book for two", "Twenty-four handmade chapters to finish side by side"});
+        STORE_CAPTIONS.put("store/tv-5-win.png", keepsake);
+        STORE_CAPTIONS.put("store/tv-6-tour.png",
+                new String[]{"A gentle guided tour", "The rules, your remote or gamepad, and how Sky joins"});
+        STORE_CAPTIONS.put("store/tv-7-help.png", help);
     }
 
     /**
@@ -2655,6 +2848,7 @@ public final class Preview {
         SettingsScene.setTidyingPlayer(-1);
         forgetTheRail();
         HudScene.setRemoteOnly(false);
+        HudScene.setPadSeen(false);
         HudScene.setJoinedAt(0);
         HudScene.setSeatStirredAt(0, 0);
         HudScene.setSeatStirredAt(1, 0);
