@@ -2330,9 +2330,11 @@ public final class CozyGameView extends View {
             ui.tips.show(tip, moment);
             store.writeTips(ui.tips.seen);
             announce(Tips.text(tip, TutorialScene.hands()));
-        } else if (moment - ui.screenSince < 15_000) {
+        } else if (renderer.tipAnchor(tip, ui) != null || moment - ui.screenSince < 15_000) {
             // A tip is due on this screen; make sure a frame comes to show it, even when
-            // the screen has otherwise gone still.
+            // the screen has otherwise gone still (Reduce motion stops the idle frames).
+            // Once its control is on screen this always ends with the tip shown; only a
+            // tip whose control never appears is given up on, after fifteen seconds.
             postInvalidateDelayed(Tips.GAP_MS / 2);
         }
     }
@@ -3007,6 +3009,10 @@ public final class CozyGameView extends View {
         }
         int who = registerDevice(event.getDeviceId());
         ui.lastActive[who] = now();
+        // A stick that has just steered something is a controller in somebody's hands, as
+        // a D-pad key is: the legend, the tour and help go back to naming its buttons.
+        HudScene.setTouch(false);
+        HudScene.setKeyboard(false);
 
         ui.tips.dismiss(now());
         if (ui.tutorial) {
