@@ -64,6 +64,9 @@ public final class MainActivity extends Activity {
                     | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
 
+    /** A launch extra that puts the tour and the tips away unseen; see {@link #onCreate}. */
+    static final String EXTRA_SKIP_WELCOME = "skip_welcome";
+
     private CozyGameView game;
     private AudioManager audio;
     private AudioManager.OnAudioFocusChangeListener focusListener;
@@ -84,10 +87,32 @@ public final class MainActivity extends Activity {
         // Nobody wants the TV to sleep while they are staring at a half-finished puzzle.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         game = new CozyGameView(this);
+        // Screenshot and test runs launch with this extra to skip the tour and the tips:
+        //   adb shell am start -n com.cozygrams.tv/.MainActivity --ez skip_welcome true
+        // It can only ever put the card away, never show it, so it needs no guarding.
+        skipWelcomeIfAsked(getIntent());
         setContentView(game);
         applyImmersiveMode();
         watchForControllers();
         catchBackIfTheKeyStopsComing();
+    }
+
+    /**
+     * The activity is {@code singleTask}, so launching it again while it is alive arrives
+     * here rather than in {@link #onCreate}: the skip extra has to be honoured on both.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        skipWelcomeIfAsked(intent);
+    }
+
+    private void skipWelcomeIfAsked(Intent launch) {
+        if (game != null && launch != null
+                && launch.getBooleanExtra(EXTRA_SKIP_WELCOME, false)) {
+            game.skipWelcome();
+        }
     }
 
     /**

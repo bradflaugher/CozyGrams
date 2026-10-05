@@ -36,7 +36,8 @@ esac
 RENDER_SOURCES=(
   Theme.java Draw.java Effects.java BoardLayout.java UiState.java Comfort.java
   Backdrop.java BoardRenderer.java CursorRenderer.java HudScene.java
-  HomeScene.java SettingsScene.java WinScene.java Renderer.java
+  HomeScene.java SettingsScene.java HelpScene.java Tutorial.java TutorialScene.java Tips.java
+  WinScene.java Renderer.java
   GameState.java Puzzle.java PuzzleGenerator.java PuzzleLibrary.java
   NonogramSolver.java
 )

@@ -10,6 +10,8 @@ public final class UiState {
     public static final int HOME = 0;
     public static final int GAME = 1;
     public static final int SETTINGS = 2;
+    /** How to play: the rules, the controls, playing together, the book, and questions. */
+    public static final int HELP = 3;
 
     public int screen = HOME;
     public int menu;
@@ -17,6 +19,32 @@ public final class UiState {
     public int screenBeforeSettings = HOME;
     /** Menu row that was highlighted before the cozy corner opened. */
     public int menuBeforeSettings;
+
+    /** The How to play page showing, 0 to {@code HelpScene.PAGE_COUNT - 1}. */
+    public int helpPage;
+    /** How far the How to play page has been scrolled, in pixels; only a tall page moves. */
+    public float helpScroll;
+
+    /**
+     * True while the first-evening tour is up, drawn over whatever screen is showing; its
+     * progress is {@link #tour}. Never set by the preview harness unless a frame asks for
+     * it, so screenshots and tests see the game rather than the tour.
+     */
+    public boolean tutorial;
+    public final Tutorial tour = new Tutorial();
+
+    /** The one-time tips, and when the screen they would point at last changed. */
+    public final Tips tips = new Tips();
+    public long screenSince;
+
+    /**
+     * Whether this device has somewhere to send a share, and a browser for the feedback
+     * page. A television often has neither; the cozy corner then says the address in words
+     * instead of opening nothing. Both start true so a frame drawn without a device shows
+     * the phone's wording.
+     */
+    public boolean canShare = true;
+    public boolean canBrowse = true;
 
     public boolean won;
     public long winAt;

@@ -42,12 +42,39 @@ public final class SettingsScene {
     public static final int ITEM_TWO_PLAYERS = 9;
     public static final int ITEM_DEFAULTS = 10;
     public static final int ITEM_START_STORY = 11;
-    public static final int ITEM_PRIVACY = 12;
-    public static final int ITEM_BACK = 13;
-    public static final int ITEM_COUNT = 14;
+    /** Opens How to play, which is also where the first-evening tour can be taken again. */
+    public static final int ITEM_HELP = 12;
+    /** Hands a line and the Google Play link to the device's share sheet. */
+    public static final int ITEM_SHARE = 13;
+    /** Opens the project's new-issue page in a browser, for ideas and bugs. */
+    public static final int ITEM_FEEDBACK = 14;
+    /**
+     * Opens CozyGrams' page in the Play Store, for anyone who wants to leave a rating. It
+     * is a row like any other and nothing more: the game never asks for a rating, never
+     * pops anything up after a chapter, and never brings it up on its own. Hidden on a
+     * device with no store to open (see {@link #setRateShown}).
+     */
+    public static final int ITEM_RATE = 15;
+    public static final int ITEM_PRIVACY = 16;
+    public static final int ITEM_BACK = 17;
+    public static final int ITEM_COUNT = 18;
 
     /** Where the privacy policy lives; shown on the row, because a TV may have no browser. */
     static final String PRIVACY_URL = "bradflaugher.com/privacy/cozygrams";
+
+    /**
+     * Where ideas and bugs go, written the way somebody would type it into a phone. Shown
+     * on the row when this device has no browser to open it in — most televisions — so the
+     * row still answers rather than doing nothing.
+     */
+    static final String FEEDBACK_URL = "github.com/bradflaugher/CozyGrams";
+
+    /**
+     * What a row asked the view to do that only the view can do — open another screen, or
+     * hand an intent to Android — or {@code -1} for nothing. The scene stays free of
+     * {@code Context}; {@link #consumeRequest} is how the view finds out.
+     */
+    private static int request = -1;
 
     /** The last row that carries a switch; everything after it is an action. */
     private static final int LAST_SWITCH = ITEM_TWO_PLAYERS;
@@ -138,6 +165,10 @@ public final class SettingsScene {
                 "Two players",
                 defaultsArmed() ? "Reset all settings?" : "Reset settings",
                 storyRestartArmed() ? "Start the story over?" : "Start story over",
+                "How to play",
+                "Share CozyGrams",
+                "Send feedback",
+                "Rate on Google Play",
                 "Privacy policy",
                 ui.screenBeforeSettings == UiState.GAME
                         ? "Back to the puzzle" : "Back to the menu"
@@ -168,6 +199,11 @@ public final class SettingsScene {
                         : "just you — every controller plays as Rose",
                 "every option back the way it started",
                 "chapter one, a fresh book",
+                "the rules, the controls, and questions",
+                ui.canShare ? "send a friend the Google Play link"
+                        : "find us on Google Play: search CozyGrams",
+                ui.canBrowse ? "an idea or a bug? tell us on GitHub" : FEEDBACK_URL,
+                "a few stars, whenever you feel like it",
                 PRIVACY_URL,
                 ui.screenBeforeSettings == UiState.GAME
                         ? "we'll keep your place" : "back to choosing a picture"
@@ -190,8 +226,18 @@ public final class SettingsScene {
                 false,
                 false,
                 false,
+                false,
+                false,
+                false,
+                false,
                 false
         };
+    }
+
+    /** True for the rows that take the player somewhere else: How to play, Share, Feedback. */
+    static boolean opensSomething(int item) {
+        return item == ITEM_HELP || item == ITEM_SHARE || item == ITEM_FEEDBACK
+                || item == ITEM_RATE;
     }
 
     /** True when the row shows a switch, rather than being something you simply do. */
@@ -254,6 +300,14 @@ public final class SettingsScene {
                 return putEverythingBack(ui, now);
             case ITEM_START_STORY:
                 return askToStartTheStoryAgain(now);
+            case ITEM_HELP:
+            case ITEM_SHARE:
+            case ITEM_FEEDBACK:
+            case ITEM_RATE:
+                disarmDefaults();
+                disarmStoryRestart();
+                request = item;
+                return true;
             case ITEM_PRIVACY:
                 disarmDefaults();
                 disarmStoryRestart();
@@ -315,6 +369,17 @@ public final class SettingsScene {
         disarmDefaults();
         armStoryRestart(now);
         return true;
+    }
+
+    /**
+     * The row whose work belongs to the view — {@link #ITEM_HELP}, {@link #ITEM_SHARE} or
+     * {@link #ITEM_FEEDBACK} — or -1. Reading it clears it, so a later visit cannot replay
+     * a share sheet nobody asked for.
+     */
+    public static int consumeRequest() {
+        int asked = request;
+        request = -1;
+        return asked;
     }
 
     /** A confirmation must still be fresh when the second press arrives. */
@@ -433,6 +498,7 @@ public final class SettingsScene {
         defaultsArmedAt = 0;
         storyRestartArmedAt = 0;
         storyRestartConfirmed = false;
+        request = -1;
         note = "";
         noteAt = 0;
         tidyingPlayer = -1;
@@ -455,11 +521,46 @@ public final class SettingsScene {
 
     // ---- Layout ----------------------------------------------------------------------
 
-    /** The first item in the seven-row window, keeping focus near its calm centre. */
+    // ---- Rows a device may not have ---------------------------------------------------
+
+    /**
+     * Whether the Rate row is in the list. It is the one row that is left out rather than
+     * explained, because a television with no store has nothing useful to say about one.
+     * Static, like the rest of the corner's memory: it is a fact about the device, set once
+     * by the view.
+     */
+    private static boolean rateShown = true;
+
+    public static void setRateShown(boolean shown) {
+        rateShown = shown;
+    }
+
+    /** How many rows the list has on this device. */
+    static int count() {
+        return rateShown ? ITEM_COUNT : ITEM_COUNT - 1;
+    }
+
+    /** The item at a position in the list as it is shown. */
+    static int itemAtSlot(int slot) {
+        int clamped = Math.max(0, Math.min(count() - 1, slot));
+        return !rateShown && clamped >= ITEM_RATE ? clamped + 1 : clamped;
+    }
+
+    /** Where an item sits in the list as it is shown. */
+    static int slotOf(int item) {
+        int selected = Math.floorMod(item, ITEM_COUNT);
+        return !rateShown && selected > ITEM_RATE ? selected - 1 : selected;
+    }
+
+    /** The item {@code direction} rows away, wrapping, skipping a row that is not shown. */
+    public static int step(int item, int direction) {
+        return itemAtSlot(Math.floorMod(slotOf(item) + direction, count()));
+    }
+
+    /** The first slot in the seven-row window, keeping focus near its calm centre. */
     static int windowStart(int focus) {
-        int selected = Math.floorMod(focus, ITEM_COUNT);
-        return Math.max(0, Math.min(ITEM_COUNT - VISIBLE_ROWS,
-                selected - VISIBLE_ROWS / 2));
+        return Math.max(0, Math.min(count() - VISIBLE_ROWS,
+                slotOf(focus) - VISIBLE_ROWS / 2));
     }
 
     /** The current group, used as an eyebrow above the focus-following list. */
@@ -469,13 +570,13 @@ public final class SettingsScene {
         if (selected <= ITEM_HINTS) return "HELPING HANDS";
         if (selected <= ITEM_CALM_MOTION) return "COMFORT & ACCESS";
         if (selected == ITEM_TWO_PLAYERS) return "PLAYERS";
-        if (selected == ITEM_PRIVACY) return "ABOUT";
+        if (selected >= ITEM_HELP && selected <= ITEM_PRIVACY) return "HELP & ABOUT";
         return "STORY & RESET";
     }
 
     /** How far the list can be dragged, in rows: far enough to bring the last one in. */
     static float maxScroll() {
-        return ITEM_COUNT - VISIBLE_ROWS;
+        return count() - VISIBLE_ROWS;
     }
 
     /** A drag's scroll position, held to the list. */
@@ -530,8 +631,8 @@ public final class SettingsScene {
                 || y < drawnTop || y > drawnTop + drawnStep * VISIBLE_ROWS) {
             return -1;
         }
-        int item = (int) Math.floor((y - drawnTop) / drawnStep + drawnScroll);
-        return item >= 0 && item < ITEM_COUNT ? item : -1;
+        int slot = (int) Math.floor((y - drawnTop) / drawnStep + drawnScroll);
+        return slot >= 0 && slot < count() ? itemAtSlot(slot) : -1;
     }
 
     private final float[] panel = new float[4];
@@ -593,9 +694,9 @@ public final class SettingsScene {
         float rowRight = frame.rowRight(width);
         // A controller names the group its focus is in; a finger, the group at the top of
         // what it has scrolled to, since that is what it is looking at.
-        draw.text(canvas, sectionName(touch ? start : focus), rowLeft, sectionY, sectionSize,
-                Theme.GOLD, Paint.Align.LEFT, true);
-        String place = (start + 1) + "–" + (start + VISIBLE_ROWS) + "  OF  " + ITEM_COUNT;
+        draw.text(canvas, sectionName(touch ? itemAtSlot(start) : focus), rowLeft, sectionY,
+                sectionSize, Theme.GOLD, Paint.Align.LEFT, true);
+        String place = (start + 1) + "–" + (start + VISIBLE_ROWS) + "  OF  " + count();
         draw.text(canvas, place, rowRight, sectionY, sectionSize,
                 Theme.secondaryText(bold), Paint.Align.RIGHT, false);
 
@@ -621,9 +722,10 @@ public final class SettingsScene {
             float glow = half * .25f;
             canvas.save();
             canvas.clipRect(rowLeft - glow, rowTop, rowRight + glow, rowBottom);
-            for (int item = first; item < Math.min(ITEM_COUNT, first + VISIBLE_ROWS + 1);
-                 item++) {
-                float centreY = centres[0] + (item - scroll) * step;
+            for (int slot = first; slot < Math.min(count(), first + VISIBLE_ROWS + 1);
+                 slot++) {
+                int item = itemAtSlot(slot);
+                float centreY = centres[0] + (slot - scroll) * step;
                 drawRow(canvas, width, centreY, half, labels[item], states[item],
                         item == ui.settingsPressed, item, ui, now);
             }
@@ -632,7 +734,7 @@ public final class SettingsScene {
             drawBottomLine(canvas, width, explainY, touchBottomLine(now, ui), bold);
         } else {
             for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
-                int item = start + slot;
+                int item = itemAtSlot(start + slot);
                 drawRow(canvas, width, centres[slot], half, labels[item], states[item],
                         item == focus, item, ui, now);
             }
@@ -688,7 +790,8 @@ public final class SettingsScene {
         } else {
             if (focused) {
                 drawActionAccessory(canvas, right - edge, centreY,
-                        item == ITEM_BACK ? "RETURN" : "CHOOSE", stateSize,
+                        item == ITEM_BACK ? "RETURN" : opensSomething(item) ? "OPEN" : "CHOOSE",
+                        stateSize,
                         Theme.textOn(fill));
             }
         }
@@ -704,7 +807,7 @@ public final class SettingsScene {
         float x = rowRight + Theme.scale(12);
         float width = Theme.scale(5);
         float track = bottom - top;
-        float thumb = track * VISIBLE_ROWS / ITEM_COUNT;
+        float thumb = track * VISIBLE_ROWS / count();
         float thumbTop = top + (track - thumb) * (scroll / maxScroll());
         draw.roundRect(canvas, x, top, x + width, bottom, width / 2,
                 Draw.withAlpha(Theme.CREAM, bold ? 60 : 34));

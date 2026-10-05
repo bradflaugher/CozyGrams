@@ -73,6 +73,14 @@ public final class SaveStore {
     private static final String KEY_BOLD_CURSOR = "boldCursor";
     private static final String KEY_CALM_MOTION = "calmMotion";
     private static final String KEY_TWO_PLAYERS = "twoPlayers";
+    /** Whether the first-evening tour is owed: see {@link #welcomeOwed}. */
+    private static final String KEY_WELCOME = "welcome";
+    /** Which one-time tips have been shown: see {@link #tipsSeen}. */
+    private static final String KEY_TIPS = "tips";
+
+    static final int WELCOME_UNKNOWN = 0;
+    static final int WELCOME_OWED = 1;
+    static final int WELCOME_SEEN = 2;
 
     // The look the game ships with lives on UiState, so a first run and "put everything
     // back" can never drift apart, and so the drawing code never has to know about
@@ -225,6 +233,72 @@ public final class SaveStore {
      */
     public static void restoreDefaults(UiState ui) {
         ui.restoreDefaults();
+    }
+
+    /**
+     * True when the first-evening tour should greet this evening, and settles the question for
+     * every evening after it. Call once, after {@link #loadGame}.
+     *
+     * <p>Only a genuine first evening is owed the tour. Somebody who played before the tour
+     * existed has already learned what it teaches, so the first time this is asked on their
+     * save it is answered "seen" for good. A first evening is written down as owed straight
+     * away, so a tour that was never finished — the app closed under it — is still waiting
+     * next time, rather than lost because the visit count has moved on.
+     */
+    public boolean welcomeOwed() {
+        int stored = readInt(KEY_WELCOME, WELCOME_UNKNOWN);
+        int state = settleWelcome(stored, journey.visits);
+        if (state != stored) {
+            writeWelcome(state);
+        }
+        return state == WELCOME_OWED;
+    }
+
+    /**
+     * The tour's state once this evening has been counted: an unknown save is owed
+     * the tour on its first visit and has seen it on any later one; anything already
+     * decided — or a value from nowhere, which is taken as seen — stays decided.
+     */
+    static int settleWelcome(int stored, int visits) {
+        if (stored == WELCOME_UNKNOWN) {
+            return visits <= 1 ? WELCOME_OWED : WELCOME_SEEN;
+        }
+        return stored == WELCOME_OWED ? WELCOME_OWED : WELCOME_SEEN;
+    }
+
+    /** The tour has been finished or skipped; it is not shown again. */
+    public void welcomeSeen() {
+        writeWelcome(WELCOME_SEEN);
+    }
+
+    /**
+     * The one-time tips already shown, as {@link Tips} bits. A save from before tips
+     * existed has met every control they point at, so it reads as all of them seen.
+     */
+    public int tipsSeen() {
+        int stored = readInt(KEY_TIPS, -1);
+        if (stored < 0) {
+            stored = journey.visits <= 1 ? 0 : Tips.ALL;
+            writeTips(stored);
+        }
+        return stored & Tips.ALL;
+    }
+
+    public void writeTips(int seen) {
+        try {
+            prefs.edit().putInt(KEY_TIPS, seen).apply();
+        } catch (RuntimeException ignored) {
+            // At worst a tip is shown once more.
+        }
+    }
+
+    private void writeWelcome(int state) {
+        try {
+            prefs.edit().putInt(KEY_WELCOME, state).apply();
+        } catch (RuntimeException ignored) {
+            // A preference file that will not take a write still gets to play; at worst the
+            // tour is offered again, which is a kindness rather than a fault.
+        }
     }
 
     /**

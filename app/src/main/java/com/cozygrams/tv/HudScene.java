@@ -303,6 +303,35 @@ public final class HudScene {
         return remoteOnly;
     }
 
+    /**
+     * True once a controller with face buttons has pressed something. Before anything has,
+     * a television cannot know whether a pad or a bare remote is in the room, and the tour
+     * names both rather than guessing.
+     */
+    private static boolean padSeen;
+
+    /**
+     * True while the last key came from a real typing keyboard — a Chromebook's, a tablet's
+     * case — so help and the tour name Enter and X rather than a remote's OK.
+     */
+    private static boolean keyboard;
+
+    public static void setKeyboard(boolean typing) {
+        keyboard = typing;
+    }
+
+    public static boolean keyboard() {
+        return keyboard && !touch;
+    }
+
+    public static void setPadSeen(boolean seen) {
+        padSeen = seen;
+    }
+
+    public static boolean padSeen() {
+        return padSeen;
+    }
+
     // ---- The touch pad: a phone's thumb buttons --------------------------------------
 
     /**
@@ -382,6 +411,14 @@ public final class HudScene {
 
     public static void setTouchHeld(int button) {
         touchHeld = button;
+    }
+
+    /** One thumb button's rectangle as last drawn, or null when the pad is not on screen. */
+    public static float[] touchRect(int button) {
+        if (!touch || !touchRectsDrawn || button < 0 || button >= touchRects.length) {
+            return null;
+        }
+        return touchRects[button].clone();
     }
 
     /**

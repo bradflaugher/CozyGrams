@@ -1,35 +1,44 @@
 A cozy evening, a picture made of clues, and a second controller if someone sits down beside you.
 
-CozyGrams is an endless nonogram for Android TV, phones and tablets. Play solo, or hand someone a second controller and solve one shared picture together. Each controller keeps its own player, cursor, and color. On a TV, the first controller to send input becomes Rose and the second becomes Sky. On a phone or tablet your finger is Rose, and with Two players on in the cozy corner, a paired controller joins as Sky. They share the credit, and there is no scoreboard. The Story Book turns each finished puzzle into a little keepsake and remembers the chapters you have completed.
+CozyGrams is a relaxing nonogram puzzle game (also known as griddlers, hanjie, picture cross or paint by numbers logic puzzles) for Android TV, phones and tablets. Play solo, or hand someone a second controller and solve one shared picture together in local couch co-op. It is free, offline, and has no ads.
+
+NEW TO NONOGRAMS?
+• Every number is a run of filled squares in its row or column, in order. Work out which squares must be filled, cross out the ones that must stay empty, and a little picture appears.
+• A short guided tour solves your first tiny puzzle with you: it reads a clue, lets you fill and cross out a square with your own controller, remote or finger, and shows how a second player joins. Skip it any time, or take it again later.
+• Friendly one-time tips point out the clues, the pen and the hint button the first time you meet them.
+• How to play, in the Cozy Corner, covers the rules, the controls, playing together, the Story Book and common questions.
 
 TWO ON THE COUCH
-• Rose and Sky keep their seats for the session, even if a controller falls asleep and wakes back up.
-• On a gamepad, move with the D-pad or the left stick, and hold to keep travelling. The cursor wraps around the board. A fills a square, B or X crosses one out, and Y reveals one square. Menu or Start opens the cozy corner. Back steps out.
-• A bare TV remote has no face buttons, so OK cycles fill, then cross, then clear, and holding OK reveals one square. Menu opens the cozy corner. The on-screen legend changes to match whatever is actually in the room.
-• The interface is landscape, made for a television. No touchscreen is required, and nothing is drawn below the safe area.
+• Each controller keeps its own player, cursor and color. The first controller to press a button is Rose and the next is Sky, and they keep their seats even if a controller falls asleep.
+• Every cursor wears a letter, R or S, so the players never depend on color alone. Player colors gives Sky a deeper teal and a dashed ring.
+• Credit is shared and there is no scoreboard.
+
+MADE FOR THE TV
+• Gamepad: D-pad or left stick to move (hold to keep going), A to fill, B or X to cross out, Y for a hint, Menu or Start for the Cozy Corner.
+• Bare TV remote: OK cycles fill, cross and clear, and holding OK gives a hint. The on-screen legend matches whatever is in the room.
+• A landscape, ten-foot interface that stays inside the safe area, with no touchscreen needed. A keyboard and mouse work too.
 
 ON A PHONE OR TABLET
-• Played in landscape, and the whole picture can be solved with one thumb. The FILL | CROSS pen decides what touching the board does: tap a square to mark it, drag along a row or column to mark a line, and hold a square for the other mark.
-• On boards with small squares, tap or slide to aim, then tap again or press MARK.
-• HOME and BACK sit in the corner, so you never need the system back gesture.
-• Plays as one player by default. Turn on Two players in the cozy corner and a paired controller joins as Sky.
+• Solve the whole picture with one thumb. The FILL | CROSS pen decides what a touch does: tap a square, drag along a line, or hold for the other mark.
+• On small squares, slide to aim and tap again or press MARK.
+• Turn on Two players in the Cozy Corner and a paired controller joins as Sky.
 
 ALWAYS ONE ANSWER
-• Every board is uniquely line-solvable. A constraint solver checks each puzzle, so the clues alone are always enough. You never have to guess, and there is never a second valid answer.
-• The deck is deterministic: 24 named subjects (hearts, sleepy cats, cocoa, moons, rain on the window, teapots, mittens, sleeping foxes, pie, and more), each drawn in 12 silhouette-changing looks at every supported size.
-• Bigger boards are bigger puzzles. Subjects are drawn with holes rather than filled in, so a 20x20 line averages two clue groups instead of one long run.
+• Every board is checked by a constraint solver, so the clues alone are always enough. No guessing, and never a second answer.
+• Endless mode deals 24 subjects (hearts, sleepy cats, cocoa, moons, rain on the window, teapots, mittens, foxes, pie and more) in 12 looks each, at 5x5, 10x10, 15x15 and 20x20.
+• Bigger boards are bigger puzzles: pictures are drawn with holes, so a 20x20 line has real choices in it.
 
 STORY BOOK
-• Twenty-four handcrafted chapters, on a size ladder: four 5x5 evenings, three 7x7, six 10x10, four 12x12, five 15x15, and two 20x20 to finish on.
-• Every chapter is its own picture, rather than one the endless deck also deals. Each carries a line of its own, and each asks at least one question the first sweep of the clues cannot answer.
+• 24 handcrafted chapters on a gentle size ladder, from four 5x5 evenings to two 20x20 nights.
+• Each finished chapter becomes a keepsake page with a line of its own.
 
-THE ROOM
-• Illustrated living-room and moonlit-garden scenes stay visible while you play.
-• The score is synthesized as you play: a 3.5-minute evolving music box in F pentatonic, five layers that fade between sections, ten synthesized sound effects, and a 12-voice mixer so both players are always heard.
-
-COMFORT
-• Larger text, extra contrast, color-blind-friendly player identity, bolder cursors, calmer animation, gentle mistake checking, and one choice that puts everything back the way it was.
-• Progress is a versioned save with a fingerprint of the hidden picture. A stale or mismatched save deals a fresh board instead of corrupting one.
+COMFORT AND ACCESSIBILITY
+• Larger text (and your device's own font size), extra contrast, player colors, bolder cursors, reduced motion, gentle mistake checking, hints, and a reset that puts everything back.
+• TalkBack reads the menus, How to play, and each square with the clues that cross it.
+• A synthesized music box score and soft sound effects, each with its own switch.
+• Progress saves as you go, square by square.
 
 NO NONSENSE
-CozyGrams is free. No ads. No in-app purchases. No network.
+Free. No ads. No in-app purchases. No accounts. No internet access at all. Nothing is collected.
+
+Settle in, make some cocoa, and solve your first picture tonight.

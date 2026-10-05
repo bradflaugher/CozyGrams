@@ -455,4 +455,79 @@ public class SettingsSceneTest {
         double part = value / 255.0;
         return part <= .03928 ? part / 12.92 : Math.pow((part + .055) / 1.055, 2.4);
     }
+
+    /** How to play, Share and Send feedback hand their work to the view, exactly once. */
+    @Test
+    public void helpShareAndFeedbackAskTheViewOnce() {
+        UiState ui = new UiState();
+        for (int item : new int[]{SettingsScene.ITEM_HELP, SettingsScene.ITEM_SHARE,
+                SettingsScene.ITEM_FEEDBACK}) {
+            assertTrue(SettingsScene.toggle(ui, item));
+            assertEquals(item, SettingsScene.consumeRequest());
+            assertEquals(-1, SettingsScene.consumeRequest());
+            assertFalse(SettingsScene.hasSwitch(item));
+            assertEquals("HELP & ABOUT", SettingsScene.sectionName(item));
+        }
+        // An ordinary switch asks for nothing.
+        SettingsScene.toggle(ui, SettingsScene.ITEM_MUSIC);
+        assertEquals(-1, SettingsScene.consumeRequest());
+    }
+
+    /** A television with no browser or share sheet is told the address in words. */
+    @Test
+    public void aDeviceWithNoBrowserIsGivenTheAddress() {
+        UiState ui = new UiState();
+        ui.canBrowse = false;
+        ui.canShare = false;
+        assertEquals(SettingsScene.FEEDBACK_URL,
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
+        assertTrue(SettingsScene.descriptions(ui)[SettingsScene.ITEM_SHARE]
+                .contains("Google Play"));
+        ui.canBrowse = true;
+        assertNotEquals(SettingsScene.FEEDBACK_URL,
+                SettingsScene.descriptions(ui)[SettingsScene.ITEM_FEEDBACK]);
+    }
+
+    /**
+     * Rating is one quiet row, like Share: choosing it asks the view to open the store,
+     * and nothing else in the corner mentions ratings at all.
+     */
+    @Test
+    public void rateIsOneQuietRow() {
+        UiState ui = new UiState();
+        assertTrue(SettingsScene.toggle(ui, SettingsScene.ITEM_RATE));
+        assertEquals(SettingsScene.ITEM_RATE, SettingsScene.consumeRequest());
+        assertEquals("HELP & ABOUT", SettingsScene.sectionName(SettingsScene.ITEM_RATE));
+        String[] labels = SettingsScene.labels();
+        for (int item = 0; item < SettingsScene.ITEM_COUNT; item++) {
+            String lower = labels[item].toLowerCase(java.util.Locale.ROOT);
+            if (item != SettingsScene.ITEM_RATE) {
+                assertFalse(labels[item], lower.contains("rate") || lower.contains("review"));
+            }
+        }
+    }
+
+    /** A device with no store leaves the Rate row out, and the list closes up around it. */
+    @Test
+    public void aHiddenRateRowIsSkipped() {
+        try {
+            SettingsScene.setRateShown(false);
+            assertEquals(SettingsScene.ITEM_COUNT - 1, SettingsScene.count());
+            assertEquals(SettingsScene.ITEM_PRIVACY,
+                    SettingsScene.step(SettingsScene.ITEM_FEEDBACK, 1));
+            assertEquals(SettingsScene.ITEM_FEEDBACK,
+                    SettingsScene.step(SettingsScene.ITEM_PRIVACY, -1));
+            assertEquals(SettingsScene.ITEM_MUSIC,
+                    SettingsScene.step(SettingsScene.ITEM_BACK, 1));
+            for (int slot = 0; slot < SettingsScene.count(); slot++) {
+                assertNotEquals(SettingsScene.ITEM_RATE, SettingsScene.itemAtSlot(slot));
+                assertEquals(slot, SettingsScene.slotOf(SettingsScene.itemAtSlot(slot)));
+            }
+            assertEquals(SettingsScene.count() - SettingsScene.VISIBLE_ROWS,
+                    SettingsScene.windowStart(SettingsScene.ITEM_BACK));
+        } finally {
+            SettingsScene.setRateShown(true);
+        }
+        assertEquals(SettingsScene.ITEM_RATE, SettingsScene.step(SettingsScene.ITEM_FEEDBACK, 1));
+    }
 }

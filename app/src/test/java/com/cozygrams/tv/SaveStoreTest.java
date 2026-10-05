@@ -483,4 +483,18 @@ public class SaveStoreTest {
         assertFalse(Comfort.get().boldCursor);
         assertFalse(Comfort.get().calmMotion);
     }
+
+    /** The tour greets a first evening only, and stays put away once seen. */
+    @Test
+    public void theWelcomeCardIsOwedToAFirstEveningOnly() {
+        assertEquals(SaveStore.WELCOME_OWED,
+                SaveStore.settleWelcome(SaveStore.WELCOME_UNKNOWN, 1));
+        // Somebody who played before the card existed has learned what it teaches.
+        assertEquals(SaveStore.WELCOME_SEEN,
+                SaveStore.settleWelcome(SaveStore.WELCOME_UNKNOWN, 7));
+        // Closed under the card: it is still owed, however many visits later.
+        assertEquals(SaveStore.WELCOME_OWED, SaveStore.settleWelcome(SaveStore.WELCOME_OWED, 3));
+        assertEquals(SaveStore.WELCOME_SEEN, SaveStore.settleWelcome(SaveStore.WELCOME_SEEN, 1));
+        assertEquals(SaveStore.WELCOME_SEEN, SaveStore.settleWelcome(42, 1));
+    }
 }
