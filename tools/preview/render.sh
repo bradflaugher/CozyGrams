@@ -110,7 +110,7 @@ for name in "${RENDER_SOURCES[@]}" "${SUPPORT_SOURCES[@]}"; do
   [[ -f "$APP_SRC/$name" ]] || fail "missing app source $APP_SRC/$name"
   sources+=("$APP_SRC/$name")
 done
-sources+=("$SCRIPT_DIR/Preview.java")
+sources+=("$SCRIPT_DIR/Preview.java" "$SCRIPT_DIR/TextAudit.java")
 
 rm -rf "$CLASSES_DIR"
 mkdir -p "$CLASSES_DIR"

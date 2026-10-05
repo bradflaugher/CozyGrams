@@ -214,6 +214,40 @@ public final class Preview {
             return;
         }
 
+        if (args.length > 5 && "--audit-show".equals(args[0])) {
+            // One cell of the matrix, painted, to look at what the audit is complaining about:
+            //   --audit-show out.png <check> <device> <text-1.0|1.3|1.5> <mode>
+            File assets = assetDir();
+            room = load(assets, "cozy_room.png");
+            garden = load(assets, "moon_garden.png");
+            Draw.setProbe(AUDIT);
+            for (String problem : TextFitMatrix.show(new File(args[1]), args[2], args[3],
+                    args[4], args[5])) {
+                System.out.println("  " + problem);
+            }
+            return;
+        }
+        if (args.length > 0 && "--audit".equals(args[0])) {
+            // No backdrops and no pixels: the audit only needs to know where words went.
+            Draw.setProbe(AUDIT);
+            System.out.println("CozyGrams text-fit audit");
+            System.out.println("  fonts     : " + Paint.describeFonts());
+            if (!Paint.harnessCanonicalFont()) {
+                // Whether a line fits is a measurement, and a different face is a different
+                // ruler: judged in DejaVu Sans, a tenth wider, a thousand lines that fit
+                // would fail. Refuse to judge rather than give a verdict nobody can trust.
+                System.err.println("text-fit audit: Liberation Sans is needed to measure "
+                        + "text, and it is not installed (found " + Paint.describeFonts()
+                        + "). Install it — fonts-liberation on Debian/Ubuntu, "
+                        + "liberation-sans-fonts on Fedora, ttf-liberation on Arch — and "
+                        + "run again.");
+                System.exit(2);
+            }
+            int failures = TextFitMatrix.run(args.length > 1 ? new File(args[1]) : null);
+            System.exit(failures == 0 ? 0 : 1);
+            return;
+        }
+
         boolean motion = args.length > 0 && "--clips".equals(args[0]);
         String[] rest = motion ? Arrays.copyOfRange(args, 1, args.length) : args;
 
@@ -258,6 +292,16 @@ public final class Preview {
             return;
         }
 
+        // The frames are checked the way the audit checks them — but only when text is
+        // measured in the face those verdicts are calibrated against. Without Liberation
+        // Sans the pictures are still worth having; the verdicts would not be.
+        boolean judging = Paint.harnessCanonicalFont();
+        if (judging) {
+            Draw.setProbe(AUDIT);
+        } else {
+            System.out.println("  text fit  : not checked — Liberation Sans is not installed"
+                    + " (fonts-liberation, liberation-sans-fonts or ttf-liberation)");
+        }
         List<File> written = new ArrayList<>();
         for (Frame frame : frames()) {
             written.add(render(frame));
@@ -268,7 +312,20 @@ public final class Preview {
         System.out.println();
         System.out.println(written.size() + " screenshots written, plus "
                 + Provenance.MANIFEST + " and " + Provenance.INDEX + ".");
+        if (!AUDIT_FAILURES.isEmpty()) {
+            System.out.println();
+            System.out.println("TEXT FIT: " + AUDIT_FAILURES.size()
+                    + " problems in these frames:");
+            for (String problem : AUDIT_FAILURES) {
+                System.out.println("  " + problem);
+            }
+            System.exit(1);
+        }
     }
+
+    /** The text-fit guard every frame is drawn under; see {@link TextAudit}. */
+    static final TextAudit AUDIT = new TextAudit();
+    private static final List<String> AUDIT_FAILURES = new ArrayList<>();
 
     // ---- Scenarios -------------------------------------------------------------------
 
@@ -333,7 +390,7 @@ public final class Preview {
                         "The reference position with EXTRA CONTRAST on.",
                         Preview::highContrast),
                 new Frame("15-game-toast.png",
-                        "The widest message the ribbon has to hold, freshly shown.",
+                        "The widest message the game can put in the ribbon, freshly shown.",
                         Preview::toast),
                 new Frame("16-home-worst-case.png",
                         "Every text-overflow path on the title screen at once: story mode "
@@ -627,7 +684,7 @@ public final class Preview {
         UiState ui = newUi();
         ui.screen = UiState.HELP;
         ui.helpPage = page;
-        ui.bigTextOn = bigText;
+        ui.bigTextOn |= bigText;
         ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
@@ -717,7 +774,7 @@ public final class Preview {
     private static void tourNextBig(Canvas canvas, Renderer renderer, int w, int h) {
         HudScene.setPadSeen(true);
         tourScene(canvas, renderer, w, h, Tutorial.STEP_NEXT, 3000, -1, ui -> {
-            ui.bigTextOn = true;
+            ui.bigTextOn |= true;
             ui.highContrastOn = true;
         });
     }
@@ -725,7 +782,7 @@ public final class Preview {
     private static void tourFillBig(Canvas canvas, Renderer renderer, int w, int h) {
         HudScene.setPadSeen(true);
         tourScene(canvas, renderer, w, h, Tutorial.STEP_FILL, 3000, -1,
-                ui -> ui.bigTextOn = true);
+                ui -> ui.bigTextOn |= true);
     }
 
     private static void phoneTourCross(Canvas canvas, Renderer renderer, int w, int h) {
@@ -753,6 +810,7 @@ public final class Preview {
     }
 
     private static void tipStory(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
         homeTip(canvas, renderer, w, h, Tips.STORY, null, false);
     }
 
@@ -760,18 +818,22 @@ public final class Preview {
     private static final String FIRST_EVENING = "Welcome — let's find a picture together";
 
     private static void tipStoryFirstEvening(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
         homeTip(canvas, renderer, w, h, Tips.STORY, FIRST_EVENING, false);
     }
 
     private static void tipCorner(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
         homeTip(canvas, renderer, w, h, Tips.CORNER, FIRST_EVENING, false);
     }
 
     private static void tipStoryBig(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
         homeTip(canvas, renderer, w, h, Tips.STORY, FIRST_EVENING, true);
     }
 
     private static void tipCornerBig(Canvas canvas, Renderer renderer, int w, int h) {
+        HudScene.setPadSeen(true);
         homeTip(canvas, renderer, w, h, Tips.CORNER, FIRST_EVENING, true);
     }
 
@@ -782,9 +844,8 @@ public final class Preview {
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
         ui.joined[0] = true;
-        ui.bigTextOn = big;
+        ui.bigTextOn |= big;
         HomeScene.setPendingChapter(0);
-        HudScene.setPadSeen(true);
         if (welcome != null) {
             HomeScene.setWelcome(welcome);
         }
@@ -901,7 +962,7 @@ public final class Preview {
         ui.menu = SettingsScene.ITEM_FEEDBACK;
         ui.canBrowse = false;
         ui.canShare = false;
-        ui.bigTextOn = true;
+        ui.bigTextOn |= true;
         ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
@@ -924,7 +985,7 @@ public final class Preview {
         ui.menu = SettingsScene.ITEM_SHARE;
         ui.canBrowse = false;
         ui.canShare = false;
-        ui.bigTextOn = big;
+        ui.bigTextOn |= big;
         ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
@@ -1125,7 +1186,12 @@ public final class Preview {
      */
     private static void drawWin(Canvas canvas, Renderer renderer, int w, int h,
                                 long elapsed, boolean story) {
-        GameState game = story ? storyGame(STORY_CHAPTER) : endless(SUBJECT_SWEETHEART, 10);
+        drawWin(canvas, renderer, w, h, elapsed,
+                story ? storyGame(STORY_CHAPTER) : endless(SUBJECT_SWEETHEART, 10));
+    }
+
+    private static void drawWin(Canvas canvas, Renderer renderer, int w, int h,
+                                long elapsed, GameState game) {
         game.solved = 3;
         game.moves[0] = 63;
         game.moves[1] = 58;
@@ -1152,7 +1218,7 @@ public final class Preview {
     private static void bigText(Canvas canvas, Renderer renderer, int w, int h) {
         GameState game = midGameTen();
         UiState ui = playing(true);
-        ui.bigTextOn = true;
+        ui.bigTextOn |= true;
         placeCursors(game, ui, 3, 4, 7, 2);
         ui.showToast("Larger text is on", Theme.CREAM, T0 - 1200);
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
@@ -1171,8 +1237,8 @@ public final class Preview {
         GameState game = midGameTen();
         UiState ui = playing(true);
         placeCursors(game, ui, 3, 4, 7, 2);
-        ui.showToast("Sky filled in the last square of that column — the whole line is "
-                + "put to bed now", Theme.GOLD, T0 - 150);
+        ui.showToast("We couldn't find last night's picture — here's a fresh one",
+                Theme.GOLD, T0 - 150);
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
 
@@ -1194,7 +1260,7 @@ public final class Preview {
         UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
-        ui.bigTextOn = true;
+        ui.bigTextOn |= true;
         ui.joined[0] = true;
         ui.joined[1] = true;
         HomeScene.setWelcome("It's been a while — the room kept your seat warm, and the "
@@ -1239,7 +1305,7 @@ public final class Preview {
         ui.sfxOn = false;
         ui.gentleCheck = true;
         ui.hintsOn = false;
-        ui.bigTextOn = false;
+        ui.bigTextOn |= false;
         ui.highContrastOn = false;
         Comfort.get().distinctPlayers = true;
         Comfort.get().boldCursor = true;
@@ -1495,7 +1561,7 @@ public final class Preview {
         UiState ui = newUi();
         ui.screen = UiState.SETTINGS;
         ui.menu = SettingsScene.ITEM_PRIVACY;
-        ui.bigTextOn = true;
+        ui.bigTextOn |= true;
         ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }
@@ -1506,7 +1572,7 @@ public final class Preview {
         ui.screen = UiState.SETTINGS;
         ui.screenBeforeSettings = UiState.GAME;
         ui.menu = SettingsScene.ITEM_BIG_TEXT;
-        ui.bigTextOn = true;
+        ui.bigTextOn |= true;
         ui.joined[0] = true;
         ui.joined[1] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
@@ -1929,11 +1995,20 @@ public final class Preview {
      */
     private static boolean handheld;
 
+    /** True while the audit draws: canvases keep their geometry and paint nothing. */
+    private static boolean dry;
+
+    /** LARGER TEXT and the system's own font scale, as the text-fit audit sets them. */
+    private static boolean auditBigText;
+    private static float auditSystemScale = 1f;
+
     /** A fresh UiState, as the device this frame pretends to be would start one. */
     private static UiState newUi() {
         UiState ui = new UiState();
         ui.defaultTwoPlayers = !handheld;
         ui.twoPlayers = !handheld;
+        ui.bigTextOn = auditBigText;
+        ui.systemTextScale = auditSystemScale;
         return ui;
     }
 
@@ -2456,8 +2531,8 @@ public final class Preview {
      * every particle in the two win stills, would come out at no coordinates at all.
      */
     private static void warmUp(Take take, int w, int h) {
-        Bitmap scratch = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(scratch);
+        Canvas canvas = dry ? Canvas.harnessDry(w, h)
+                : new Canvas(Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888));
         take.renderer.draw(canvas, w, h, take.game, take.ui, take.effects, T0);
         canvas.release();
     }
@@ -2628,7 +2703,12 @@ public final class Preview {
         Canvas canvas = new Canvas(target);
         Renderer renderer = new Renderer();
         renderer.setScenes(room, garden);
+        AUDIT.begin(w, h);
         frame.shot.draw(canvas, renderer, w, h);
+        List<String> found = AUDIT.finish();
+        for (String problem : found) {
+            AUDIT_FAILURES.add(frame.name + ": " + problem);
+        }
         canvas.release();
 
         BufferedImage image = target.image();
@@ -2938,6 +3018,7 @@ public final class Preview {
         HomeScene.setPendingChapter(-1);
         SettingsScene.disarmDefaults();
         SettingsScene.setTidyingPlayer(-1);
+        forget(SettingsScene.class);
         forgetTheRail();
         HudScene.setRemoteOnly(false);
         HudScene.setPadSeen(false);
@@ -2949,12 +3030,18 @@ public final class Preview {
     }
 
     private static void forgetTheRail() {
+        forget(HudScene.class);
+    }
+
+    /** Calls a scene's package-private {@code forgetTheRoom}, as its unit tests do. */
+    private static void forget(Class<?> scene) {
         try {
-            java.lang.reflect.Method forget = HudScene.class.getDeclaredMethod("forgetTheRoom");
+            java.lang.reflect.Method forget = scene.getDeclaredMethod("forgetTheRoom");
             forget.setAccessible(true);
             forget.invoke(null);
         } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("HudScene.forgetTheRoom is gone", e);
+            throw new IllegalStateException(scene.getSimpleName() + ".forgetTheRoom is gone",
+                    e);
         }
     }
 
@@ -3403,6 +3490,478 @@ public final class Preview {
         private static String stampedDate() {
             return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss'Z'")
                     .format(ZonedDateTime.now(ZoneOffset.UTC));
+        }
+    }
+
+    // ---- The text-fit matrix -------------------------------------------------------------
+
+    /**
+     * Every screen the game can show, at every size it ships to, at every text size and in
+     * the words of every kind of controller — drawn without pixels, through
+     * {@link TextAudit}, so a line of words that leaves its pill, panel or button anywhere
+     * fails the build.
+     *
+     * <p>{@code app/build.gradle} runs this as part of {@code test} (task
+     * {@code textFitAudit}), and {@code tools/preview/audit.sh} runs it by hand. The
+     * rendered set is checked the same way by {@code render.sh}, but the rendered set is
+     * a hundred chosen moments; this is the cross product.
+     */
+    static final class TextFitMatrix {
+
+        private TextFitMatrix() {
+        }
+
+        /** A screen size the game ships to. */
+        private static final class Device {
+            final String name;
+            final int w;
+            final int h;
+            final float density;
+            final boolean handheld;
+            /** What the window's bars and cutout cover: left, top, right, bottom. */
+            final float[] insets;
+
+            Device(String name, int w, int h, float density, boolean handheld) {
+                this(name, w, h, density, handheld, new float[4]);
+            }
+
+            Device(String name, int w, int h, float density, boolean handheld,
+                   float[] insets) {
+                this.name = name;
+                this.w = w;
+                this.h = h;
+                this.density = density;
+                this.handheld = handheld;
+                this.insets = insets;
+            }
+        }
+
+        private static final Device[] DEVICES = {
+                new Device("tv-1080p", 1920, 1080, 2f, false),
+                new Device("tv-720p", 1280, 720, 1.33f, false),
+                new Device("phone-landscape", 2400, 1080, 3f, true),
+                new Device("phone-portrait", 1080, 2400, 3f, true),
+                new Device("phone-16x9", 1920, 1080, 3f, true),
+                new Device("tablet7-landscape", 1920, 1200, 2f, true),
+                new Device("tablet7-portrait", 1200, 1920, 2f, true),
+                new Device("tablet10-landscape", 2560, 1600, 2f, true),
+                new Device("tablet10-portrait", 1600, 2560, 2f, true),
+                // Windows that keep their bars: a phone with a camera cutout in the left
+                // edge and a gesture bar, and split-screen tablets under a status bar and a
+                // navigation bar, each deeper than the 5% overscan margin.
+                new Device("phone-landscape-cutout", 2400, 1080, 3f, true,
+                        new float[]{150, 0, 0, 72}),
+                new Device("tablet10-landscape-bars", 2560, 1600, 2f, true,
+                        new float[]{0, 96, 0, 144}),
+                new Device("tablet7-portrait-bars", 1200, 1920, 2f, true,
+                        new float[]{0, 120, 0, 144}),
+        };
+
+        /** What is in the room. A television before any button is pressed is "unknown". */
+        private static final String[] TV_MODES = {"unknown", "gamepad", "remote", "keyboard"};
+        private static final String[] HANDHELD_MODES = {"touch", "gamepad", "keyboard"};
+
+        /** LARGER TEXT off, on, and on over a system font scale of 1.3 (clamped to 1.5). */
+        private static final String[] SCALES = {"text-1.0", "text-1.3", "text-1.5"};
+
+        /** One state of one screen. {@code modal}: its words depend on the controller. */
+        private static final class Check {
+            final String name;
+            final boolean modal;
+            final Shot shot;
+
+            Check(String name, boolean modal, Shot shot) {
+                this.name = name;
+                this.modal = modal;
+                this.shot = shot;
+            }
+        }
+
+        /** The greetings {@code SaveStore.welcomeBack} can produce, longest of each shape. */
+        private static final String[] GREETINGS = {
+                "Welcome — let's find a picture together",
+                "Welcome back — 1234 pictures finished together",
+                "Back the very next evening — 1234 pictures finished together",
+                "Back after 6 days — one picture finished together",
+                "Back after a week away — 1234 pictures finished together",
+                "It's been a while — the room kept your seat warm — 1234 pictures "
+                        + "finished together",
+        };
+
+        /**
+         * The longest things the ribbon is handed — {@code CozyGameView.tell} and the
+         * preview's own worst case. A toast is drawn in the board's top band, so these go
+         * over a 20x20 too.
+         */
+        private static final String[] TOASTS = {
+                "Press a button on each controller to join",
+                "We couldn't find last night's picture — here's a fresh one",
+                "Tap or drag to use the pen · hold for the other mark",
+                "Tap or slide to aim, tap again to mark · or use MARK",
+                "Nice one, Rose — column done  ✦",
+                "You finished that column together  ♥",
+                "Lovely — that column is complete  ✦",
+                "20 × 20 — a fresh cozy canvas",
+                "Not that one — no harm done",
+                "Hints are resting — see the cozy corner",
+                "The whole picture is already here  ✦",
+                "A little starlight showed the way  ✦",
+                "Headphones out — the sound is resting",
+                "Rose's controller is resting  ♥",
+                "Sky can join any time — just press a button",
+                "Lovely, Rose and Sky — that row is finished",
+        };
+
+        private static List<Check> checks() {
+            List<Check> list = new ArrayList<>();
+            // The title screen.
+            for (int item = 0; item < HomeScene.ITEM_COUNT; item++) {
+                int focus = item;
+                list.add(new Check("home-row-" + item, true, (c, r, w, h) -> {
+                    GameState game = endless(SUBJECT_OWL, 10);
+                    UiState ui = newUi();
+                    ui.screen = UiState.HOME;
+                    ui.menu = focus;
+                    ui.joined[0] = true;
+                    r.draw(c, w, h, game, ui, new Effects(), T0);
+                }));
+            }
+            list.add(new Check("home-sky-waiting", true, (c, r, w, h) -> {
+                GameState game = endless(SUBJECT_OWL, 10);
+                UiState ui = newUi();
+                ui.screen = UiState.HOME;
+                ui.twoPlayers = true;
+                ui.joined[0] = true;
+                r.draw(c, w, h, game, ui, new Effects(), T0);
+            }));
+            list.add(new Check("home-together", true, Preview::homeTogether));
+            list.add(new Check("home-worst-case", true, Preview::homeWorstCase));
+            list.add(new Check("home-restart-armed", true, (c, r, w, h) -> {
+                GameState game = storyGame(STORY_CHAPTER);
+                UiState ui = newUi();
+                ui.screen = UiState.HOME;
+                ui.menu = HomeScene.ITEM_STORY;
+                ui.joined[0] = true;
+                HomeScene.armRestart(T0 - 300);
+                r.draw(c, w, h, game, ui, new Effects(), T0);
+            }));
+            for (int i = 0; i < GREETINGS.length; i++) {
+                String greeting = GREETINGS[i];
+                list.add(new Check("home-greeting-" + i, false, (c, r, w, h) -> {
+                    HomeScene.setWelcome(greeting);
+                    home(c, r, w, h);
+                }));
+            }
+            for (int chapter = 0; chapter < PuzzleLibrary.count(); chapter++) {
+                int at = chapter;
+                list.add(new Check("home-chapter-" + chapter, false, (c, r, w, h) -> {
+                    GameState game = storyGame(at);
+                    game.storyFurthest = PuzzleLibrary.count() - 1;
+                    UiState ui = newUi();
+                    ui.screen = UiState.HOME;
+                    ui.menu = HomeScene.ITEM_STORY;
+                    ui.joined[0] = true;
+                    HomeScene.setPendingChapter(at);
+                    r.draw(c, w, h, game, ui, new Effects(), T0);
+                }));
+            }
+            for (int tip : new int[]{Tips.STORY, Tips.CORNER}) {
+                list.add(new Check("home-tip-" + tip, true, (c, r, w, h) ->
+                        homeTip(c, r, w, h, tip, FIRST_EVENING, false)));
+                list.add(new Check("home-tip-" + tip + "-returning", true, (c, r, w, h) ->
+                        homeTip(c, r, w, h, tip, GREETINGS[GREETINGS.length - 1], false)));
+            }
+
+            // The Cozy Corner: every row in focus, and the questions and fallbacks.
+            for (int item = 0; item < SettingsScene.ITEM_COUNT; item++) {
+                int focus = item;
+                list.add(new Check("corner-row-" + item, true, (c, r, w, h) ->
+                        corner(c, r, w, h, focus, true)));
+                list.add(new Check("corner-row-" + item + "-offline", true, (c, r, w, h) ->
+                        corner(c, r, w, h, focus, false)));
+            }
+            list.add(new Check("corner-defaults-armed", true, Preview::settingsArmed));
+            list.add(new Check("corner-story-armed", true, (c, r, w, h) -> {
+                SettingsScene.armStoryRestart(T0 - 200);
+                corner(c, r, w, h, SettingsScene.ITEM_START_STORY, true);
+            }));
+            String[] notes = {
+                    "Nothing is collected; nothing is sent anywhere",
+                    "Everything is back the way it started  ♥",
+                    "CozyGrams is on Google Play",
+                    "play.google.com — search for CozyGrams",
+                    "github.com/bradflaugher/CozyGrams",
+                    "Gentle guidance is off",
+                    "Sound effects is off",
+            };
+            for (int i = 0; i < notes.length; i++) {
+                String note = notes[i];
+                list.add(new Check("corner-note-" + i, true, (c, r, w, h) -> {
+                    SettingsScene.say(note, T0 - 200);
+                    corner(c, r, w, h, SettingsScene.ITEM_GENTLE, true);
+                }));
+            }
+            list.add(new Check("corner-tidying-sky", true, (c, r, w, h) -> {
+                SettingsScene.setTidyingPlayer(1);
+                corner(c, r, w, h, SettingsScene.ITEM_MUSIC, true);
+            }));
+
+            // How to play, each page at the top and scrolled to its end.
+            for (int page = 0; page < HelpScene.PAGE_COUNT; page++) {
+                int at = page;
+                list.add(new Check("help-" + page, true, (c, r, w, h) ->
+                        help(c, r, w, h, at, 0)));
+                list.add(new Check("help-" + page + "-end", true, (c, r, w, h) ->
+                        help(c, r, w, h, at, 1e6f)));
+            }
+
+            // The tour, every step, and the two steps after the player has acted.
+            for (int step = 0; step < Tutorial.STEP_COUNT; step++) {
+                int at = step;
+                list.add(new Check("tour-" + step, true, (c, r, w, h) ->
+                        tourScene(c, r, w, h, at, 3000, -1, null)));
+            }
+            list.add(new Check("tour-fill-done", true, (c, r, w, h) ->
+                    tourScene(c, r, w, h, Tutorial.STEP_FILL, 3000, 600, null)));
+            list.add(new Check("tour-cross-cycled", true, (c, r, w, h) ->
+                    tourScene(c, r, w, h, Tutorial.STEP_CROSS, 3000, -1,
+                            ui -> ui.tour.cycle(T0 - 400))));
+            list.add(new Check("tour-cross-done", true, (c, r, w, h) ->
+                    tourScene(c, r, w, h, Tutorial.STEP_CROSS, 3000, 600, null)));
+
+            // The one-time tips over a first board.
+            for (int tip : new int[]{Tips.CLUES, Tips.PEN, Tips.LEGEND, Tips.HINT, Tips.JOIN}) {
+                list.add(new Check("board-tip-" + tip, true, (c, r, w, h) ->
+                        tipBoard(c, r, w, h, tip)));
+            }
+
+            // The board, its rail and its ribbon.
+            list.add(new Check("game-5x5", true, Preview::gameFresh));
+            list.add(new Check("game-10x10", true, Preview::gameTen));
+            list.add(new Check("game-15x15", true, Preview::gameFifteen));
+            list.add(new Check("game-20x20", true, Preview::gameTwenty));
+            list.add(new Check("game-solo", true, Preview::gameSolo));
+            list.add(new Check("game-story", true, Preview::gameStory));
+            list.add(new Check("game-sky-joined", true, (c, r, w, h) ->
+                    touchTogether(c, r, w, h, false)));
+            list.add(new Check("game-cross-pen", true, (c, r, w, h) -> {
+                GameState game = endless(SUBJECT_PIE, 20);
+                fillPicture(game, .55f);
+                UiState ui = playing(false);
+                ui.crossPen = true;
+                placeCursors(game, ui, 6, 11, 14, 5);
+                r.draw(c, w, h, game, ui, new Effects(), T0);
+            }));
+            list.add(new Check("game-page-turn", false, Preview::pageTurn));
+            for (int i = 0; i < TOASTS.length; i++) {
+                String toast = TOASTS[i];
+                for (int size : new int[]{5, 20}) {
+                    list.add(new Check("toast-" + i + "-" + size, false, (c, r, w, h) -> {
+                        GameState game = endless(SUBJECT_PIE, size);
+                        fillPicture(game, .4f);
+                        UiState ui = playing(true);
+                        placeCursors(game, ui, 0, 0, size - 1, size - 1);
+                        ui.showToast(toast, Theme.GOLD, T0 - 150);
+                        r.draw(c, w, h, game, ui, new Effects(), T0);
+                    }));
+                }
+            }
+            for (int chapter = 0; chapter < PuzzleLibrary.count(); chapter++) {
+                int at = chapter;
+                list.add(new Check("story-" + chapter, false, (c, r, w, h) -> {
+                    GameState game = storyGame(at);
+                    fillPicture(game, .5f);
+                    game.moves[0] = 1234;
+                    game.moves[1] = 987;
+                    UiState ui = playing(true);
+                    placeCursors(game, ui, 0, 0, 1, 1);
+                    ui.showToast(chapterLine(game), Theme.GOLD, T0 - 1100);
+                    r.draw(c, w, h, game, ui, new Effects(), T0);
+                }));
+                list.add(new Check("story-" + chapter + "-win", false, (c, r, w, h) ->
+                        drawWin(c, r, w, h, 2200, storyGame(at))));
+            }
+            for (int subject = 0; subject < PuzzleGenerator.subjectCount(); subject++) {
+                int at = subject;
+                list.add(new Check("endless-" + subject, false, (c, r, w, h) -> {
+                    GameState game = endless(at, 20);
+                    game.solved = 1234;
+                    fillPicture(game, .5f);
+                    UiState ui = playing(true);
+                    placeCursors(game, ui, 0, 0, 1, 1);
+                    ui.showToast(game.puzzle.name + " is waiting", Theme.CREAM, T0 - 600);
+                    r.draw(c, w, h, game, ui, new Effects(), T0);
+                }));
+                list.add(new Check("endless-" + subject + "-win", false, (c, r, w, h) ->
+                        drawWin(c, r, w, h, 2200, endless(at, 20))));
+            }
+
+            // The win card.
+            list.add(new Check("win-early", true, Preview::winEarly));
+            list.add(new Check("win-settled", true, Preview::winSettled));
+            list.add(new Check("win-story", true, Preview::winStory));
+            return list;
+        }
+
+        private static void corner(Canvas c, Renderer r, int w, int h, int item,
+                                   boolean online) {
+            GameState game = endless(SUBJECT_OWL, 10);
+            UiState ui = newUi();
+            ui.screen = UiState.SETTINGS;
+            ui.screenBeforeSettings = UiState.GAME;
+            ui.menu = item;
+            ui.canBrowse = online;
+            ui.canShare = online;
+            ui.joined[0] = true;
+            ui.joined[1] = true;
+            if (HudScene.touch()) {
+                // A finger scrolls the row into view and rests on it.
+                int slot = SettingsScene.slotOf(item);
+                ui.settingsScroll = Math.max(0, slot - 2);
+                ui.settingsPressed = item;
+                ui.settingsTouched = item;
+            }
+            r.draw(c, w, h, game, ui, new Effects(), T0);
+        }
+
+        private static void help(Canvas c, Renderer r, int w, int h, int page, float scroll) {
+            GameState game = endless(SUBJECT_OWL, 10);
+            UiState ui = newUi();
+            ui.screen = UiState.HELP;
+            ui.helpPage = page;
+            ui.helpScroll = scroll;
+            ui.joined[0] = true;
+            r.draw(c, w, h, game, ui, new Effects(), T0);
+        }
+
+        /**
+         * Draws the whole matrix and returns how many distinct problems it found. Each is
+         * printed once with every variant it appeared in, because one bad pill shows up in
+         * dozens of combinations and a reviewer needs the pill, not the dozens.
+         */
+        static int run(File report) throws IOException {
+            dry = true;
+            List<Check> checks = checks();
+            java.util.Map<String, List<String>> found = new java.util.LinkedHashMap<>();
+            int frames = 0;
+            long started = System.nanoTime();
+            for (Device device : DEVICES) {
+                String[] modes = device.handheld ? HANDHELD_MODES : TV_MODES;
+                for (int scale = 0; scale < SCALES.length; scale++) {
+                    for (int m = 0; m < modes.length; m++) {
+                        for (Check check : checks) {
+                            if (!check.modal && m > 0) {
+                                continue;
+                            }
+                            String variant = device.name + " " + SCALES[scale] + " "
+                                    + modes[m];
+                            for (String problem : draw(check, device, scale, modes[m])) {
+                                found.computeIfAbsent(check.name + ": " + problem,
+                                        k -> new ArrayList<>()).add(variant);
+                            }
+                            frames++;
+                        }
+                    }
+                }
+            }
+            dry = false;
+            StringBuilder out = new StringBuilder();
+            out.append("Text-fit audit: ").append(frames).append(" frames, ")
+                    .append(checks.size()).append(" screen states, ")
+                    .append(DEVICES.length).append(" sizes x ").append(SCALES.length)
+                    .append(" text sizes x every input mode, in ")
+                    .append((System.nanoTime() - started) / 1_000_000_000).append(" s.\n");
+            if (found.isEmpty()) {
+                out.append("Every line of text fits its container.\n");
+            } else {
+                out.append(found.size()).append(" problems:\n");
+                for (java.util.Map.Entry<String, List<String>> e : found.entrySet()) {
+                    List<String> where = e.getValue();
+                    out.append("  ").append(e.getKey()).append("\n      in ")
+                            .append(where.size()).append(" variant(s), e.g. ")
+                            .append(String.join("; ", where.subList(0,
+                                    Math.min(3, where.size())))).append("\n");
+                }
+            }
+            System.out.print(out);
+            if (report != null) {
+                File parent = report.getAbsoluteFile().getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+                    throw new IOException("cannot create " + parent);
+                }
+                Files.write(report.toPath(), out.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            return found.size();
+        }
+
+        static List<String> show(File out, String checkName, String deviceName,
+                                 String scaleName, String mode) throws IOException {
+            Check check = null;
+            for (Check c : checks()) {
+                if (c.name.equals(checkName)) {
+                    check = c;
+                }
+            }
+            Device device = null;
+            for (Device d : DEVICES) {
+                if (d.name.equals(deviceName)) {
+                    device = d;
+                }
+            }
+            int scale = Arrays.asList(SCALES).indexOf(scaleName);
+            if (check == null || device == null || scale < 0) {
+                throw new IllegalArgumentException("no such cell: " + checkName + " "
+                        + deviceName + " " + scaleName);
+            }
+            Bitmap target = Bitmap.createBitmap(device.w, device.h, Bitmap.Config.ARGB_8888);
+            List<String> problems = draw(check, device, scale, mode, new Canvas(target));
+            ImageIO.write(target.image(), "png", out);
+            return problems;
+        }
+
+        private static List<String> draw(Check check, Device device, int scale, String mode) {
+            return draw(check, device, scale, mode, Canvas.harnessDry(device.w, device.h));
+        }
+
+        private static List<String> draw(Check check, Device device, int scale, String mode,
+                                         Canvas canvas) {
+            forgetSceneMemory();
+            handheld = device.handheld;
+            HudScene.setDensity(device.density);
+            auditBigText = scale > 0;
+            auditSystemScale = scale > 1 ? 1.3f : 1f;
+            switch (mode) {
+                case "touch":
+                    HudScene.setTouch(true);
+                    break;
+                case "gamepad":
+                    HudScene.setPadSeen(true);
+                    break;
+                case "remote":
+                    HudScene.setRemoteOnly(true);
+                    break;
+                case "keyboard":
+                    HudScene.setKeyboard(true);
+                    break;
+                default:
+                    break;
+            }
+            Renderer renderer = new Renderer();
+            renderer.setScenes(room, garden);
+            renderer.setInsets(device.insets[0], device.insets[1], device.insets[2],
+                    device.insets[3]);
+            AUDIT.begin(device.w, device.h);
+            try {
+                check.shot.draw(canvas, renderer, device.w, device.h);
+            } finally {
+                handheld = false;
+                auditBigText = false;
+                auditSystemScale = 1f;
+                HudScene.setTouch(false);
+                HudScene.setTouchHeld(-1);
+                HudScene.setDensity(1f);
+            }
+            return AUDIT.finish();
         }
     }
 }

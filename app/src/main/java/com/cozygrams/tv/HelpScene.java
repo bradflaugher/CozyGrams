@@ -500,30 +500,7 @@ public final class HelpScene {
 
     // ---- Words into lines ------------------------------------------------------------
 
-    /**
-     * Greedy word wrap at {@code size}. A single word wider than the lane is left whole on
-     * its own line rather than broken mid-word; nothing on these pages is that long.
-     */
-    String[] wrap(String text, float size, float width, boolean strong) {
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : text.split(" ")) {
-            if (word.isEmpty()) {
-                continue;
-            }
-            String tried = line.length() == 0 ? word : line + " " + word;
-            if (line.length() > 0 && draw.measure(tried, size, strong) > width) {
-                lines.add(line.toString());
-                line.setLength(0);
-                line.append(word);
-            } else {
-                line.setLength(0);
-                line.append(tried);
-            }
-        }
-        if (line.length() > 0) {
-            lines.add(line.toString());
-        }
-        return lines.toArray(new String[0]);
+    private String[] wrap(String text, float size, float width, boolean strong) {
+        return draw.wrap(text, size, width, strong);
     }
 }

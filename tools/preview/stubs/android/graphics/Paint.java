@@ -194,6 +194,19 @@ public class Paint {
         return measureText(text == null ? null : text.substring(start, end));
     }
 
+    /**
+     * Harness extra: the ink {@code text} covers at the current size and typeface, as
+     * {left, top, right, bottom} from a left-aligned origin on the baseline.
+     */
+    public float[] harnessInk(String text) {
+        return TextEngine.ink(text, typeface, textSize);
+    }
+
+    /** Harness extra: whether text is measured with the canonical face, Liberation Sans. */
+    public static boolean harnessCanonicalFont() {
+        return TextEngine.canonical();
+    }
+
     /** Harness extra: which host fonts the stub resolved, for the render banner. */
     public static String describeFonts() {
         return TextEngine.describe();

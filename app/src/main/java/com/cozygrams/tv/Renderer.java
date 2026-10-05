@@ -97,6 +97,9 @@ public final class Renderer {
         // And the screen is the 16:9 frame the width can hold, not simply the height: see
         // Theme.REFERENCE_ASPECT for what measuring everything against the height alone did
         // to a portrait tablet.
+        draw.beginFrame(canvas);
+        // A tip over a screen other than the title keeps off the words Draw saw this frame.
+        draw.recordText(ui.tips.showing >= 0 && ui.screen != UiState.HOME);
         Theme.setScreen(width, height);
         Theme.setInsets(insetLeft, insetTop, insetRight, insetBottom);
         Theme.setTextScale(ui.textScale());
@@ -152,14 +155,15 @@ public final class Renderer {
         if (ui.tips.showing >= 0) {
             float[] anchor = tipAnchor(ui.tips.showing, ui);
             if (anchor != null) {
-                // The title screen's tips keep off its words; it says where they are.
+                // A tip keeps off the words under it. The title screen says where its words
+                // are and which may step aside; anywhere else, Draw remembers what it drew.
                 boolean onHome = ui.screen == UiState.HOME;
                 ui.tips.draw(canvas, draw, width, height, anchor,
                         Tips.text(ui.tips.showing, TutorialScene.hands()),
                         now - ui.tips.shownAt, ui.highContrastOn,
-                        onHome ? home.textRects() : null,
-                        onHome ? home.textGroups() : null,
-                        onHome ? home.textRectCount() : 0);
+                        onHome ? home.textRects() : draw.frameTextRects(),
+                        onHome ? home.textGroups() : draw.frameTextGroups(),
+                        onHome ? home.textRectCount() : draw.frameTextCount());
             }
         }
     }

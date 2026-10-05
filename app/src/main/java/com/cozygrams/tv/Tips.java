@@ -4,8 +4,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * One-time tips: a small speech bubble beside a control, the first time a player meets it.
@@ -57,6 +55,11 @@ public final class Tips {
     public static final int YIELD_HEADER = 1;
     /** The left-hand card's description of the focused row: what it is, and a remark. */
     public static final int YIELD_DETAIL = 2;
+    /**
+     * The right-hand card's control hint under the rows. Asked for last: only a stacked
+     * title screen, where the space under Cozy Corner is the hint's, ever needs it.
+     */
+    public static final int YIELD_FOOTER = 4;
 
     /** The words, in the names of whatever is in the room. */
     static String text(int tip, int hands) {
@@ -223,7 +226,11 @@ public final class Tips {
             return;
         }
         float size = Theme.textSize(Theme.CAPTION);
-        float maxWidth = Math.min(width * .34f, Theme.scale(560));
+        // A third of a landscape screen; on a tall window the cards are stacked and as wide
+        // as the screen, and a third of it made a three-line bubble that had nowhere to go
+        // but over the rows.
+        float maxWidth = Theme.tall(width, height) ? Math.min(width * .8f, Theme.scale(820))
+                : Math.min(width * .34f, Theme.scale(560));
         String[] lines = balanced(draw, text, size, maxWidth);
         float padX = size * .8f;
         float padY = size * .55f;
@@ -240,7 +247,8 @@ public final class Tips {
         float w = 0;
         float h = 0;
         if (clear != null && clearCount > 0) {
-            int[] asks = {0, YIELD_DETAIL, YIELD_HEADER, YIELD_DETAIL | YIELD_HEADER};
+            int[] asks = {0, YIELD_DETAIL, YIELD_HEADER, YIELD_DETAIL | YIELD_HEADER,
+                    YIELD_FOOTER, YIELD_FOOTER | YIELD_HEADER};
             for (int a = 0; a < asks.length && side < 0; a++) {
                 // Narrower and narrower, down to about seven words' worth, until a spot
                 // is free.
@@ -365,11 +373,7 @@ public final class Tips {
     }
 
     private static float widest(Draw draw, String[] lines, float size) {
-        float widest = 0;
-        for (String line : lines) {
-            widest = Math.max(widest, draw.measure(line, size, false));
-        }
-        return widest;
+        return draw.widest(lines, size, false);
     }
 
     /**
@@ -463,22 +467,6 @@ public final class Tips {
     }
 
     private static String[] wrap(Draw draw, String text, float size, float width) {
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : text.split(" ")) {
-            String tried = line.length() == 0 ? word : line + " " + word;
-            if (line.length() > 0 && draw.measure(tried, size, false) > width) {
-                lines.add(line.toString());
-                line.setLength(0);
-                line.append(word);
-            } else {
-                line.setLength(0);
-                line.append(tried);
-            }
-        }
-        if (line.length() > 0) {
-            lines.add(line.toString());
-        }
-        return lines.toArray(new String[0]);
+        return draw.wrap(text, size, width, false);
     }
 }

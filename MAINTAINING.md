@@ -36,6 +36,14 @@ For anything else:
   The repository only runs GitHub's own actions plus the ones on its allow
   list (see below); add the new one there first.
 
+## Changing what the screen says
+
+New or longer words are checked for you: `./gradlew test` includes `textFitAudit`, which
+draws every screen at every supported size, text size and input mode and fails if any
+text leaves its container (see "The text-fit guard" in the README). When it fails, the
+report names the screen state and the variant; `tools/preview/audit.sh --show` paints it.
+Fix the layout or tighten the copy; never shrink words below the prose floor to make them fit.
+
 ## Releasing
 
 Every push to `main` builds a signed APK and Play bundle in

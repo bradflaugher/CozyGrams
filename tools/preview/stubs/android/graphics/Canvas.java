@@ -44,8 +44,29 @@ public class Canvas {
     private final Ellipse2D.Float ovalShape = new Ellipse2D.Float();
     private final Line2D.Float lineShape = new Line2D.Float();
 
+    /**
+     * True for a canvas that keeps its transform and clip but paints nothing: the
+     * text-fit audit draws thousands of frames and only needs to know where things went.
+     */
+    private final boolean dry;
+    private final int dryWidth;
+    private final int dryHeight;
+
     public Canvas(Bitmap bitmap) {
-        this.target = bitmap.image();
+        this(bitmap.image(), false, 0, 0);
+    }
+
+    /** Harness extra: a {@code width} x {@code height} canvas that paints nothing. */
+    public static Canvas harnessDry(int width, int height) {
+        return new Canvas(new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB), true, width,
+                height);
+    }
+
+    private Canvas(BufferedImage image, boolean dry, int dryWidth, int dryHeight) {
+        this.target = image;
+        this.dry = dry;
+        this.dryWidth = dryWidth;
+        this.dryHeight = dryHeight;
         this.g = target.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_ON);
@@ -66,11 +87,48 @@ public class Canvas {
     }
 
     public int getWidth() {
-        return target.getWidth();
+        return dry ? dryWidth : target.getWidth();
     }
 
     public int getHeight() {
-        return target.getHeight();
+        return dry ? dryHeight : target.getHeight();
+    }
+
+    /**
+     * Harness extra: maps {left, top, right, bottom} through the current transform into
+     * device pixels, in place, as the bounding box of the four mapped corners.
+     */
+    public float[] harnessMap(float[] rect) {
+        AffineTransform t = g.getTransform();
+        if (t.isIdentity()) {
+            return rect;
+        }
+        double[] pts = {rect[0], rect[1], rect[2], rect[1], rect[0], rect[3], rect[2], rect[3]};
+        t.transform(pts, 0, pts, 0, 4);
+        double l = Double.MAX_VALUE, tp = Double.MAX_VALUE, r = -Double.MAX_VALUE,
+                b = -Double.MAX_VALUE;
+        for (int i = 0; i < 8; i += 2) {
+            l = Math.min(l, pts[i]);
+            r = Math.max(r, pts[i]);
+            tp = Math.min(tp, pts[i + 1]);
+            b = Math.max(b, pts[i + 1]);
+        }
+        rect[0] = (float) l;
+        rect[1] = (float) tp;
+        rect[2] = (float) r;
+        rect[3] = (float) b;
+        return rect;
+    }
+
+    /** Harness extra: the clip in device pixels as {l, t, r, b}, or null for none. */
+    public float[] harnessClip() {
+        Shape clip = g.getClip();
+        if (clip == null) {
+            return null;
+        }
+        Rectangle2D local = clip.getBounds2D();
+        return harnessMap(new float[]{(float) local.getMinX(), (float) local.getMinY(),
+                (float) local.getMaxX(), (float) local.getMaxY()});
     }
 
     /** Harness helper: releases the AWT graphics context once a frame is finished. */
@@ -119,6 +177,9 @@ public class Canvas {
     // ---- Shapes --------------------------------------------------------------------
 
     public void drawColor(int color) {
+        if (dry) {
+            return;
+        }
         java.awt.Composite previous = g.getComposite();
         g.setComposite(AlphaComposite.SrcOver);
         g.setColor(Color.awt(color));
@@ -168,6 +229,9 @@ public class Canvas {
 
     public void drawLine(float startX, float startY, float stopX, float stopY,
                          Paint paint) {
+        if (dry) {
+            return;
+        }
         lineShape.setLine(startX, startY, stopX, stopY);
         applyAntiAlias(paint);
         g.setColor(paint.awtColor());
@@ -183,7 +247,7 @@ public class Canvas {
 
     /** Draws {@code text} with its baseline at {@code y}, anchored per the paint align. */
     public void drawText(String text, float x, float y, Paint paint) {
-        if (text == null || text.isEmpty()) {
+        if (text == null || text.isEmpty() || dry) {
             return;
         }
         float start = x;
@@ -210,7 +274,7 @@ public class Canvas {
      * versus nearest-neighbour sampling.
      */
     public void drawBitmap(Bitmap bitmap, Rect src, RectF dst, Paint paint) {
-        if (bitmap == null || dst == null || dst.width() <= 0 || dst.height() <= 0) {
+        if (bitmap == null || dst == null || dst.width() <= 0 || dst.height() <= 0 || dry) {
             return;
         }
         BufferedImage image = bitmap.image();
@@ -254,6 +318,9 @@ public class Canvas {
     // ---- Internals -----------------------------------------------------------------
 
     private void paint(Shape shape, Paint paint) {
+        if (dry) {
+            return;
+        }
         applyAntiAlias(paint);
         g.setColor(paint.awtColor());
         Paint.Style style = paint.getStyle();

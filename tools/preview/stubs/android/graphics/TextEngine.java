@@ -42,6 +42,16 @@ final class TextEngine {
     private static final String[][] CANDIDATES = {
             {"/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
                     "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf"},
+            // Debian and Ubuntu, which is what CI runs the text-fit audit on: without this
+            // the JDK's own SansSerif there is DejaVu Sans, a tenth wider, and the audit
+            // would fail on CI for lines that fit everywhere else.
+            {"/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"},
+            {"/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"},
+            // Arch.
+            {"/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/liberation/LiberationSans-Bold.ttf"},
             {"/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf", null},
             {"/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", null},
             {"/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
@@ -68,6 +78,21 @@ final class TextEngine {
             // No dedicated bold file: let AWT embolden algorithmically.
             physicalBold = bold != null ? bold : regular.deriveFont(Font.BOLD);
             break;
+        }
+
+        if (physicalRegular == null
+                || !physicalRegular.getFontName().startsWith("Liberation Sans")) {
+            // Not at any of the Liberation paths above — macOS, Windows, a font installed
+            // for one user: ask the platform for the family by name before settling for a
+            // fallback face.
+            for (String family : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getAvailableFontFamilyNames()) {
+                if (family.equals("Liberation Sans")) {
+                    physicalRegular = new Font(family, Font.PLAIN, 1);
+                    physicalBold = new Font(family, Font.BOLD, 1);
+                    break;
+                }
+            }
         }
 
         // The logical family is a composite font, so it covers glyphs (☰) that no single
@@ -99,6 +124,15 @@ final class TextEngine {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /**
+     * True when text is measured with Liberation Sans, the face every committed render and
+     * the text-fit audit's verdicts are calibrated against. Other faces measure differently
+     * (DejaVu Sans is about a tenth wider), so the audit refuses to judge with them.
+     */
+    static boolean canonical() {
+        return REGULAR_CHAIN[0].getFontName().startsWith("Liberation Sans");
     }
 
     /** Human-readable description of the resolved faces, for the harness banner. */
@@ -181,6 +215,35 @@ final class TextEngine {
             total += advance(run.font, run.text);
         }
         return total;
+    }
+
+    /**
+     * The ink {@code text} really covers, as {left, top, right, bottom} relative to a
+     * left-aligned origin on the baseline — the glyph outlines, not the advance box, so a
+     * line with no descenders really does end at the baseline. Harness only: this is what
+     * the text-fit audit measures against.
+     */
+    static float[] ink(String text, Typeface typeface, float size) {
+        float[] box = {Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
+        if (text == null || text.isEmpty() || size <= 0) {
+            return new float[]{0, 0, 0, 0};
+        }
+        float cursor = 0;
+        for (Run run : split(text, typeface, size)) {
+            java.awt.geom.Rectangle2D bounds =
+                    run.font.createGlyphVector(FRC, run.text).getVisualBounds();
+            if (!bounds.isEmpty()) {
+                box[0] = Math.min(box[0], cursor + (float) bounds.getMinX());
+                box[1] = Math.min(box[1], (float) bounds.getMinY());
+                box[2] = Math.max(box[2], cursor + (float) bounds.getMaxX());
+                box[3] = Math.max(box[3], (float) bounds.getMaxY());
+            }
+            cursor += advance(run.font, run.text);
+        }
+        if (box[0] > box[2]) {
+            return new float[]{0, 0, 0, 0};
+        }
+        return box;
     }
 
     /**

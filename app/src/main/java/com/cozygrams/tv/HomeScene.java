@@ -518,22 +518,8 @@ public final class HomeScene {
 
     // ---- Layout ----------------------------------------------------------------------
 
-    /** A group break is worth this much of a row, exactly as in the cozy corner. */
-    private static final float GROUP_GAP = .34f;
 
-    /**
-     * The margin above the heart and below the last line, in design pixels.
-     *
-     * <p>Smaller than {@link Theme#MENU_INSET}, and for a reason: the sides of a panel are
-     * inset far enough to clear its 30 px corner radius, while the top and bottom edges are
-     * straight where this screen's content is — everything in the header and the footer is
-     * centred. 24 px at 1080p is a margin you can see without spending the room the rows
-     * need.
-     */
-    private static final float MARGIN_Y = 16f;
 
-    /** Air between the header, the row band and the footer, in design pixels. */
-    private static final float BAND_GAP = 20f;
 
     /**
      * The widest a stacked landing card grows, in design pixels: about one and a half of
@@ -542,8 +528,6 @@ public final class HomeScene {
      */
     private static final float STACKED_CARD_WIDTH = 820f;
 
-    /** The heart above the wordmark, in design pixels. */
-    private static final float HEART_SIZE = 42f;
 
     /** How much of an em of extra space the wordmark's letters are given. */
     private static final float TITLE_TRACKING = .055f;
@@ -559,6 +543,16 @@ public final class HomeScene {
     private static final float CAP_HEIGHT = .70f;
     private static final float DESCENT = .18f;
 
+    /**
+     * Baseline to baseline for stacked lines of prose, as a fraction of the size. The
+     * greeting used to step by cap height plus descent, .88 em, so a descender on one line
+     * touched the capitals on the next.
+     */
+    private static final float LINE_PITCH = 1.22f;
+
+    /** The most lines the greeting may take. */
+    private static final int GREETING_LINES = 3;
+
     private final Draw draw;
     private final MenuFrame frame;
 
@@ -570,15 +564,9 @@ public final class HomeScene {
     private final float[] valueLeft = new float[ITEM_COUNT];
     private final float[] valueRight = new float[ITEM_COUNT];
     private boolean rowsDrawn;
-    private final String[] greetingLines = new String[2];
+    private final String[] greetingLines = new String[GREETING_LINES];
     private float rowHalf;
     private float rowPitch;
-    private float heartCentre;
-    private float titleBaseline;
-    private float ruleTop;
-    private float lineBaseline;
-    private float chipCentre;
-    private float hintBaseline;
 
     /**
      * Where the focus pill actually is, as opposed to which row is selected.
@@ -736,14 +724,16 @@ public final class HomeScene {
         String greeting = welcome.isEmpty() ? "Puzzles are better together" : welcome;
         int greetingCount = wrapGreeting(greeting, greetingSize, lane);
         float greetingY = ruleY + Theme.scale(18) + greetingSize * CAP_HEIGHT;
+        float greetingPitch = greetingSize * LINE_PITCH;
         for (int i = 0; i < greetingCount; i++) {
             draw.text(canvas, greetingLines[i], cx, greetingY, greetingSize,
                     welcome.isEmpty() ? Comfort.skyColor() : Theme.GOLD,
                     Paint.Align.CENTER, false);
             keepClear(greetingLines[i], cx, greetingY, greetingSize, Paint.Align.CENTER,
                     false, 0);
-            greetingY += greetingSize * (CAP_HEIGHT + DESCENT);
+            greetingY += greetingPitch;
         }
+        greetingY -= greetingPitch - greetingSize * (CAP_HEIGHT + DESCENT);
 
         float detailTop = Math.max(top + Theme.scale(250), greetingY + Theme.scale(34));
         draw.roundRect(canvas, left + pad, detailTop, right - pad,
@@ -756,17 +746,31 @@ public final class HomeScene {
         float textLeft = left + pad + Theme.scale(28);
         float detailLane = right - pad - Theme.scale(28) - textLeft;
         float eyebrowSize = landingText(Theme.CAPTION);
-        float eyebrowY = detailTop + Theme.scale(30) + eyebrowSize * CAP_HEIGHT;
         int detail = Tips.YIELD_DETAIL;
-        draw.text(canvas, landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize,
-                yielded(Theme.GOLD, ui, detail, now), Paint.Align.LEFT, true);
-        keepClear(landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize, Paint.Align.LEFT,
-                true, detail);
-
         String feature = landingFeature(game, selected);
         float featureSize = draw.fit(feature, landingText(Theme.HEADING), detailLane,
                 true, landingText(Theme.SUBHEAD));
-        float featureY = eyebrowY + Theme.scale(18) + featureSize * CAP_HEIGHT;
+        float metaWanted = landingText(Theme.CAPTION);
+        // The card is as tall as the greeting above it leaves. Its name and its chapter
+        // must both be inside it; with a three-line greeting and LARGER TEXT they were
+        // not — "Chapter 24 of 24" sat half off the card's bottom edge — so the eyebrow,
+        // which only labels the name under it, is what gives way.
+        float cardBottom = bottom - Theme.scale(105);
+        float inner = Theme.scale(18) + featureSize * CAP_HEIGHT + featureSize * DESCENT
+                + Theme.scale(18) + metaWanted * (CAP_HEIGHT + DESCENT) + Theme.scale(8);
+        boolean eyebrowFits = detailTop + Theme.scale(30) + eyebrowSize * CAP_HEIGHT + inner
+                <= cardBottom;
+        float featureY;
+        if (eyebrowFits) {
+            float eyebrowY = detailTop + Theme.scale(30) + eyebrowSize * CAP_HEIGHT;
+            draw.text(canvas, landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize,
+                    yielded(Theme.GOLD, ui, detail, now), Paint.Align.LEFT, true);
+            keepClear(landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize,
+                    Paint.Align.LEFT, true, detail);
+            featureY = eyebrowY + Theme.scale(18) + featureSize * CAP_HEIGHT;
+        } else {
+            featureY = detailTop + Theme.scale(26) + featureSize * CAP_HEIGHT;
+        }
         draw.text(canvas, feature, textLeft, featureY, featureSize,
                 yielded(Theme.CREAM, ui, detail, now), Paint.Align.LEFT, true);
         keepClear(feature, textLeft, featureY, featureSize, Paint.Align.LEFT, true, detail);
@@ -774,16 +778,20 @@ public final class HomeScene {
         float metaSize = landingText(Theme.CAPTION);
         float metaY = featureY + featureSize * DESCENT + Theme.scale(18)
                 + metaSize * CAP_HEIGHT;
-        draw.text(canvas, landingMeta(game, selected), textLeft, metaY, metaSize,
+        metaSize = draw.fitText(canvas, landingMeta(game, selected), textLeft, metaY,
+                metaSize, landingText(Theme.MIN_PROSE_SP), detailLane,
                 yielded(Theme.secondaryText(ui.highContrastOn), ui, detail, now),
                 Paint.Align.LEFT, false);
         keepClear(landingMeta(game, selected), textLeft, metaY, metaSize, Paint.Align.LEFT,
                 false, detail);
 
-        if (Theme.textScale() <= 1.2f) {
-            float bodySize = landingText(Theme.BODY);
-            float bodyY = metaY + metaSize * DESCENT + Theme.scale(26)
-                    + bodySize * CAP_HEIGHT;
+        float bodySize = landingText(Theme.BODY);
+        float bodyY = metaY + metaSize * DESCENT + Theme.scale(26) + bodySize * CAP_HEIGHT;
+        // The card's last line is the one that only decorates, so it is the one left out —
+        // with LARGER TEXT, or when a long greeting has moved the card down — rather than
+        // running out of the bottom of the card.
+        if (Theme.textScale() <= 1.2f
+                && bodyY + bodySize * DESCENT <= bottom - Theme.scale(105) - Theme.scale(18)) {
             float bodyLane = detailLane - Theme.scale(24);
             float bodyFit = draw.fit(landingDescription(selected), bodySize, bodyLane, false,
                     landingText(Theme.CAPTION));
@@ -843,9 +851,14 @@ public final class HomeScene {
         }
 
         float footerY = bottom - Theme.scale(39);
-        drawLandingFooter(canvas, rowLeft, rowRight, footerY, selected, ui.highContrastOn);
+        // The control hint may step aside for a tip, like the header: in the stacked layout
+        // the space under Cozy Corner is the only place that tip can point from, and the
+        // tip is itself the instruction. The rows themselves never yield.
+        int hint = Tips.YIELD_FOOTER;
+        drawLandingFooter(canvas, rowLeft, rowRight, footerY, selected, ui.highContrastOn,
+                ui.tips.wordsAlpha(hint, now));
         float footerHalf = landingText(Theme.CAPTION) * .62f;
-        keepClear(rowLeft, footerY - footerHalf, rowRight, footerY + footerHalf);
+        keepClear(rowLeft, footerY - footerHalf, rowRight, footerY + footerHalf, hint);
     }
 
     private void drawLandingRowSurface(Canvas canvas, float left, float right, float centreY,
@@ -877,33 +890,67 @@ public final class HomeScene {
         int secondary = focused ? Draw.withAlpha(Theme.INK, 205)
                 : Theme.secondaryText(highContrast);
         float x = left + Theme.scale(26);
-        float labelSize = draw.fit(items(game)[item], landingText(Theme.SUBHEAD),
-                (right - left) * .55f, true, landingText(Theme.BODY));
-        float labelY = centreY - Theme.scale(13) + draw.capCentreOffset(labelSize);
-        draw.text(canvas, items(game)[item], x, labelY, labelSize, primary,
-                Paint.Align.LEFT, true);
+        float end = right - Theme.scale(24);
+        float gap = Theme.scale(16);
 
+        // What sits on the right — a stepper's value, or OPEN on the focused corner row —
+        // is measured first, so the two lines beside it know how much room they have.
+        boolean settings = item == ITEM_SETTINGS;
+        String action = settings ? null : values(game)[item];
+        float actionSize = settings ? 0 : draw.fit(action, landingText(Theme.BODY),
+                (right - left) * .42f, false, landingText(Theme.CAPTION));
+        float accessory = settings ? (focused ? confirmWidth("OPEN") : 0)
+                : draw.measure(action, actionSize, false);
+
+        float labelWanted = landingText(Theme.SUBHEAD);
+        float labelY = centreY - Theme.scale(13) + draw.capCentreOffset(labelWanted);
         float detailSize = landingText(Theme.CAPTION);
         String detail = rowDetail(game, item);
         float detailY = centreY + Theme.scale(20) + draw.capCentreOffset(detailSize);
-        draw.text(canvas, detail, x, detailY, detailSize, secondary,
-                Paint.Align.LEFT, false);
 
-        if (item == ITEM_SETTINGS) {
+        // Centred in the row it reads best, and it stays there while the detail line fits
+        // beside it. When it does not — "Comfort, sound, and how to play" ran under the
+        // focused row's OPEN — it moves up beside the row's name, which is short, and the
+        // detail gets the whole width.
+        float accessoryY = centreY;
+        float detailLane = end - x;
+        float labelLane = (right - left) * .55f;
+        if (accessory > 0) {
+            float beside = end - accessory - gap - x;
+            if (draw.measure(detail, detailSize, false) <= beside) {
+                detailLane = beside;
+                labelLane = Math.min(labelLane, beside);
+            } else {
+                accessoryY = labelY - draw.capCentreOffset(labelWanted);
+                labelLane = beside;
+            }
+        }
+        draw.fitText(canvas, items(game)[item], x, labelY, labelWanted,
+                landingText(Theme.BODY), labelLane, primary, Paint.Align.LEFT, true);
+        draw.fitText(canvas, detail, x, detailY, detailSize,
+                landingText(Theme.MIN_PROSE_SP), detailLane, secondary, Paint.Align.LEFT,
+                false);
+
+        if (settings) {
             if (focused) {
-                drawLandingConfirm(canvas, right - Theme.scale(24), centreY, "OPEN",
-                        primary);
+                drawLandingConfirm(canvas, end, accessoryY, "OPEN", primary);
             }
             return;
         }
-        String action = values(game)[item];
-        float actionSize = draw.fit(action, landingText(Theme.BODY),
-                (right - left) * .42f, false, landingText(Theme.CAPTION));
-        valueRight[item] = right - Theme.scale(24);
-        valueLeft[item] = valueRight[item] - draw.measure(action, actionSize, false);
-        draw.text(canvas, action, right - Theme.scale(24),
-                centreY + draw.capCentreOffset(actionSize), actionSize, primary,
-                Paint.Align.RIGHT, false);
+        valueRight[item] = end;
+        valueLeft[item] = end - accessory;
+        draw.text(canvas, action, end, accessoryY + draw.capCentreOffset(actionSize),
+                actionSize, primary, Paint.Align.RIGHT, false);
+    }
+
+    /** How wide {@link #drawLandingConfirm} draws {@code label} and its button. */
+    private float confirmWidth(String label) {
+        float size = landingText(Theme.BODY);
+        float labelWidth = draw.measure(label, size, true);
+        if (HudScene.touch()) {
+            return labelWidth;
+        }
+        return labelWidth + Theme.scale(9) + draw.keycapWidth(confirmName(), size * 1.05f);
     }
 
     private void drawLandingConfirm(Canvas canvas, float right, float centreY,
@@ -929,14 +976,18 @@ public final class HomeScene {
     }
 
     private void drawLandingFooter(Canvas canvas, float left, float right, float centreY,
-                                   int selected, boolean highContrast) {
+                                   int selected, boolean highContrast, float strength) {
+        if (strength <= 0) {
+            return;
+        }
         int row = Math.floorMod(selected, ITEM_COUNT);
         if (HudScene.touch()) {
             String line = touchFooter(row);
             float size = draw.fit(line, landingText(Theme.CAPTION), right - left, false,
                     landingText(Theme.MIN_PROSE_SP));
             draw.text(canvas, line, (left + right) / 2, centreY + draw.capCentreOffset(size),
-                    size, Theme.secondaryText(highContrast), Paint.Align.CENTER, false);
+                    size, faded(Theme.secondaryText(highContrast), strength), Paint.Align.CENTER,
+                    false);
             return;
         }
         String lead = row == ITEM_STORY ? "Pick a chapter"
@@ -958,27 +1009,30 @@ public final class HomeScene {
             size = Math.max(Theme.scale(20), size * (right - left) / total);
         } while (true);
 
-        int text = Theme.secondaryText(highContrast);
+        int text = faded(Theme.secondaryText(highContrast), strength);
         float x = (left + right - total) / 2;
-        draw.dpadKeycap(canvas, x, centreY, chipHeight, Theme.SOFT_TEXT);
+        draw.dpadKeycap(canvas, x, centreY, chipHeight, faded(Theme.SOFT_TEXT, strength));
         x += chipHeight + gap;
         draw.text(canvas, lead, x, centreY + draw.capCentreOffset(size), size, text,
                 Paint.Align.LEFT, false);
         x += draw.measure(lead, size, false) + gap * 2;
-        int chipColor = HudScene.remoteOnly() ? Theme.SOFT_TEXT : Theme.BUTTON_A;
+        int chipColor = faded(HudScene.remoteOnly() ? Theme.SOFT_TEXT : Theme.BUTTON_A,
+                strength);
         draw.keycap(canvas, x, centreY, chipHeight, key, chipColor);
         x += chipWidth + gap;
         draw.text(canvas, action, x, centreY + draw.capCentreOffset(size), size, text,
                 Paint.Align.LEFT, false);
     }
 
+    private static int faded(int color, float strength) {
+        return strength >= 1 ? color
+                : Draw.withAlpha(color, (int) ((color >>> 24) * strength));
+    }
+
     private void drawPresence(Canvas canvas, float left, float right, float centreY,
                               UiState ui) {
         boolean together = ui.skyPlaying();
-        String line = together ? "Rose and Sky are ready  ♥"
-                : !ui.twoPlayers ? "A quiet puzzle, just for you"
-                : HudScene.touch() ? "Sky can join any time on a controller"
-                : "Sky can join any time — press a button";
+        String line = presenceLine(ui);
         int accent = together || !ui.twoPlayers ? Theme.PINK : Comfort.skyColor();
         float size = draw.fit(line, landingText(Theme.CAPTION), right - left
                 - Theme.scale(34), together, landingText(Theme.MIN_PROSE_SP));
@@ -991,6 +1045,22 @@ public final class HomeScene {
         draw.text(canvas, line, (left + right) / 2,
                 centreY + draw.capCentreOffset(size), size,
                 together ? Theme.PINK_LIGHT : Theme.CREAM, Paint.Align.CENTER, together);
+    }
+
+    /**
+     * Who is at the table. Short on purpose: the chip is one line inside the left card, and
+     * "Sky can join any time — press a button" ran 31 px past both ends of it with LARGER
+     * TEXT on, at a size the prose floor would not let it shrink below.
+     */
+    static String presenceLine(UiState ui) {
+        if (ui.skyPlaying()) {
+            return "Rose and Sky are ready  ♥";
+        }
+        if (!ui.twoPlayers) {
+            return "A quiet puzzle, just for you";
+        }
+        return HudScene.touch() ? "Sky can join on a controller"
+                : "Sky can join with any button";
     }
 
     static String landingEyebrow(int item) {
@@ -1016,7 +1086,7 @@ public final class HomeScene {
             case ITEM_STORY:
                 return "Chapter " + (chapterToShow(game) + 1) + " of "
                         + PuzzleLibrary.count();
-            case ITEM_SIZE: return "Endless · a new picture every time";
+            case ITEM_SIZE: return "Endless · always a new picture";
             default: return "Sound · hints · colors · comfort";
         }
     }
@@ -1047,77 +1117,11 @@ public final class HomeScene {
                 * Math.min(Theme.textScale(), 1.2f);
     }
 
-    /**
-     * Where everything goes: the header measured down from the top margin, the footer up
-     * from the bottom one, and the rows sharing what is left.
-     *
-     * <p>Worked out per frame rather than stored, because it depends on the type scale and
-     * LARGER TEXT can change that between one frame and the next. It writes into fields
-     * rather than returning an object, so a menu redrawing at 60 Hz allocates nothing.
-     */
-    private void layOut(float width, float height) {
-        float top = frame.top(height) + Theme.scale(MARGIN_Y);
-        float bottom = frame.bottom(height) - Theme.scale(MARGIN_Y);
-        float lane = frame.rowRight(width) - frame.rowLeft(width);
 
-        float headerBottom = layOutHeader(top, lane);
-        float footerTop = layOutFooter(bottom);
 
-        float band = (footerTop - Theme.scale(BAND_GAP))
-                - (headerBottom + Theme.scale(BAND_GAP));
-        rowPitch = band / (ITEM_COUNT + GROUP_GAP);
-        rowHalf = Math.min(frame.rowHalf(Theme.textSize(Theme.SUBHEAD)), rowPitch * .42f);
-
-        float y = headerBottom + Theme.scale(BAND_GAP);
-        for (int item = 0; item < ITEM_COUNT; item++) {
-            rowCentre[item] = y + rowPitch * .5f;
-            y += rowPitch;
-            if (item == ITEM_SETTINGS - 1) {
-                y += rowPitch * GROUP_GAP;
-            }
-        }
-    }
 
     /**
-     * The header block, laid out downward, and the y its last line reaches.
-     *
-     * <p>The greeting is wrapped to two lines when it needs them. It is the one string on
-     * this screen the game does not choose: {@code SaveStore} can hand over 81 characters,
-     * which is 1318 px at the prose floor against a lane of 824, and a floor is a floor —
-     * so it cannot be answered by setting the type smaller.
-     */
-    private float layOutHeader(float top, float lane) {
-        float heart = Theme.scale(HEART_SIZE);
-        heartCentre = top + heart * .5f;
-
-        float titleSize = Theme.textSize(Theme.TITLE);
-        titleBaseline = top + heart + Theme.scale(14) + titleSize * CAP_HEIGHT;
-        ruleTop = titleBaseline + titleSize * DESCENT + Theme.scale(12);
-
-        float lineSize = Theme.textSize(Theme.CAPTION);
-        lineBaseline = ruleTop + Theme.scale(3) + Theme.scale(16) + lineSize * CAP_HEIGHT;
-        int lines = wrapGreeting(welcome.isEmpty() ? "Puzzles are better together" : welcome,
-                lineSize, lane);
-        return lineBaseline + lineSize * DESCENT
-                + (lines - 1) * lineSize * (CAP_HEIGHT + DESCENT);
-    }
-
-    /**
-     * The footer, laid out upward from the bottom margin: the who-is-here chip, and the
-     * control hint under it.
-     *
-     * @return the top of the block, so the rows know where they have to stop.
-     */
-    private float layOutFooter(float bottom) {
-        float size = Theme.textSize(Theme.CAPTION);
-        hintBaseline = bottom - size * DESCENT;
-        float chipHalf = size * .95f;
-        chipCentre = hintBaseline - size * CAP_HEIGHT - Theme.scale(18) - chipHalf;
-        return chipCentre - chipHalf;
-    }
-
-    /**
-     * Breaks a line into at most two that each fit {@code maxWidth}, into
+     * Breaks the greeting into lines that each fit {@code maxWidth}, into
      * {@link #greetingLines}, and says how many it used.
      *
      * <p>The em dash is tried first, because it is not punctuation the game chose at random:
@@ -1125,14 +1129,15 @@ public final class HomeScene {
      * together", so breaking there gives two whole thoughts instead of a line ending in
      * "seat" and the next one opening with a dash.
      *
-     * <p>Two lines is the whole budget: a third would push the menu down, and every greeting
-     * {@code SaveStore} can produce fits in two at both text scales. A word wider than the
-     * panel goes out whole rather than being drawn as half a word — there is nothing to
-     * break, and a language this game has not met yet should overhang rather than disappear.
+     * <p>Otherwise the words are wrapped as evenly as the lane allows. This used to stop
+     * after two lines and drop the rest: "It's been a while — the room kept your seat warm
+     * — 12 pictures finished together" came out as two lines ending at "pictures", which is
+     * not a greeting but half of one. Every word is kept now; the longest greeting
+     * {@code SaveStore} can produce needs three lines at LARGER TEXT, and the detail card
+     * below moves down to make room.
      */
     private int wrapGreeting(String line, float size, float maxWidth) {
-        greetingLines[0] = "";
-        greetingLines[1] = "";
+        java.util.Arrays.fill(greetingLines, "");
         if (line.isEmpty()) {
             return 0;
         }
@@ -1147,132 +1152,37 @@ public final class HomeScene {
             greetingLines[1] = line.substring(dash + 3);
             return 2;
         }
-        int used = 0;
-        int from = 0;
-        while (from < line.length() && used < greetingLines.length) {
-            int fit = -1;
-            int next = line.indexOf(' ', from);
-            while (next >= 0 && draw.measure(line.substring(from, next), size, false)
-                    <= maxWidth) {
-                fit = next;
-                next = line.indexOf(' ', next + 1);
+        String[] lines = draw.wrap(line, size, maxWidth, false);
+        // Even them out: as narrow as the lane can go without needing another line.
+        float lane = maxWidth;
+        while (lane > maxWidth * .5f) {
+            String[] tighter = draw.wrap(line, size, lane * .95f, false);
+            if (tighter.length != lines.length) {
+                break;
             }
-            if (next < 0 && draw.measure(line.substring(from), size, false) <= maxWidth) {
-                fit = line.length();
+            lines = tighter;
+            lane *= .95f;
+        }
+        int used = Math.min(lines.length, greetingLines.length);
+        System.arraycopy(lines, 0, greetingLines, 0, used);
+        if (lines.length > used) {
+            // Never drop words: the last line keeps the rest, and the audit says so if it
+            // then runs out of the card.
+            StringBuilder rest = new StringBuilder(greetingLines[used - 1]);
+            for (int i = used; i < lines.length; i++) {
+                rest.append(' ').append(lines[i]);
             }
-            if (fit < 0) {
-                fit = next < 0 ? line.length() : next;
-            }
-            greetingLines[used++] = line.substring(from, fit);
-            from = fit + 1;
+            greetingLines[used - 1] = rest.toString();
         }
         return used;
     }
 
     // ---- The wordmark ----------------------------------------------------------------
 
-    /**
-     * The heart, the wordmark, the rule under it, and the one warm line.
-     *
-     * <p>This was the least designed element in the game: the system font at default
-     * tracking with a flat drop shadow, over a single-colour heart. It is still the system
-     * font — no typeface ships with the app and none is going to — but it is letterspaced,
-     * it sits in a wash of candlelight instead of on a shadow, and the heart has a highlight
-     * on the side the room's lamp is on, so it reads as felt rather than as a glyph.
-     */
-    private void drawWordmark(Canvas canvas, float width, long now) {
-        float cx = width / 2;
-
-        // The heartbeat is the one idle movement on this screen, so it is also the first
-        // thing calm motion should switch off.
-        float beat = Comfort.get().calmMotion ? .5f
-                : (float) Math.abs(Math.sin(now / 1700.0));
-        float size = Theme.scale(HEART_SIZE) * (.94f + beat * .12f);
-        draw.heart(canvas, cx, heartCentre, size, Theme.PINK);
-        draw.heart(canvas, cx - size * .07f, heartCentre - size * .07f, size * .80f,
-                Draw.withAlpha(Draw.blend(Theme.PINK, Theme.CREAM, .35f), 115));
-
-        float titleSize = Theme.textSize(Theme.TITLE);
-        float titleWidth = draw.measure("COZYGRAMS", titleSize, true) * (1 + TITLE_TRACKING);
-        // Lamplight behind the letters rather than a shadow under them, spread over enough
-        // rings that it has no edge of its own. Kept to 14 alpha at its peak: past about 16
-        // a warm glow around type stops reading as a lamp and starts reading as neon, which
-        // is the opposite of cozy.
-        float capHeight = titleSize * CAP_HEIGHT;
-        draw.glow(canvas, cx - titleWidth / 2, titleBaseline - capHeight,
-                cx + titleWidth / 2, titleBaseline, capHeight * .5f, Theme.scale(30),
-                Theme.GOLD, 14);
-        draw.tracked(canvas, "COZYGRAMS", cx, titleBaseline, titleSize, Theme.CREAM,
-                TITLE_TRACKING, true);
-
-        float ruleWidth = Theme.scale(64);
-        draw.roundRect(canvas, cx - ruleWidth, ruleTop, cx + ruleWidth,
-                ruleTop + Theme.scale(3), Theme.scale(2),
-                Draw.withAlpha(Theme.PINK, 190));
-
-        float lineSize = Theme.textSize(Theme.CAPTION);
-        float y = lineBaseline;
-        for (String line : greetingLines) {
-            if (line == null || line.isEmpty()) {
-                continue;
-            }
-            draw.text(canvas, line, cx, y, lineSize,
-                    welcome.isEmpty() ? Theme.BLUE : Theme.GOLD, Paint.Align.CENTER, false);
-            y += lineSize * (CAP_HEIGHT + DESCENT);
-        }
-    }
 
     // ---- The rows --------------------------------------------------------------------
 
-    /**
-     * The five rows: every surface first, then the travelling focus pill over them, then
-     * every label and value on top of that.
-     *
-     * <p>Three passes rather than one, because the pill is between two rows for most of its
-     * journey. Drawn row by row it would slide <em>under</em> the row it is arriving at;
-     * drawn after the text it would bury it.
-     */
-    private void drawRows(Canvas canvas, float width, String[] labels, String[] values,
-                          UiState ui, long now) {
-        float left = frame.rowLeft(width);
-        float right = frame.rowRight(width);
-        for (int item = 0; item < ITEM_COUNT; item++) {
-            frame.row(canvas, left, rowCentre[item], right, rowHalf, false, 0);
-        }
-        drawFocus(canvas, left, right, ui, now);
-        for (int item = 0; item < ITEM_COUNT; item++) {
-            drawRow(canvas, item, labels[item], values[item], left + frame.rowPad(),
-                    right - frame.rowPad(), covered(item), ui.highContrastOn, now);
-        }
-    }
 
-    /**
-     * The focus pill, at wherever it has actually got to.
-     *
-     * <p>It stretches along its travel and settles with a squash, which is the landing the
-     * cursors on the board are already given ({@link Theme#CURSOR_LAND_MS}). Those two are
-     * the only things in the game that move because a person moved them, so they move
-     * alike.
-     */
-    private void drawFocus(Canvas canvas, float left, float right, UiState ui, long now) {
-        int row = Math.floorMod(ui.menu, ITEM_COUNT);
-        follow(row, rowCentre[row], now);
-
-        float travel = Math.min(1f,
-                Math.abs(rowCentre[row] - pillCentre) / Math.max(1f, rowPitch));
-        float landed = Draw.easeOut(landing(now));
-        // A little stretch along the travel and no more: the pill is nearly as tall as the
-        // gap between two rows, so anything more than this and a moving highlight lies
-        // across two labels at once instead of passing between them.
-        float stretch = travel * .12f;
-        float squash = (1 - landed) * .10f;
-        float half = pillHalf * (1 + stretch - squash);
-        float bulge = (squash - stretch * .5f) * pillHalf;
-
-        // A brighter halo the instant it arrives, decaying into the resting breath.
-        float beat = Math.max(MenuFrame.beat(now), 1 - landed);
-        frame.row(canvas, left - bulge, pillCentre, right + bulge, half, true, beat);
-    }
 
     /**
      * Moves the pill toward the selected row over real milliseconds.
@@ -1325,134 +1235,11 @@ public final class HomeScene {
         return Draw.clamp01((now - pillArrivedAt) / Theme.CURSOR_LAND_MS);
     }
 
-    /**
-     * How much of a row the pill is standing on, 0 to 1 — what decides whether its label is
-     * cream on plum or ink on rose.
-     *
-     * <p>Ramped late and steeply on purpose. A label half way between those two colours is
-     * a mid-grey on a rose pill, 1.35:1, which is the one combination on this screen that
-     * cannot be read — and the pill spends the middle of its journey lying across two rows
-     * at once, so a gentle ramp puts <em>both</em> labels in that grey. Nothing changes
-     * until the pill is nearly home, and then it changes over about 25 ms.
-     */
-    private float covered(int item) {
-        float overlap = 1 - Math.abs(rowCentre[item] - pillCentre) / Math.max(1f, rowPitch);
-        return Draw.clamp01((overlap - .62f) * 6f);
-    }
 
-    /**
-     * One row's label and value, each at the largest size that fits beside the other.
-     *
-     * <p>They were drawn from opposite edges at fixed sizes, which is why an ordinary story
-     * mode frame overlapped two strings by 145 px. The rule now:
-     *
-     * <ol>
-     *   <li>the value may take whatever the label does not need at its smallest;</li>
-     *   <li>the label takes what is left of the lane, down to the prose floor;</li>
-     *   <li>if it still does not fit, the value goes — the label is the control and the
-     *       value is a remark about it. Unless the value <em>is</em> the control, in which
-     *       case both stay, both at the floor.</li>
-     * </ol>
-     *
-     * <p>Step 2 is what usually gives: {@code CAPTION} is already pinned to
-     * {@link Theme#MIN_PROSE_SP} so a value can rarely shrink at all, while a label starts
-     * two steps above the floor and has a quarter of its size to spend.
-     */
-    private void drawRow(Canvas canvas, int item, String label, String value, float left,
-                         float right, float coverage, boolean highContrast, long now) {
-        float lane = right - left;
-        float gap = Theme.scale(28);
-        float floor = Theme.textSize(Theme.MIN_PROSE_SP);
 
-        boolean control = valueIsControl(item);
-        float labelWanted = Theme.textSize(Theme.SUBHEAD);
-        float valueWanted = control ? labelWanted : Theme.textSize(Theme.CAPTION);
-
-        float valueSize = valueWanted;
-        float valueWidth = 0;
-        if (!value.isEmpty()) {
-            valueSize = draw.fit(value, valueWanted,
-                    lane - gap - draw.measure(label, floor, true), false, floor);
-            valueWidth = draw.measure(value, valueSize, false);
-        }
-        float labelSize = draw.fit(label, labelWanted,
-                lane - (value.isEmpty() ? 0 : gap + valueWidth), true, floor);
-        boolean showValue = !value.isEmpty() && (control
-                || draw.measure(label, labelSize, true) + gap + valueWidth <= lane);
-
-        int ink = restingInk(item, highContrast, now);
-        draw.text(canvas, label, left, rowCentre[item] + draw.capCentreOffset(labelSize),
-                labelSize, Draw.blend(ink, Theme.INK, coverage), Paint.Align.LEFT, true);
-        if (showValue) {
-            int resting = control ? ink : Theme.secondaryText(highContrast);
-            draw.text(canvas, value, right,
-                    rowCentre[item] + draw.capCentreOffset(valueSize), valueSize,
-                    Draw.blend(resting, Theme.INK, coverage), Paint.Align.RIGHT, false);
-        }
-    }
-
-    /**
-     * The colour a row rests in before the pill reaches it.
-     *
-     * <p>The way out is quiet, and while it is asking a question it is
-     * {@link Theme#CAUTION} — a warm clay inside the lamplit palette rather than an error
-     * red, and not either player's colour, which is what an armed confirmation used to
-     * borrow.
-     */
-    private int restingInk(int item, boolean highContrast, long now) {
-        return Theme.CREAM;
-    }
 
     // ---- The footer ------------------------------------------------------------------
 
-    /**
-     * Who is at the table, and how to move.
-     *
-     * <p>These used to be two dim lines of the same size sitting 16 px apart, and read as
-     * small print twice. The first is a chip with its own colour and the second is the only
-     * quiet thing on the screen; more to the point they now have air between them and a
-     * 24 px margin under them, instead of the second one's descender ending 7 px from the
-     * panel's inner edge.
-     *
-     * <p>They cannot be one line: side by side the widest pair measures 1078 px against an
-     * 824 px lane, and neither of them is prose that may be set any smaller.
-     */
-    private void drawFooter(Canvas canvas, float width, UiState ui) {
-        boolean together = ui.skyPlaying();
-        String hint = together ? "Rose and Sky are both here"
-                : !ui.twoPlayers ? "A quiet puzzle, just for you"
-                : HudScene.touch() ? "Sky can join any time on a controller"
-                : "Sky can join any time — press a button";
-        int accent = together || !ui.twoPlayers ? Theme.PINK : Comfort.skyColor();
-
-        float size = Theme.textSize(Theme.CAPTION);
-        float half = size * .95f;
-        float textWidth = draw.measure(hint, size, together);
-        float heart = together ? size * 1.5f : 0;
-        float chipWidth = textWidth + heart + Theme.scale(48);
-        float left = width / 2 - chipWidth / 2;
-        float right = width / 2 + chipWidth / 2;
-
-        draw.roundRect(canvas, left, chipCentre - half, right, chipCentre + half, half,
-                Draw.withAlpha(accent, together ? 52 : 30));
-        draw.roundRectStroke(canvas, left, chipCentre - half, right, chipCentre + half,
-                half, Theme.keyline(), Draw.withAlpha(accent, 130));
-
-        float textLeft = left + Theme.scale(24);
-        draw.text(canvas, hint, textLeft, chipCentre + draw.capCentreOffset(size), size,
-                together ? Theme.PINK_LIGHT : Theme.CREAM, Paint.Align.LEFT, together);
-        if (together) {
-            draw.heart(canvas, textLeft + textWidth + heart * .6f, chipCentre, size * .95f,
-                    Theme.PINK);
-        }
-
-        // While the question is armed, this line is the answer to it: the row states the
-        // cost in the room it has, and how to say yes belongs where a player already looks
-        // to find out what the buttons do.
-        String line = footerHint(ui.menu);
-        draw.text(canvas, line, width / 2, hintBaseline, size,
-                Theme.secondaryText(ui.highContrastOn), Paint.Align.CENTER, false);
-    }
 
     /**
      * How to use the highlighted row. The size and story rows are steppers whose centre

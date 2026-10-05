@@ -91,6 +91,18 @@ public final class SettingsScene {
     /** Enough choices to scan at once from a sofa without turning the screen into a ledger. */
     static final int VISIBLE_ROWS = 7;
 
+    /**
+     * How many rows the window shows as last drawn: {@link #VISIBLE_ROWS}, or fewer when
+     * the type is so large that seven pills would be shorter than their own words. With
+     * LARGER TEXT over a large system font a row's descenders reached its bottom edge, so
+     * the window gives up a row and keeps every pill tall enough.
+     */
+    private static int visibleRows = VISIBLE_ROWS;
+
+    public static int visibleRows() {
+        return visibleRows;
+    }
+
     /** The band of the screen the rows live in, as a fraction of its height. */
     static final float ROWS_TOP = .215f;
     static final float ROWS_BOTTOM = .820f;
@@ -510,6 +522,7 @@ public final class SettingsScene {
         note = "";
         noteAt = 0;
         tidyingPlayer = -1;
+        visibleRows = VISIBLE_ROWS;
     }
 
     /**
@@ -555,7 +568,7 @@ public final class SettingsScene {
     }
 
     /** Where an item sits in the list as it is shown. */
-    static int slotOf(int item) {
+    public static int slotOf(int item) {
         int selected = Math.floorMod(item, ITEM_COUNT);
         return !rateShown && selected > ITEM_RATE ? selected - 1 : selected;
     }
@@ -567,8 +580,8 @@ public final class SettingsScene {
 
     /** The first slot in the seven-row window, keeping focus near its calm centre. */
     static int windowStart(int focus) {
-        return Math.max(0, Math.min(count() - VISIBLE_ROWS,
-                slotOf(focus) - VISIBLE_ROWS / 2));
+        return Math.max(0, Math.min(count() - visibleRows(),
+                slotOf(focus) - visibleRows() / 2));
     }
 
     /** The current group, used as an eyebrow above the focus-following list. */
@@ -584,7 +597,7 @@ public final class SettingsScene {
 
     /** How far the list can be dragged, in rows: far enough to bring the last one in. */
     static float maxScroll() {
-        return count() - VISIBLE_ROWS;
+        return count() - visibleRows();
     }
 
     /** A drag's scroll position, held to the list. */
@@ -604,8 +617,8 @@ public final class SettingsScene {
     /** Vertical centres for the visible rows only. */
     static float[] rowCentres(float top, float bottom) {
         float step = rowStep(top, bottom);
-        float[] centres = new float[VISIBLE_ROWS];
-        for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
+        float[] centres = new float[visibleRows()];
+        for (int slot = 0; slot < visibleRows(); slot++) {
             centres[slot] = top + step * (slot + .5f);
         }
         return centres;
@@ -616,8 +629,22 @@ public final class SettingsScene {
         return rowStep(top, bottom) * .43f;
     }
 
+    /**
+     * The most rows, up to {@link #VISIBLE_ROWS}, whose pills still hold a label: its
+     * capitals centred, its descenders inside, and a little air.
+     */
+    private static int rowsThatFit(float top, float bottom) {
+        float label = Theme.textSize(Theme.CAPTION);
+        float need = label * (.35f + .22f) + Math.max(2f, label * .07f);
+        int rows = VISIBLE_ROWS;
+        while (rows > 4 && (bottom - top) / rows * .43f < need) {
+            rows--;
+        }
+        return rows;
+    }
+
     private static float rowStep(float top, float bottom) {
-        return (bottom - top) / VISIBLE_ROWS;
+        return (bottom - top) / visibleRows();
     }
 
     // ---- Drawing ---------------------------------------------------------------------
@@ -636,7 +663,7 @@ public final class SettingsScene {
      */
     public int itemAt(float x, float y) {
         if (drawnCentres == null || x < drawnLeft || x > drawnRight || drawnStep <= 0
-                || y < drawnTop || y > drawnTop + drawnStep * VISIBLE_ROWS) {
+                || y < drawnTop || y > drawnTop + drawnStep * visibleRows()) {
             return -1;
         }
         int slot = (int) Math.floor((y - drawnTop) / drawnStep + drawnScroll);
@@ -690,26 +717,38 @@ public final class SettingsScene {
         float hintY = bottom - capSize * .18f;
         float explainSize = Theme.textSize(Theme.BODY);
         float explainY = hintY - capSize * .70f - Theme.scale(14) - explainSize * .18f;
-        float footerTop = explainY - explainSize * .70f - Theme.scale(10);
+        // Room for two lines of explanation whenever anything this screen can say needs
+        // them at this size, decided for the screen as a whole so the rows do not jump as
+        // the focus moves. With LARGER TEXT the longest of them used to run past both
+        // edges of the panel, held at a prose floor it was not allowed to shrink below.
+        float explainRoom = frame.rowRight(width) - frame.rowLeft(width);
+        int explainLines = explainLines(ui, explainRoom);
+        float explainPitch = explainSize * EXPLAIN_PITCH;
+        float footerTop = explainY - (explainLines - 1) * explainPitch
+                - explainSize * .70f - Theme.scale(10);
 
         boolean touch = HudScene.touch();
         int focus = Math.floorMod(ui.menu, ITEM_COUNT);
-        float scroll = windowTop(ui);
-        int start = Math.round(scroll);
         float sectionSize = Theme.textSize(Theme.CAPTION);
         float sectionY = headerBottom + sectionSize * .70f;
+        float rowTop = sectionY + sectionSize * .22f + Theme.scale(10);
+        float rowBottom = Math.max(rowTop + Theme.scale(80), footerTop);
+        visibleRows = rowsThatFit(rowTop, rowBottom);
+        float scroll = windowTop(ui);
+        int start = Math.round(scroll);
         float rowLeft = frame.rowLeft(width);
         float rowRight = frame.rowRight(width);
         // A controller names the group its focus is in; a finger, the group at the top of
         // what it has scrolled to, since that is what it is looking at.
-        draw.text(canvas, sectionName(touch ? itemAtSlot(start) : focus), rowLeft, sectionY,
-                sectionSize, Theme.GOLD, Paint.Align.LEFT, true);
-        String place = (start + 1) + "–" + (start + VISIBLE_ROWS) + "  OF  " + count();
+        String place = (start + 1) + "–" + (start + visibleRows()) + " of " + count();
         draw.text(canvas, place, rowRight, sectionY, sectionSize,
                 Theme.secondaryText(bold), Paint.Align.RIGHT, false);
+        float placeWidth = draw.measure(place, sectionSize, false);
+        draw.fitText(canvas, sectionName(touch ? itemAtSlot(start) : focus), rowLeft,
+                sectionY, sectionSize, Theme.textSize(Theme.MIN_PROSE_SP),
+                rowRight - rowLeft - placeWidth - Theme.scale(16), Theme.GOLD,
+                Paint.Align.LEFT, true);
 
-        float rowTop = sectionY + sectionSize * .22f + Theme.scale(10);
-        float rowBottom = Math.max(rowTop + Theme.scale(80), footerTop);
         String[] labels = labels(ui);
         boolean[] states = states(ui);
         float[] centres = rowCentres(rowTop, rowBottom);
@@ -730,7 +769,7 @@ public final class SettingsScene {
             float glow = half * .25f;
             canvas.save();
             canvas.clipRect(rowLeft - glow, rowTop, rowRight + glow, rowBottom);
-            for (int slot = first; slot < Math.min(count(), first + VISIBLE_ROWS + 1);
+            for (int slot = first; slot < Math.min(count(), first + visibleRows() + 1);
                  slot++) {
                 int item = itemAtSlot(slot);
                 float centreY = centres[0] + (slot - scroll) * step;
@@ -739,14 +778,16 @@ public final class SettingsScene {
             }
             canvas.restore();
             drawScrollBar(canvas, rowRight, rowTop, rowBottom, scroll, bold);
-            drawBottomLine(canvas, width, explainY, touchBottomLine(now, ui), bold);
+            drawBottomLine(canvas, width, explainY, explainLines, touchBottomLine(now, ui),
+                    bold);
         } else {
-            for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
+            for (int slot = 0; slot < visibleRows(); slot++) {
                 int item = itemAtSlot(start + slot);
                 drawRow(canvas, width, centres[slot], half, labels[item], states[item],
                         item == focus, item, ui, now);
             }
-            drawBottomLine(canvas, width, explainY, bottomLine(focus, now, ui), bold);
+            drawBottomLine(canvas, width, explainY, explainLines, bottomLine(focus, now, ui),
+                    bold);
         }
         drawFooter(canvas, width, hintY, bold);
     }
@@ -774,8 +815,19 @@ public final class SettingsScene {
         float switchRight = right - edge - stateWordWidth(stateSize) - gap;
         float switchLeft = switchRight - switchWidth;
         float chipsWidth = item == ITEM_DISTINCT_PLAYERS ? chipPlateWidth(half) : 0;
+        String action = item == ITEM_BACK ? "RETURN" : opensSomething(item) ? "OPEN" : "CHOOSE";
+        boolean accessory = !hasSwitch(item) && focused;
+        float floor = Theme.textSize(Theme.MIN_PROSE_SP);
+        // The focused action row names its button on the right. Where the row's own name
+        // needs that room — "Reset all settings?" with LARGER TEXT ran under the A — the
+        // button stays and its word goes, and on a touch screen, where the word is all
+        // there is, the row itself is the button.
+        boolean actionWord = accessory && draw.measure(label, floor, true)
+                <= right - edge - accessoryWidth(action, stateSize, true) - gap - left - pad;
         float labelRight = hasSwitch(item)
                 ? switchLeft - gap - (chipsWidth > 0 ? chipsWidth + gap : 0)
+                : accessory ? right - edge - accessoryWidth(action, stateSize, actionWord)
+                        - gap
                 : right - edge;
 
         int ink = focused ? Theme.textOn(fill) : Theme.CREAM;
@@ -796,11 +848,9 @@ public final class SettingsScene {
                     centreY + draw.capCentreOffset(stateSize), stateSize, ink,
                     Paint.Align.RIGHT, true);
         } else {
-            if (focused) {
-                drawActionAccessory(canvas, right - edge, centreY,
-                        item == ITEM_BACK ? "RETURN" : opensSomething(item) ? "OPEN" : "CHOOSE",
-                        stateSize,
-                        Theme.textOn(fill));
+            if (accessory) {
+                drawActionAccessory(canvas, right - edge, centreY, actionWord ? action : "",
+                        stateSize, Theme.textOn(fill));
             }
         }
     }
@@ -815,7 +865,7 @@ public final class SettingsScene {
         float x = rowRight + Theme.scale(12);
         float width = Theme.scale(5);
         float track = bottom - top;
-        float thumb = track * VISIBLE_ROWS / count();
+        float thumb = track * visibleRows() / count();
         float thumbTop = top + (track - thumb) * (scroll / maxScroll());
         draw.roundRect(canvas, x, top, x + width, bottom, width / 2,
                 Draw.withAlpha(Theme.CREAM, bold ? 60 : 34));
@@ -823,22 +873,36 @@ public final class SettingsScene {
                 Draw.withAlpha(Theme.CREAM, bold ? 220 : 160));
     }
 
+    /** How wide {@link #drawActionAccessory} draws, with or without its word. */
+    private float accessoryWidth(String label, float size, boolean withWord) {
+        float labelWidth = withWord ? draw.measure(label, size, true) : 0;
+        if (HudScene.touch()) {
+            return labelWidth;
+        }
+        return labelWidth + (withWord ? Theme.scale(8) : 0)
+                + draw.keycapWidth(HomeScene.confirmName(), size * 1.05f);
+    }
+
     private void drawActionAccessory(Canvas canvas, float right, float centreY,
                                      String label, float size, int textColor) {
-        float labelWidth = draw.measure(label, size, true);
+        float labelWidth = label.isEmpty() ? 0 : draw.measure(label, size, true);
         if (HudScene.touch()) {
-            draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
-                    textColor, Paint.Align.RIGHT, true);
+            if (!label.isEmpty()) {
+                draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
+                        textColor, Paint.Align.RIGHT, true);
+            }
             return;
         }
-        float gap = Theme.scale(8);
+        float gap = label.isEmpty() ? 0 : Theme.scale(8);
         float height = size * 1.05f;
         String key = HomeScene.confirmName();
         float width = draw.keycapWidth(key, height);
         int color = HudScene.remoteOnly() ? Theme.INK : Theme.BUTTON_A;
         draw.keycap(canvas, right - labelWidth - gap - width, centreY, height, key, color);
-        draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
-                textColor, Paint.Align.RIGHT, true);
+        if (!label.isEmpty()) {
+            draw.text(canvas, label, right, centreY + draw.capCentreOffset(size), size,
+                    textColor, Paint.Align.RIGHT, true);
+        }
     }
 
     /**
@@ -949,15 +1013,78 @@ public final class SettingsScene {
     }
 
     /** The one line at the bottom, given properly rather than whispered. */
-    private void drawBottomLine(Canvas canvas, float width, float baseline, String line,
-                                boolean bold) {
+    private void drawBottomLine(Canvas canvas, float width, float baseline, int slots,
+                                String line, boolean bold) {
         if (line.isEmpty()) {
             return;
         }
         float room = frame.rowRight(width) - frame.rowLeft(width);
-        float size = fit(line, room, Theme.textSize(Theme.BODY), false);
-        draw.text(canvas, line, width / 2, baseline, size,
-                Draw.withAlpha(Theme.CREAM, bold ? 255 : 225), Paint.Align.CENTER, false);
+        float preferred = Theme.textSize(Theme.BODY);
+        float size = fit(line, room, preferred, false);
+        String[] lines = {line};
+        if (slots > 1 && draw.measure(line, size, false) > room) {
+            // Two lines at the size it wanted, evenly broken, rather than one line at a
+            // size below the floor.
+            size = preferred;
+            lines = balancedLines(line, size, room);
+        }
+        int ink = Draw.withAlpha(Theme.CREAM, bold ? 255 : 225);
+        float pitch = preferred * EXPLAIN_PITCH;
+        // Centred in its slot: one line in a two-line slot sits in the middle of it, not
+        // against the footer with an empty line's worth of panel above it.
+        float y = baseline - (slots - 1) * pitch + (slots - lines.length) * pitch / 2;
+        for (String text : lines) {
+            draw.text(canvas, text, width / 2, y, size, ink, Paint.Align.CENTER, false);
+            y += pitch;
+        }
+    }
+
+    /** {@code text} in as few lines as fit {@code room}, the lines as even as they go. */
+    private String[] balancedLines(String text, float size, float room) {
+        String[] lines = draw.wrap(text, size, room, false);
+        float lane = room;
+        while (lines.length > 1 && lane > room * .5f) {
+            String[] tighter = draw.wrap(text, size, lane * .95f, false);
+            if (tighter.length != lines.length) {
+                break;
+            }
+            lines = tighter;
+            lane *= .95f;
+        }
+        return lines;
+    }
+
+    /** Baseline to baseline when the explanation takes two lines. */
+    private static final float EXPLAIN_PITCH = 1.2f;
+
+    /** Every note the corner might show, beyond the rows' own explanations. */
+    private static final String[] NOTES = {
+            "Choose again to be sure — this cannot be undone",
+            "Nothing is collected; nothing is sent anywhere",
+            "Everything is back the way it started  ♥",
+            "CozyGrams is on Google Play",
+    };
+
+    /**
+     * How many lines the explanation slot needs on this screen at this size: two when any
+     * row's explanation, any note, or the note being shown now does not fit on one.
+     */
+    private int explainLines(UiState ui, float room) {
+        float floor = Theme.textSize(Theme.MIN_PROSE_SP);
+        for (String line : descriptions(ui)) {
+            if (draw.measure(line, floor, false) > room) {
+                return 2;
+            }
+        }
+        for (String line : NOTES) {
+            if (draw.measure(line, floor, false) > room) {
+                return 2;
+            }
+        }
+        if (!note.isEmpty() && draw.measure(note, floor, false) > room) {
+            return 2;
+        }
+        return 1;
     }
 
     /**
@@ -973,7 +1100,7 @@ public final class SettingsScene {
         float left = frame.rowLeft(width);
         float right = frame.rowRight(width);
         if (HudScene.touch()) {
-            String line = "Tap a row to change it · drag the list for more";
+            String line = "Tap to change · drag for more";
             float size = fit(line, right - left, Theme.textSize(Theme.CAPTION), false);
             draw.text(canvas, line, (left + right) / 2, baseline, size,
                     Theme.secondaryText(bold), Paint.Align.CENTER, false);

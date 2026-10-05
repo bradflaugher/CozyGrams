@@ -140,7 +140,8 @@ says the same at more length, and its address is in the Cozy Corner.
 
 ## Build and test
 
-Install JDK 21 and the Android SDK, then run:
+Install JDK 21, the Android SDK and the Liberation Sans font (see
+[the text-fit guard](#the-text-fit-guard)), then run:
 
 ```sh
 ./gradlew test lint assembleDebug
@@ -190,6 +191,34 @@ These are written ready to upload, with no alpha channel and no stamp (below), a
 `fastlane/metadata/android/en-US/images/` is copied from. The README's own shots in
 `docs/screenshots/` stay uncaptioned. The listing has no promo video yet: Play takes
 only a YouTube link, and the clips `record.sh` renders (below) are the place to start one.
+
+### The text-fit guard
+
+Every line of words the game draws goes through `Draw`, and in the harness `Draw` tells
+`tools/preview/TextAudit.java` where each one landed and what it was drawn inside. A line
+fails if its glyphs run past its pill, card, panel or button, straddle the edge of a card,
+collide with another line or a button cap, are cut by a clip, or leave the safe area.
+
+```sh
+tools/preview/audit.sh                     # the whole matrix, about five seconds
+tools/preview/audit.sh --show out.png home-row-2 tv-1080p text-1.3 gamepad   # one cell, painted
+```
+
+The matrix is every screen state (title screen rows, greetings and tips, every Cozy Corner
+row and note, all five How to play pages, every tour step, every tip, the board and its
+ribbon at every size, all 24 chapters and subjects, the win cards) at TV 1080p and 720p,
+phones and 7" and 10" tablets each way up, and windows under a cutout or system bars,
+with Larger text off, on, and on over a 1.3
+system font, in the words of a fresh TV, a gamepad, a bare remote, a keyboard and a
+finger. `./gradlew test` runs it (task `textFitAudit`), so CI fails on any overflow, and
+`render.sh` fails on any overflow in the frames it writes.
+
+Text is measured in Liberation Sans, which every committed render uses and which is
+within a few percent of the devices' Roboto (the containment check keeps a little air for
+that). Install it (`fonts-liberation` on
+Debian and Ubuntu, `liberation-sans-fonts` on Fedora, `ttf-liberation` on Arch) before
+running the tests; without it the audit stops and says so rather than judge with a
+different ruler.
 
 What the closed test suggested, and what was done with each suggestion, is in
 [docs/tester-feedback](docs/tester-feedback/README.md).

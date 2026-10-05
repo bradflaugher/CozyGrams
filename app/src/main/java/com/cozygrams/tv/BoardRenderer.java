@@ -917,7 +917,10 @@ public final class BoardRenderer {
 
             if (done) {
                 float half = Math.min(board.cell * .42f, size * .78f);
-                drawSolvedBand(canvas, board.rowClueOuterX(clues.length - 1),
+                // Past the outermost digit by a quarter of a digit, so the band's rounded end
+                // holds the number rather than cutting through it.
+                drawSolvedBand(canvas, Math.max(board.cardLeft() + Theme.scale(4),
+                                board.rowClueOuterX(clues.length - 1) - size * .25f),
                         centre - half, board.left, centre + half, ui);
             }
             for (int i = clues.length - 1, lane = 0; i >= 0; i--, lane++) {
@@ -946,8 +949,9 @@ public final class BoardRenderer {
             if (done) {
                 float half = Math.min(board.cell * .42f, size * .78f);
                 drawSolvedBand(canvas, centre - half,
-                        board.colClueOuterY(clues.length - 1), centre + half, board.top,
-                        ui);
+                        Math.max(board.cardTop() + Theme.scale(4),
+                                board.colClueOuterY(clues.length - 1) - size * .25f),
+                        centre + half, board.top, ui);
             }
             for (int i = clues.length - 1, lane = 0; i >= 0; i--, lane++) {
                 float scale = clues[i] == 0 ? .86f : 1f;

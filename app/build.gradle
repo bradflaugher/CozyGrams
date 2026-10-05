@@ -62,3 +62,41 @@ android {
 dependencies {
     testImplementation 'junit:junit:4.13.2'
 }
+
+// The text-fit guard. Every screen, at every size the game ships to (TV 1080p and 720p,
+// phones and 7" and 10" tablets each way up), with LARGER TEXT off, on, and on over a
+// large system font, in the words of every kind of controller, is drawn on the desktop
+// through the preview harness's Java2D stubs, and the build fails if any line of words
+// runs past its pill, panel or button, collides with another, or leaves the safe area.
+// Unit tests cannot see this: they run with returnDefaultValues, where every text
+// measures zero. See tools/preview/TextAudit.java.
+def textFitReport = layout.buildDirectory.file('reports/text-fit/text-fit.txt')
+def textFitClasses = layout.buildDirectory.dir('text-fit/classes')
+// Plain Gradle and Java, no shell, so it runs wherever the build does. The harness and its
+// android.graphics stubs are compiled with the app's rendering sources pulled in through
+// the source path, exactly as tools/preview/audit.sh does it.
+def compileTextFit = tasks.register('compileTextFit', JavaCompile) {
+    description = 'Compiles the preview harness for the text-fit audit.'
+    source = fileTree(rootProject.file('tools/preview')) {
+        include 'stubs/**/*.java', 'Preview.java', 'TextAudit.java'
+    }
+    classpath = files()
+    destinationDirectory = textFitClasses
+    options.encoding = 'UTF-8'
+    options.sourcepath = files('src/main/java')
+    options.compilerArgs += ['-implicit:class', '-nowarn', '-Xlint:-options']
+    options.release = 17
+    inputs.files(fileTree('src/main/java'))
+}
+def textFitAudit = tasks.register('textFitAudit', JavaExec) {
+    description = 'Fails when any text in any screen state overflows its container.'
+    group = 'verification'
+    dependsOn compileTextFit
+    classpath = files(textFitClasses)
+    mainClass = 'Preview'
+    jvmArgs '-Djava.awt.headless=true', '-Dfile.encoding=UTF-8'
+    def report = textFitReport.get().asFile.absolutePath
+    args '--audit', report
+    outputs.file(textFitReport)
+}
+tasks.matching { it.name == 'test' }.configureEach { dependsOn textFitAudit }
