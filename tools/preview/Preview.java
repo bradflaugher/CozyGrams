@@ -453,6 +453,13 @@ public final class Preview {
                         "Send feedback focused on a television with no browser, LARGER TEXT on: "
                                 + "the address is shown in words.",
                         Preview::settingsFeedbackNoBrowser),
+                new Frame("47-settings-share-nothing-to-share.png",
+                        "Share CozyGrams focused on a television with nothing to share to: "
+                                + "the Google Play link is shown in words.",
+                        Preview::settingsShareNothingToShare),
+                new Frame("sizes/47-settings-share-nothing-to-share-bigtext-720p.png",
+                        "The same at 720p with LARGER TEXT, where the link has least room.",
+                        Preview::settingsShareNothingToShareBig, 1280, 720),
                 new Frame("phone/48-phone-help.png",
                         "How to play on a phone: tappable tabs and the welcome button.",
                         Preview::phoneHelp, 2400, 1080),
@@ -498,6 +505,31 @@ public final class Preview {
                 new Frame("56-tip-story.png",
                         "The title screen with the one-time tip on the Story Book row.",
                         Preview::tipStory),
+                new Frame("57-tip-story-first-evening.png",
+                        "The Story Book tip on a first evening, under the welcome line: "
+                                + "it keeps off every word on the screen.",
+                        Preview::tipStoryFirstEvening),
+                new Frame("58-tip-corner.png",
+                        "The Cozy Corner tip on a first evening, clear of the chapter card.",
+                        Preview::tipCorner),
+                new Frame("59-tip-story-bigtext.png",
+                        "The Story Book tip with LARGER TEXT.",
+                        Preview::tipStoryBig),
+                new Frame("60-tip-corner-bigtext.png",
+                        "The Cozy Corner tip with LARGER TEXT.",
+                        Preview::tipCornerBig),
+                new Frame("sizes/57-tip-story-first-evening-720p.png",
+                        "The Story Book tip at 720p.",
+                        Preview::tipStoryFirstEvening, 1280, 720),
+                new Frame("sizes/58-tip-corner-720p.png",
+                        "The Cozy Corner tip at 720p.",
+                        Preview::tipCorner, 1280, 720),
+                new Frame("sizes/59-tip-story-bigtext-720p.png",
+                        "The Story Book tip at 720p with LARGER TEXT.",
+                        Preview::tipStoryBig, 1280, 720),
+                new Frame("sizes/60-tip-corner-bigtext-720p.png",
+                        "The Cozy Corner tip at 720p with LARGER TEXT.",
+                        Preview::tipCornerBig, 1280, 720),
                 new Frame("store/phone-1-two-players.png",
                         "Play Store phone shot: a paired controller playing Sky beside the finger's Rose.",
                         Preview::phoneTwoPlayers, 1920, 1080),
@@ -721,17 +753,54 @@ public final class Preview {
     }
 
     private static void tipStory(Canvas canvas, Renderer renderer, int w, int h) {
+        homeTip(canvas, renderer, w, h, Tips.STORY, null, false);
+    }
+
+    /** What the first evening's title screen greets with, from SaveStore. */
+    private static final String FIRST_EVENING = "Welcome — let's find a picture together";
+
+    private static void tipStoryFirstEvening(Canvas canvas, Renderer renderer, int w, int h) {
+        homeTip(canvas, renderer, w, h, Tips.STORY, FIRST_EVENING, false);
+    }
+
+    private static void tipCorner(Canvas canvas, Renderer renderer, int w, int h) {
+        homeTip(canvas, renderer, w, h, Tips.CORNER, FIRST_EVENING, false);
+    }
+
+    private static void tipStoryBig(Canvas canvas, Renderer renderer, int w, int h) {
+        homeTip(canvas, renderer, w, h, Tips.STORY, FIRST_EVENING, true);
+    }
+
+    private static void tipCornerBig(Canvas canvas, Renderer renderer, int w, int h) {
+        homeTip(canvas, renderer, w, h, Tips.CORNER, FIRST_EVENING, true);
+    }
+
+    private static void homeTip(Canvas canvas, Renderer renderer, int w, int h, int tip,
+                                String welcome, boolean big) {
         GameState game = endless(SUBJECT_SWEETHEART, 10);
         UiState ui = newUi();
         ui.screen = UiState.HOME;
         ui.menu = HomeScene.ITEM_STORY;
         ui.joined[0] = true;
+        ui.bigTextOn = big;
         HomeScene.setPendingChapter(0);
         HudScene.setPadSeen(true);
-        // A frame first, so the rows the tip points at have been laid out.
-        renderer.draw(canvas, w, h, game, ui, new Effects(), T0 - 16);
-        ui.tips.show(Tips.STORY, T0 - 900);
-        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+        if (welcome != null) {
+            HomeScene.setWelcome(welcome);
+        }
+        try {
+            // A frame first, so the rows the tip points at have been laid out.
+            renderer.draw(canvas, w, h, game, ui, new Effects(), T0 - 16);
+            ui.tips.show(tip, T0 - 900);
+            // Twice: words a tip needs the room of step aside from the frame after it
+            // first finds its place, as they do on a television.
+            renderer.draw(canvas, w, h, game, ui, new Effects(), T0 - 16);
+            renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+        } finally {
+            if (welcome != null) {
+                HomeScene.setWelcome("");
+            }
+        }
     }
 
     // ---- Store scenes ------------------------------------------------------------------
@@ -833,6 +902,29 @@ public final class Preview {
         ui.canBrowse = false;
         ui.canShare = false;
         ui.bigTextOn = true;
+        ui.joined[0] = true;
+        renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
+    }
+
+    private static void settingsShareNothingToShare(Canvas canvas, Renderer renderer, int w,
+                                                    int h) {
+        shareNothingToShare(canvas, renderer, w, h, false);
+    }
+
+    private static void settingsShareNothingToShareBig(Canvas canvas, Renderer renderer,
+                                                       int w, int h) {
+        shareNothingToShare(canvas, renderer, w, h, true);
+    }
+
+    private static void shareNothingToShare(Canvas canvas, Renderer renderer, int w, int h,
+                                            boolean big) {
+        GameState game = endless(SUBJECT_OWL, 10);
+        UiState ui = newUi();
+        ui.screen = UiState.SETTINGS;
+        ui.menu = SettingsScene.ITEM_SHARE;
+        ui.canBrowse = false;
+        ui.canShare = false;
+        ui.bigTextOn = big;
         ui.joined[0] = true;
         renderer.draw(canvas, w, h, game, ui, new Effects(), T0);
     }

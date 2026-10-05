@@ -119,7 +119,8 @@ falling asleep and waking up with a new device id.
   feedback** opens the [new-issue page](https://github.com/bradflaugher/CozyGrams/issues/new)
   in a browser, and **Rate on Google Play** opens the store page. A television with no
   share sheet or no browser shows the address instead, and one with no store leaves the
-  Rate row out. The game never asks for a rating on its own.
+  Rate row out. Android TV's placeholder "browser" and "email" apps, which answer a link
+  only to say there is no app for it, don't count as either. The game never asks for a rating on its own.
 - Progress that survives anything — a versioned save with a fingerprint of the hidden
   picture, so a stale or mismatched save deals a fresh board instead of corrupting one.
 - Native landscape interface for the TV (no touchscreen required, nothing below the safe
@@ -173,7 +174,7 @@ settled, the page turn between chapters, and the layout cases that break things 
 widest message, Larger Text, Extra Contrast, and one title screen carrying every long
 string at once — plus a touch tablet, and a window under a status bar, a navigation bar and
 a camera cutout, which are the frames to read at portrait, square and 4:3 sizes such as
-`1600 2560`, `1200 1200` or `800 600`. Forty-four of them render at whatever resolution
+`1600 2560`, `1200 1200` or `800 600`. Forty-nine of them render at whatever resolution
 you ask for; `sizes/` holds the same 20×20 board pinned at 1280×720 and 3840×2160, so a
 scaling regression turns up as a picture rather than as an argument, and a portrait tablet
 pinned at 1600×2560; `phone/` pins the phone shapes, and `store/` holds the Google Play

@@ -152,9 +152,14 @@ public final class Renderer {
         if (ui.tips.showing >= 0) {
             float[] anchor = tipAnchor(ui.tips.showing, ui);
             if (anchor != null) {
+                // The title screen's tips keep off its words; it says where they are.
+                boolean onHome = ui.screen == UiState.HOME;
                 ui.tips.draw(canvas, draw, width, height, anchor,
                         Tips.text(ui.tips.showing, TutorialScene.hands()),
-                        now - ui.tips.shownAt, ui.highContrastOn);
+                        now - ui.tips.shownAt, ui.highContrastOn,
+                        onHome ? home.textRects() : null,
+                        onHome ? home.textGroups() : null,
+                        onHome ? home.textRectCount() : 0);
             }
         }
     }

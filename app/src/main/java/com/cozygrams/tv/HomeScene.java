@@ -213,6 +213,66 @@ public final class HomeScene {
 
     private final float[] rowRect = new float[4];
 
+    /**
+     * Every piece of text the landing page drew last frame, as {left, top, right, bottom}
+     * runs of four, so a one-time tip can be set down beside its row without covering any
+     * of it. The rows are in here as whole pills.
+     */
+    private final float[] textRects = new float[4 * 24];
+    /** Which {@code Tips.YIELD_*} group each rectangle's words are in, or 0. */
+    private final int[] textGroups = new int[24];
+    private int textRectCount;
+
+    /** The text drawn last frame, four floats a rectangle; see {@link #textRectCount}. */
+    public float[] textRects() {
+        return textRects;
+    }
+
+    public int textRectCount() {
+        return textRectCount;
+    }
+
+    public int[] textGroups() {
+        return textGroups;
+    }
+
+    private void keepClear(float left, float top, float right, float bottom) {
+        keepClear(left, top, right, bottom, 0);
+    }
+
+    private void keepClear(float left, float top, float right, float bottom, int group) {
+        if (textRectCount >= textGroups.length) {
+            return;
+        }
+        textGroups[textRectCount] = group;
+        int at = textRectCount * 4;
+        textRects[at] = left;
+        textRects[at + 1] = top;
+        textRects[at + 2] = right;
+        textRects[at + 3] = bottom;
+        textRectCount++;
+    }
+
+    /** Records a line of text drawn at {@code baseline} with the given alignment. */
+    private void keepClear(String text, float x, float baseline, float size,
+                           Paint.Align align, boolean strong, int group) {
+        float textWidth = draw.measure(text, size, strong);
+        float left = align == Paint.Align.LEFT ? x
+                : align == Paint.Align.RIGHT ? x - textWidth : x - textWidth / 2;
+        keepClear(left, baseline - size * (CAP_HEIGHT + .12f), left + textWidth,
+                baseline + size * (DESCENT + .06f), group);
+    }
+
+    /**
+     * {@code color} as strongly as the words in {@code group} are drawn this frame: a tip
+     * that needed their room fades them while it is up.
+     */
+    private static int yielded(int color, UiState ui, int group, long now) {
+        float strength = ui.tips.wordsAlpha(group, now);
+        return strength >= 1 ? color
+                : Draw.withAlpha(color, (int) ((color >>> 24) * strength));
+    }
+
     /** A row's rectangle as last drawn, for a tip to point at; null before it is drawn. */
     public float[] rowRect(int item) {
         if (!rowsDrawn || item < 0 || item >= ITEM_COUNT) {
@@ -570,6 +630,7 @@ public final class HomeScene {
      */
     private void drawLanding(Canvas canvas, float width, float height, GameState game,
                              UiState ui, long now) {
+        textRectCount = 0;
         // The fractions are of the 16:9 stage rather than of the window, so a square or a
         // tall window letterboxes this screen instead of stretching both cards down it,
         // and each edge also clears whatever the window's own bars and cutout cover.
@@ -664,6 +725,8 @@ public final class HomeScene {
                 + titleSize * CAP_HEIGHT;
         draw.tracked(canvas, "COZYGRAMS", cx, titleY, titleSize, Theme.CREAM,
                 TITLE_TRACKING, true);
+        keepClear(left + pad, titleY - titleSize * (CAP_HEIGHT + .12f), right - pad,
+                titleY + titleSize * DESCENT);
 
         float ruleY = titleY + titleSize * DESCENT + Theme.scale(12);
         draw.roundRect(canvas, cx - Theme.scale(54), ruleY, cx + Theme.scale(54),
@@ -677,6 +740,8 @@ public final class HomeScene {
             draw.text(canvas, greetingLines[i], cx, greetingY, greetingSize,
                     welcome.isEmpty() ? Comfort.skyColor() : Theme.GOLD,
                     Paint.Align.CENTER, false);
+            keepClear(greetingLines[i], cx, greetingY, greetingSize, Paint.Align.CENTER,
+                    false, 0);
             greetingY += greetingSize * (CAP_HEIGHT + DESCENT);
         }
 
@@ -692,30 +757,40 @@ public final class HomeScene {
         float detailLane = right - pad - Theme.scale(28) - textLeft;
         float eyebrowSize = landingText(Theme.CAPTION);
         float eyebrowY = detailTop + Theme.scale(30) + eyebrowSize * CAP_HEIGHT;
+        int detail = Tips.YIELD_DETAIL;
         draw.text(canvas, landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize,
-                Theme.GOLD, Paint.Align.LEFT, true);
+                yielded(Theme.GOLD, ui, detail, now), Paint.Align.LEFT, true);
+        keepClear(landingEyebrow(selected), textLeft, eyebrowY, eyebrowSize, Paint.Align.LEFT,
+                true, detail);
 
         String feature = landingFeature(game, selected);
         float featureSize = draw.fit(feature, landingText(Theme.HEADING), detailLane,
                 true, landingText(Theme.SUBHEAD));
         float featureY = eyebrowY + Theme.scale(18) + featureSize * CAP_HEIGHT;
-        draw.text(canvas, feature, textLeft, featureY, featureSize, Theme.CREAM,
-                Paint.Align.LEFT, true);
+        draw.text(canvas, feature, textLeft, featureY, featureSize,
+                yielded(Theme.CREAM, ui, detail, now), Paint.Align.LEFT, true);
+        keepClear(feature, textLeft, featureY, featureSize, Paint.Align.LEFT, true, detail);
 
         float metaSize = landingText(Theme.CAPTION);
         float metaY = featureY + featureSize * DESCENT + Theme.scale(18)
                 + metaSize * CAP_HEIGHT;
         draw.text(canvas, landingMeta(game, selected), textLeft, metaY, metaSize,
-                Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, false);
+                yielded(Theme.secondaryText(ui.highContrastOn), ui, detail, now),
+                Paint.Align.LEFT, false);
+        keepClear(landingMeta(game, selected), textLeft, metaY, metaSize, Paint.Align.LEFT,
+                false, detail);
 
         if (Theme.textScale() <= 1.2f) {
             float bodySize = landingText(Theme.BODY);
             float bodyY = metaY + metaSize * DESCENT + Theme.scale(26)
                     + bodySize * CAP_HEIGHT;
             float bodyLane = detailLane - Theme.scale(24);
-            draw.text(canvas, landingDescription(selected), textLeft, bodyY,
-                    draw.fit(landingDescription(selected), bodySize, bodyLane, false,
-                            landingText(Theme.CAPTION)), Theme.CREAM, Paint.Align.LEFT, false);
+            float bodyFit = draw.fit(landingDescription(selected), bodySize, bodyLane, false,
+                    landingText(Theme.CAPTION));
+            draw.text(canvas, landingDescription(selected), textLeft, bodyY, bodyFit,
+                    yielded(Theme.CREAM, ui, detail, now), Paint.Align.LEFT, false);
+            keepClear(landingDescription(selected), textLeft, bodyY, bodyFit,
+                    Paint.Align.LEFT, false, detail);
         }
 
         drawPresence(canvas, left + pad, right - pad, bottom - Theme.scale(53), ui);
@@ -729,15 +804,21 @@ public final class HomeScene {
         float rowRight = right - pad;
         float heading = landingText(Theme.SUBHEAD);
         float headingY = top + Theme.scale(42) + heading * CAP_HEIGHT;
-        draw.text(canvas, "Choose how to settle in", rowLeft, headingY, heading, Theme.CREAM,
-                Paint.Align.LEFT, true);
+        int header = Tips.YIELD_HEADER;
+        draw.text(canvas, "Choose how to settle in", rowLeft, headingY, heading,
+                yielded(Theme.CREAM, ui, header, now), Paint.Align.LEFT, true);
+        keepClear("Choose how to settle in", rowLeft, headingY, heading, Paint.Align.LEFT,
+                true, header);
         float caption = landingText(Theme.CAPTION);
         String invitation = "A story, a puzzle, or a cozier room";
-        draw.text(canvas, invitation, rowLeft,
-                headingY + Theme.scale(18) + caption * CAP_HEIGHT,
-                draw.fit(invitation, caption, rowRight - rowLeft, false,
-                        landingText(Theme.MIN_PROSE_SP)),
-                Theme.secondaryText(ui.highContrastOn), Paint.Align.LEFT, false);
+        float invitationY = headingY + Theme.scale(18) + caption * CAP_HEIGHT;
+        float invitationSize = draw.fit(invitation, caption, rowRight - rowLeft, false,
+                landingText(Theme.MIN_PROSE_SP));
+        draw.text(canvas, invitation, rowLeft, invitationY, invitationSize,
+                yielded(Theme.secondaryText(ui.highContrastOn), ui, header, now),
+                Paint.Align.LEFT, false);
+        keepClear(invitation, rowLeft, invitationY, invitationSize, Paint.Align.LEFT, false,
+                header);
 
         float rowsTop = top + Theme.scale(150);
         float footerRoom = Theme.scale(92);
@@ -758,10 +839,13 @@ public final class HomeScene {
         for (int item = 0; item < ITEM_COUNT; item++) {
             drawLandingRowCopy(canvas, rowLeft, rowRight, rowCentre[item], game, item,
                     selected, ui.highContrastOn);
+            keepClear(rowLeft, rowCentre[item] - rowHalf, rowRight, rowCentre[item] + rowHalf);
         }
 
-        drawLandingFooter(canvas, rowLeft, rowRight, bottom - Theme.scale(39), selected,
-                ui.highContrastOn);
+        float footerY = bottom - Theme.scale(39);
+        drawLandingFooter(canvas, rowLeft, rowRight, footerY, selected, ui.highContrastOn);
+        float footerHalf = landingText(Theme.CAPTION) * .62f;
+        keepClear(rowLeft, footerY - footerHalf, rowRight, footerY + footerHalf);
     }
 
     private void drawLandingRowSurface(Canvas canvas, float left, float right, float centreY,
@@ -899,6 +983,7 @@ public final class HomeScene {
         float size = draw.fit(line, landingText(Theme.CAPTION), right - left
                 - Theme.scale(34), together, landingText(Theme.MIN_PROSE_SP));
         float half = size * .95f;
+        keepClear(left, centreY - half, right, centreY + half);
         draw.roundRect(canvas, left, centreY - half, right, centreY + half, half,
                 Draw.withAlpha(accent, together ? 48 : 28));
         draw.roundRectStroke(canvas, left, centreY - half, right, centreY + half, half,

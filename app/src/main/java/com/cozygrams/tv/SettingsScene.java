@@ -70,6 +70,15 @@ public final class SettingsScene {
     static final String FEEDBACK_URL = "github.com/bradflaugher/CozyGrams";
 
     /**
+     * Where CozyGrams is on Google Play, written the same way: shown on the Share row when
+     * there is nothing on this device to share to, so a friend can still be told where it
+     * is. The full page address ({@code play.google.com/store/apps/details?id=…}) is 55
+     * characters and runs out of the panel even at the smallest prose size, so the line
+     * gives the site and what to search for; TalkBack reads the full address.
+     */
+    static final String PLAY_LINK = "play.google.com — search for CozyGrams";
+
+    /**
      * What a row asked the view to do that only the view can do — open another screen, or
      * hand an intent to Android — or {@code -1} for nothing. The scene stays free of
      * {@code Context}; {@link #consumeRequest} is how the view finds out.
@@ -200,8 +209,7 @@ public final class SettingsScene {
                 "every option back the way it started",
                 "chapter one, a fresh book",
                 "the rules, the controls, and questions",
-                ui.canShare ? "send a friend the Google Play link"
-                        : "find us on Google Play: search CozyGrams",
+                ui.canShare ? "send a friend the Google Play link" : PLAY_LINK,
                 ui.canBrowse ? "an idea or a bug? tell us on GitHub" : FEEDBACK_URL,
                 "a few stars, whenever you feel like it",
                 PRIVACY_URL,

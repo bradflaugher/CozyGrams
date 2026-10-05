@@ -2,6 +2,8 @@ package com.cozygrams.tv;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -72,5 +74,77 @@ public class TipsTest {
                 assertFalse(Tips.text(tip, hands).isEmpty());
             }
         }
+    }
+
+    // ---- Where the bubble goes --------------------------------------------------------
+
+    private static final float[] SAFE = {96, 54, 1824, 1026};
+    /** The title screen's Story Book row on the right-hand card, at 1080p. */
+    private static final float[] STORY_ROW = {1025, 338, 1728, 502};
+
+    private static boolean overlaps(float[] spot, float w, float h, float[] rect) {
+        return spot[0] < rect[2] && spot[0] + w > rect[0]
+                && spot[1] < rect[3] && spot[1] + h > rect[1];
+    }
+
+    /** A row on the right is pointed at from its left, beside it, when that is clear. */
+    @Test
+    public void aRailRowIsPointedAtFromItsLeft() {
+        float[] spot = Tips.place(420, 120, 20, 32, 10, STORY_ROW, 1920, SAFE,
+                new float[0], new int[0], 0, 0);
+        assertNotNull(spot);
+        assertEquals(Tips.LEFT, (int) spot[2]);
+        assertEquals(1025 - 20 - 420, spot[0], .01f);
+    }
+
+    /**
+     * The welcome line sits where a centred bubble would; the bubble slides down the
+     * row, keeping its pointer on it, until it is clear of the words.
+     */
+    @Test
+    public void theBubbleSlidesOffTheWordsBesideIt() {
+        float[] welcome = {225, 360, 865, 410};
+        float[] spot = Tips.place(420, 120, 20, 32, 10, STORY_ROW, 1920, SAFE,
+                welcome, new int[]{0}, 0, 1);
+        assertNotNull(spot);
+        assertEquals(Tips.LEFT, (int) spot[2]);
+        assertFalse(overlaps(spot, 420, 120, welcome));
+        // The pointer, the row's middle held inside the bubble's straight edge, still lands
+        // on the row.
+        float pointer = Math.max(spot[1] + 32, Math.min(spot[1] + 120 - 32, 420));
+        assertTrue(pointer >= STORY_ROW[1] && pointer <= STORY_ROW[3]);
+    }
+
+    /** Words that may step aside are covered only when asked; the rest never are. */
+    @Test
+    public void onlyWordsThatMayStepAsideAreEverCovered() {
+        // Everything beside the row and around it is text.
+        float[] clear = {
+                96, 54, 1010, 1026,     // the whole left card's words, which must stay
+                1025, 54, 1728, 330,    // the heading above the row, which may yield
+                1025, 510, 1728, 1026,  // every row below
+        };
+        int[] groups = {0, Tips.YIELD_HEADER, 0};
+        assertNull(Tips.place(420, 120, 20, 32, 10, STORY_ROW, 1920, SAFE, clear, groups,
+                0, 3));
+        float[] spot = Tips.place(420, 120, 20, 32, 10, STORY_ROW, 1920, SAFE, clear, groups,
+                Tips.YIELD_HEADER, 3);
+        assertNotNull(spot);
+        assertEquals(Tips.ABOVE, (int) spot[2]);
+        assertEquals(Tips.YIELD_HEADER, Tips.overlapped(spot[0], spot[1], spot[0] + 420,
+                spot[1] + 120, 10, clear, groups, 3));
+    }
+
+    /** Words that stepped aside fade with the bubble and come back with it gone. */
+    @Test
+    public void yieldedWordsFadeWithTheBubble() {
+        Tips tips = new Tips();
+        tips.show(Tips.CORNER, T);
+        tips.yielding = Tips.YIELD_DETAIL;
+        assertEquals(1f, tips.wordsAlpha(Tips.YIELD_HEADER, T + 1000), 0f);
+        assertEquals(0f, tips.wordsAlpha(Tips.YIELD_DETAIL, T + 1000), 0f);
+        tips.hide(T + 2000);
+        assertEquals(0, tips.yielding);
+        assertEquals(1f, tips.wordsAlpha(Tips.YIELD_DETAIL, T + 2000), 0f);
     }
 }
