@@ -202,6 +202,11 @@ public class Paint {
         return TextEngine.ink(text, typeface, textSize);
     }
 
+    /** Harness extra: whether text is measured with the canonical face, Liberation Sans. */
+    public static boolean harnessCanonicalFont() {
+        return TextEngine.canonical();
+    }
+
     /** Harness extra: which host fonts the stub resolved, for the render banner. */
     public static String describeFonts() {
         return TextEngine.describe();

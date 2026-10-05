@@ -232,6 +232,17 @@ public final class Preview {
             Draw.setProbe(AUDIT);
             System.out.println("CozyGrams text-fit audit");
             System.out.println("  fonts     : " + Paint.describeFonts());
+            if (!Paint.harnessCanonicalFont()) {
+                // Whether a line fits is a measurement, and a different face is a different
+                // ruler: judged in DejaVu Sans, a tenth wider, a thousand lines that fit
+                // would fail. Refuse to judge rather than give a verdict nobody can trust.
+                System.err.println("text-fit audit: Liberation Sans is needed to measure "
+                        + "text, and it is not installed (found " + Paint.describeFonts()
+                        + "). Install it — fonts-liberation on Debian/Ubuntu, "
+                        + "liberation-sans-fonts on Fedora, ttf-liberation on Arch — and "
+                        + "run again.");
+                System.exit(2);
+            }
             int failures = TextFitMatrix.run(args.length > 1 ? new File(args[1]) : null);
             System.exit(failures == 0 ? 0 : 1);
             return;

@@ -140,7 +140,8 @@ says the same at more length, and its address is in the Cozy Corner.
 
 ## Build and test
 
-Install JDK 21 and the Android SDK, then run:
+Install JDK 21, the Android SDK and the Liberation Sans font (see
+[the text-fit guard](#the-text-fit-guard)), then run:
 
 ```sh
 ./gradlew test lint assembleDebug
@@ -210,6 +211,12 @@ phones and 7" and 10" tablets each way up, with Larger text off, on, and on over
 system font, in the words of a fresh TV, a gamepad, a bare remote, a keyboard and a
 finger. `./gradlew test` runs it (task `textFitAudit`), so CI fails on any overflow, and
 `render.sh` fails on any overflow in the frames it writes.
+
+Text is measured in Liberation Sans, metrically Arial and a little wider than the
+devices' Roboto, so a pass errs on the safe side. Install it (`fonts-liberation` on
+Debian and Ubuntu, `liberation-sans-fonts` on Fedora, `ttf-liberation` on Arch) before
+running the tests; without it the audit stops and says so rather than judge with a
+different ruler.
 
 What the closed test suggested, and what was done with each suggestion, is in
 [docs/tester-feedback](docs/tester-feedback/README.md).

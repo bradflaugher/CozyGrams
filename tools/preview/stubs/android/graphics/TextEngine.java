@@ -49,6 +49,9 @@ final class TextEngine {
                     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"},
             {"/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
                     "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"},
+            // Arch.
+            {"/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/liberation/LiberationSans-Bold.ttf"},
             {"/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf", null},
             {"/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf", null},
             {"/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
@@ -106,6 +109,15 @@ final class TextEngine {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /**
+     * True when text is measured with Liberation Sans, the face every committed render and
+     * the text-fit audit's verdicts are calibrated against. Other faces measure differently
+     * (DejaVu Sans is about a tenth wider), so the audit refuses to judge with them.
+     */
+    static boolean canonical() {
+        return REGULAR_CHAIN[0].getFontName().startsWith("Liberation Sans");
     }
 
     /** Human-readable description of the resolved faces, for the harness banner. */
