@@ -55,6 +55,11 @@ public final class Tips {
     public static final int YIELD_HEADER = 1;
     /** The left-hand card's description of the focused row: what it is, and a remark. */
     public static final int YIELD_DETAIL = 2;
+    /**
+     * The right-hand card's control hint under the rows. Asked for last: only a stacked
+     * title screen, where the space under Cozy Corner is the hint's, ever needs it.
+     */
+    public static final int YIELD_FOOTER = 4;
 
     /** The words, in the names of whatever is in the room. */
     static String text(int tip, int hands) {
@@ -242,7 +247,8 @@ public final class Tips {
         float w = 0;
         float h = 0;
         if (clear != null && clearCount > 0) {
-            int[] asks = {0, YIELD_DETAIL, YIELD_HEADER, YIELD_DETAIL | YIELD_HEADER};
+            int[] asks = {0, YIELD_DETAIL, YIELD_HEADER, YIELD_DETAIL | YIELD_HEADER,
+                    YIELD_FOOTER, YIELD_FOOTER | YIELD_HEADER};
             for (int a = 0; a < asks.length && side < 0; a++) {
                 // Narrower and narrower, down to about seven words' worth, until a spot
                 // is free.

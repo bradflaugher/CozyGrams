@@ -757,7 +757,7 @@ public final class HomeScene {
         // which only labels the name under it, is what gives way.
         float cardBottom = bottom - Theme.scale(105);
         float inner = Theme.scale(18) + featureSize * CAP_HEIGHT + featureSize * DESCENT
-                + Theme.scale(18) + metaWanted * (CAP_HEIGHT + DESCENT) + Theme.scale(22);
+                + Theme.scale(18) + metaWanted * (CAP_HEIGHT + DESCENT) + Theme.scale(8);
         boolean eyebrowFits = detailTop + Theme.scale(30) + eyebrowSize * CAP_HEIGHT + inner
                 <= cardBottom;
         float featureY;
@@ -854,7 +854,7 @@ public final class HomeScene {
         // The control hint may step aside for a tip, like the header: in the stacked layout
         // the space under Cozy Corner is the only place that tip can point from, and the
         // tip is itself the instruction. The rows themselves never yield.
-        int hint = Tips.YIELD_HEADER;
+        int hint = Tips.YIELD_FOOTER;
         drawLandingFooter(canvas, rowLeft, rowRight, footerY, selected, ui.highContrastOn,
                 ui.tips.wordsAlpha(hint, now));
         float footerHalf = landingText(Theme.CAPTION) * .62f;
