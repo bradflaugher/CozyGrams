@@ -80,9 +80,11 @@ final class TextEngine {
             break;
         }
 
-        if (physicalRegular == null) {
-            // Not at any of the paths above — macOS, Windows, a font installed for one user:
-            // ask the platform for the family by name.
+        if (physicalRegular == null
+                || !physicalRegular.getFontName().startsWith("Liberation Sans")) {
+            // Not at any of the Liberation paths above — macOS, Windows, a font installed
+            // for one user: ask the platform for the family by name before settling for a
+            // fallback face.
             for (String family : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
                     .getAvailableFontFamilyNames()) {
                 if (family.equals("Liberation Sans")) {

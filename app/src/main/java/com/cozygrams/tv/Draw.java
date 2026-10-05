@@ -170,9 +170,20 @@ public final class Draw {
         return frameTextCount;
     }
 
+    /**
+     * Whether this frame remembers where its text went. Off unless a tip is about to be
+     * placed over the screen: measuring every label sixty times a second for data nobody
+     * reads would be waste.
+     */
+    private boolean recording;
+
+    public void recordText(boolean on) {
+        recording = on;
+    }
+
     private void recordText(String value, float x, float y, float size, Paint.Align align,
                             boolean strong, float spacing) {
-        if (frameTextCount >= frameGroups.length || value.isEmpty()) {
+        if (!recording || frameTextCount >= frameGroups.length || value.isEmpty()) {
             return;
         }
         float width = measure(value, size, strong) + spacing;

@@ -3508,13 +3508,21 @@ public final class Preview {
             final int h;
             final float density;
             final boolean handheld;
+            /** What the window's bars and cutout cover: left, top, right, bottom. */
+            final float[] insets;
 
             Device(String name, int w, int h, float density, boolean handheld) {
+                this(name, w, h, density, handheld, new float[4]);
+            }
+
+            Device(String name, int w, int h, float density, boolean handheld,
+                   float[] insets) {
                 this.name = name;
                 this.w = w;
                 this.h = h;
                 this.density = density;
                 this.handheld = handheld;
+                this.insets = insets;
             }
         }
 
@@ -3528,6 +3536,15 @@ public final class Preview {
                 new Device("tablet7-portrait", 1200, 1920, 2f, true),
                 new Device("tablet10-landscape", 2560, 1600, 2f, true),
                 new Device("tablet10-portrait", 1600, 2560, 2f, true),
+                // Windows that keep their bars: a phone with a camera cutout in the left
+                // edge and a gesture bar, and split-screen tablets under a status bar and a
+                // navigation bar, each deeper than the 5% overscan margin.
+                new Device("phone-landscape-cutout", 2400, 1080, 3f, true,
+                        new float[]{150, 0, 0, 72}),
+                new Device("tablet10-landscape-bars", 2560, 1600, 2f, true,
+                        new float[]{0, 96, 0, 144}),
+                new Device("tablet7-portrait-bars", 1200, 1920, 2f, true,
+                        new float[]{0, 120, 0, 144}),
         };
 
         /** What is in the room. A television before any button is pressed is "unknown". */
@@ -3921,6 +3938,8 @@ public final class Preview {
             }
             Renderer renderer = new Renderer();
             renderer.setScenes(room, garden);
+            renderer.setInsets(device.insets[0], device.insets[1], device.insets[2],
+                    device.insets[3]);
             AUDIT.begin(device.w, device.h);
             try {
                 check.shot.draw(canvas, renderer, device.w, device.h);

@@ -98,6 +98,8 @@ public final class Renderer {
         // Theme.REFERENCE_ASPECT for what measuring everything against the height alone did
         // to a portrait tablet.
         draw.beginFrame(canvas);
+        // A tip over a screen other than the title keeps off the words Draw saw this frame.
+        draw.recordText(ui.tips.showing >= 0 && ui.screen != UiState.HOME);
         Theme.setScreen(width, height);
         Theme.setInsets(insetLeft, insetTop, insetRight, insetBottom);
         Theme.setTextScale(ui.textScale());

@@ -207,7 +207,8 @@ tools/preview/audit.sh --show out.png home-row-2 tv-1080p text-1.3 gamepad   # o
 The matrix is every screen state (title screen rows, greetings and tips, every Cozy Corner
 row and note, all five How to play pages, every tour step, every tip, the board and its
 ribbon at every size, all 24 chapters and subjects, the win cards) at TV 1080p and 720p,
-phones and 7" and 10" tablets each way up, with Larger text off, on, and on over a 1.3
+phones and 7" and 10" tablets each way up, and windows under a cutout or system bars,
+with Larger text off, on, and on over a 1.3
 system font, in the words of a fresh TV, a gamepad, a bare remote, a keyboard and a
 finger. `./gradlew test` runs it (task `textFitAudit`), so CI fails on any overflow, and
 `render.sh` fails on any overflow in the frames it writes.
