@@ -221,25 +221,42 @@
     }
     function col(c, grid) { var s = ""; for (var r = 0; r < n; r++) s += grid[r][c]; return s; }
 
+    // Rows are real ARIA rows (display: contents keeps the CSS grid placement), and every
+    // cell's label also carries the two clues that cross it.
+    function row() {
+      var el = document.createElement("div");
+      el.className = "board__row";
+      el.setAttribute("role", "row");
+      board.appendChild(el);
+      return el;
+    }
+    function clue(kind, values, label) {
+      var el = document.createElement("div");
+      el.className = "clue clue--" + kind;
+      el.setAttribute("role", kind === "col" ? "columnheader" : "rowheader");
+      el.setAttribute("aria-label", label);
+      values.forEach(function (v) { var s = document.createElement("span"); s.textContent = v; el.appendChild(s); });
+      return el;
+    }
+
     var colClues = [], rowClues = [];
+    var head = row();
+    var corner = document.createElement("div");
+    corner.className = "board__corner";
+    corner.setAttribute("role", "columnheader");
+    corner.setAttribute("aria-label", "Row clues");
+    head.appendChild(corner);
     for (var c = 0; c < n; c++) {
-      var cl = document.createElement("div");
-      cl.className = "clue clue--col";
-      cl.setAttribute("role", "columnheader");
-      cl.setAttribute("aria-label", "Column " + (c + 1) + " clue " + runs(col(c, answer)).join(" "));
-      runs(col(c, answer)).forEach(function (v) { var s = document.createElement("span"); s.textContent = v; cl.appendChild(s); });
+      var cl = clue("col", runs(col(c, answer)), "Column " + (c + 1) + ", clue " + runs(col(c, answer)).join(" "));
       cl.style.gridColumn = c + 2; cl.style.gridRow = 1;
-      board.appendChild(cl); colClues.push(cl);
+      head.appendChild(cl); colClues.push(cl);
     }
     for (var r = 0; r < n; r++) {
       states.push([]); cells.push([]);
-      var rl = document.createElement("div");
-      rl.className = "clue clue--row";
-      rl.setAttribute("role", "rowheader");
-      rl.setAttribute("aria-label", "Row " + (r + 1) + " clue " + runs(answer[r]).join(" "));
-      runs(answer[r]).forEach(function (v) { var s = document.createElement("span"); s.textContent = v; rl.appendChild(s); });
+      var line = row();
+      var rl = clue("row", runs(answer[r]), "Row " + (r + 1) + ", clue " + runs(answer[r]).join(" "));
       rl.style.gridColumn = 1; rl.style.gridRow = r + 2;
-      board.appendChild(rl); rowClues.push(rl);
+      line.appendChild(rl); rowClues.push(rl);
       for (var c2 = 0; c2 < n; c2++) {
         var b = document.createElement("button");
         b.type = "button";
@@ -248,14 +265,15 @@
         b.dataset.r = r; b.dataset.c = c2; b.dataset.state = "empty";
         b.tabIndex = (r === 0 && c2 === 0) ? 0 : -1;
         b.style.gridColumn = c2 + 2; b.style.gridRow = r + 2;
-        board.appendChild(b);
+        line.appendChild(b);
         cells[r].push(b); states[r].push("empty");
       }
     }
 
     function label(r, c) {
       var s = states[r][c] === "fill" ? "filled" : states[r][c] === "cross" ? "crossed out" : "empty";
-      cells[r][c].setAttribute("aria-label", "Row " + (r + 1) + ", column " + (c + 1) + ", " + s);
+      cells[r][c].setAttribute("aria-label", "Row " + (r + 1) + " (clue " + runs(answer[r]).join(" ") +
+          "), column " + (c + 1) + " (clue " + runs(col(c, answer)).join(" ") + "): " + s);
     }
     function filledLine(arr) { return arr.map(function (s) { return s === "fill" ? "1" : "0"; }).join(""); }
     function set(r, c, s) {

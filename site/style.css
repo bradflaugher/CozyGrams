@@ -168,6 +168,7 @@ a:hover { color: var(--cream); }
   user-select: none;
   -webkit-user-select: none;
 }
+.board__row { display: contents; }
 .board__corner { grid-row: 1; grid-column: 1; }
 .clue {
   display: flex; font-weight: 800; font-size: 1.15rem; color: var(--ink);
@@ -176,7 +177,11 @@ a:hover { color: var(--cream); }
 .clue--col { flex-direction: column; align-items: center; justify-content: flex-end; line-height: 1.15; padding-bottom: 6px; }
 .clue--row { align-items: center; justify-content: flex-end; gap: 0.55em; padding: 0 10px 0 4px; }
 .clue--col:nth-child(odd of .clue--col) { background: var(--clue-band); border-radius: 8px 8px 0 0; }
-.clue.done { color: #9a8fa8; }
+/* A finished line is quieter but still readable (6.9:1 on paper, 5.7:1 on the band), and
+   gets the game's check mark so the change never rests on colour alone. */
+.clue.done { color: #5e5370; }
+.clue--row.done::after { content: "\2713"; color: #9a3a5f; font-size: 0.8em; margin-left: -0.25em; }
+.clue--col.done::after { content: "\2713"; color: #9a3a5f; font-size: 0.8em; line-height: 1; }
 
 .cell {
   appearance: none; margin: 0; padding: 0;
@@ -196,14 +201,13 @@ a:hover { color: var(--cream); }
   background: var(--tile-deep);
   box-shadow: inset 0 3px 0 rgba(255, 245, 227, 0.12), inset 0 -3px 0 rgba(10, 6, 18, 0.25);
 }
-.cell[data-state="fill"]:nth-child(odd)::after { background: #4a2a46; }
 .cell[data-state="cross"]::after {
   background:
     linear-gradient(45deg, transparent 44%, var(--cross) 44% 56%, transparent 56%),
     linear-gradient(-45deg, transparent 44%, var(--cross) 44% 56%, transparent 56%);
   inset: 9px; border-radius: 0;
 }
-.cell:focus-visible { outline: 3px solid var(--pink); outline-offset: -3px; border-radius: 6px; z-index: 1; }
+.cell:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; box-shadow: inset 0 0 0 5px var(--pink); border-radius: 6px; z-index: 1; }
 .board.solved .cell { cursor: default; }
 .board.solved .cell[data-state="fill"]::after { background: var(--pink-dark); transition: background-color 0.4s ease; }
 .board.solved .cell[data-state="cross"]::after { opacity: 0.25; }
