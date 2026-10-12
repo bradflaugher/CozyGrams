@@ -129,11 +129,18 @@ jobs:
           if-no-files-found: error
 
   # Play rejects an edit whose listing breaks its limits, so pull requests
-  # check fastlane/metadata before it can reach main.
+  # check fastlane/metadata before it can reach main, and that the locked
+  # fastlane still installs on the runner's Ruby.
   store-listing:
     name: store listing
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      BUNDLE_PATH: vendor/bundle
+      BUNDLE_FROZEN: 'true'
+      FASTLANE_SKIP_UPDATE_CHECK: '1'
+      FASTLANE_OPT_OUT_USAGE: '1'
+      FASTLANE_HIDE_CHANGELOG: '1'
 
     steps:
       - name: Check out repository
@@ -158,7 +165,7 @@ jobs:
             done
             for shots in "$dir"images/*Screenshots; do
               [ -d "$shots" ] || continue
-              count="$(find "$shots" -maxdepth 1 -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \) | wc -l)"
+              count="$(find "$shots" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l)"
               if [ "$count" -gt 8 ]; then
                 printf '::error file=%s::%s screenshots; Google Play allows 8 per device type\n' "$shots" "$count"
                 status=1
@@ -166,6 +173,25 @@ jobs:
             done
           done
           exit "$status"
+
+      # Native gem extensions are built for the runner's Ruby, so its
+      # version is part of the cache key.
+      - name: Find Ruby version
+        id: ruby
+        run: printf 'version=%s\n' "$(ruby -e 'print RUBY_VERSION')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache fastlane gems
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-ruby${{ steps.ruby.outputs.version }}-gems-${{ hashFiles('Gemfile.lock') }}
+
+      - name: Install fastlane
+        run: |
+          sudo gem install bundler --version "$(tail -n 1 Gemfile.lock | tr -d ' ')" --no-document
+          bundle install
+      - name: Check that fastlane runs
+        run: bundle exec fastlane supply --help > /dev/null
 
   # Every signed main build goes to Google Play's Closed testing - Alpha
   # track, with changelogs/default.txt as its release notes, and the store
@@ -178,6 +204,9 @@ jobs:
     needs: [build, store-listing]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # PLAY_SERVICE_ACCOUNT_JSON is an environment secret, and only main can
+    # deploy to google-play, so no other branch's workflow can read it.
+    environment: google-play
     # One Play edit at a time: a promotion and an upload never overlap.
     concurrency:
       group: google-play
@@ -223,8 +252,8 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -z "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
-            printf '::warning title=Google Play skipped::No PLAY_SERVICE_ACCOUNT_JSON secret; nothing was sent to Google Play.\n'
-            exit 0
+            printf 'No PLAY_SERVICE_ACCOUNT_JSON secret in the google-play environment\n' >&2
+            exit 1
           fi
           key="$RUNNER_TEMP/play-service-account.json"
           printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$key"

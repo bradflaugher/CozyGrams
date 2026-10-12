@@ -1,10 +1,15 @@
 name: Promote to production
 
 # Run by hand (Actions > Promote to production > Run workflow) once a build
-# has been through closed testing: it promotes the release on Closed
-# testing - Alpha to production, as is, with its release notes. A rollout
-# below 1 starts a staged rollout; run it again with a larger fraction (the
-# same version code) to widen it, or 1 to finish.
+# has been through closed testing.
+#
+# - action "promote" moves the release on Closed testing - Alpha (or the
+#   version code given) to production, as is, with its release notes. A
+#   rollout of 1 releases it to everyone; a fraction below 1 starts a staged
+#   rollout.
+# - action "update rollout" changes the staged rollout already on
+#   production: a larger fraction widens it and 1 finishes it. It works on
+#   the production track itself, so later builds reaching alpha don't matter.
 #
 # Production needs Play's production access first (for a personal developer
 # account: 12 testers opted in for 14 days, then apply in Play Console).
@@ -12,12 +17,20 @@ name: Promote to production
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: promote (alpha to production) or update rollout (the staged rollout on production)
+        required: true
+        type: choice
+        options:
+          - promote
+          - update rollout
+        default: promote
       rollout:
         description: Fraction of production users to roll out to (1 = everyone)
         required: true
         default: '1'
       version_code:
-        description: Version code to promote (blank = the release on Closed testing - Alpha)
+        description: Version code (blank = the release on alpha, or the staged rollout on production)
         required: false
         default: ''
 
@@ -30,7 +43,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: production
+    # PLAY_SERVICE_ACCOUNT_JSON is an environment secret, and only main can
+    # deploy to google-play, so no other branch's workflow can read it.
+    environment: google-play
     # One Play edit at a time: a promotion and an upload never overlap.
     concurrency:
       group: google-play
@@ -79,14 +94,15 @@ jobs:
           sudo gem install bundler --version "$(tail -n 1 Gemfile.lock | tr -d ' ')" --no-document
           bundle install
 
-      - name: Promote Closed testing - Alpha to production
+      - name: Update the production track
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          ACTION: ${{ inputs.action }}
           ROLLOUT: ${{ inputs.rollout }}
           VERSION_CODE: ${{ inputs.version_code }}
         run: |
           if [ -z "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
-            printf 'No PLAY_SERVICE_ACCOUNT_JSON secret\n' >&2
+            printf 'No PLAY_SERVICE_ACCOUNT_JSON secret in the google-play environment\n' >&2
             exit 1
           fi
           key="$RUNNER_TEMP/play-service-account.json"
@@ -94,8 +110,6 @@ jobs:
           args=(
             --package_name com.cozygrams.tv
             --json_key "$key"
-            --track alpha
-            --track_promote_to production
             --skip_upload_apk true
             --skip_upload_aab true
             --skip_upload_metadata true
@@ -106,10 +120,32 @@ jobs:
           if [ -n "$VERSION_CODE" ]; then
             args+=(--version_code "$VERSION_CODE")
           fi
-          # A fraction below 1 makes a staged (in progress) rollout.
+          full=false
           if printf '%s' "$ROLLOUT" | grep -Eq '^(1|1\.0+)$'; then
-            args+=(--track_promote_release_status completed)
-          else
-            args+=(--rollout "$ROLLOUT")
+            full=true
           fi
+          case "$ACTION" in
+            promote)
+              args+=(--track alpha --track_promote_to production)
+              if [ "$full" = true ]; then
+                args+=(--track_promote_release_status completed)
+              else
+                args+=(--track_promote_release_status inProgress --rollout "$ROLLOUT")
+              fi
+              ;;
+            'update rollout')
+              # supply finds the in-progress production release and sets its
+              # fraction; a rollout of 1 completes it.
+              args+=(--track production --rollout "$ROLLOUT")
+              if [ "$full" = true ]; then
+                args+=(--release_status completed)
+              else
+                args+=(--release_status inProgress)
+              fi
+              ;;
+            *)
+              printf 'Unknown action %s\n' "$ACTION" >&2
+              exit 1
+              ;;
+          esac
           bundle exec fastlane supply "${args[@]}"
