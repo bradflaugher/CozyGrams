@@ -24,7 +24,8 @@ those pass too.
 
 Every image is decoded far enough to trust it: PNG chunks are walked with
 their CRCs and the image data is inflated to the size its header promises;
-JPEG markers are walked to the frame header and the file must end in EOI.
+JPEG markers are walked through the frame header to a scan with data, and
+the file must end in EOI.
 """
 
 import struct
@@ -54,6 +55,8 @@ PNG_CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
 JPEG_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
 # Markers with no length field.
 JPEG_STANDALONE = {0x01, *range(0xD0, 0xD8)}
+# Adam7 interlace passes: x start, y start, x step, y step.
+ADAM7 = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
 
 errors: list[str] = []
 
@@ -80,6 +83,17 @@ class Image:
 
 class BadImage(Exception):
     pass
+
+
+def png_data_size(width: int, height: int, bits_per_pixel: int, interlace: int) -> int:
+    """Bytes of filtered scanlines the header promises (each row has a filter byte)."""
+    passes = [(0, 0, 1, 1)] if interlace == 0 else ADAM7
+    size = 0
+    for x0, y0, dx, dy in passes:
+        cols, rows = (width - x0 + dx - 1) // dx, (height - y0 + dy - 1) // dy
+        if cols > 0 and rows > 0:
+            size += rows * (1 + (cols * bits_per_pixel + 7) // 8)
+    return size
 
 
 def read_png(data: bytes) -> Image:
@@ -112,36 +126,45 @@ def read_png(data: bytes) -> Image:
         pixels = zlib.decompress(b"".join(idat))
     except zlib.error as exc:
         raise BadImage(f"PNG image data does not inflate: {exc}") from None
-    if interlace == 0:
-        row = (width * PNG_CHANNELS[colour] * depth + 7) // 8
-        if len(pixels) != height * (row + 1):
-            raise BadImage("PNG image data is not the size its header promises")
+    if interlace not in (0, 1):
+        raise BadImage(f"PNG interlace method {interlace} is not valid")
+    if len(pixels) != png_data_size(width, height, PNG_CHANNELS[colour] * depth, interlace):
+        raise BadImage("PNG image data is not the size its header promises")
     return Image("png", width, height, depth, colour, transparency or colour in (4, 6))
 
 
 def read_jpeg(data: bytes) -> Image:
-    if not data.rstrip(b"\x00").endswith(b"\xff\xd9"):
+    end = len(data.rstrip(b"\x00"))
+    if data[end - 2:end] != b"\xff\xd9":
         raise BadImage("JPEG does not end with an EOI marker")
-    i = 2
-    while i < len(data):
+    i, frame = 2, None
+    while i < end:
         if data[i] != 0xFF:
             raise BadImage("JPEG marker segments are out of step")
-        while i < len(data) and data[i] == 0xFF:  # fill bytes before a marker
+        while i < end and data[i] == 0xFF:  # fill bytes before a marker
             i += 1
-        if i >= len(data):
-            break
         marker = data[i]
         i += 1
         if marker in JPEG_STANDALONE:
             continue
-        if marker in (0xD9, 0xDA):  # EOI or start of scan before any frame
+        if marker == 0xD9:
             break
         length = struct.unpack(">H", data[i:i + 2])[0]
+        if length < 2 or i + length > end:
+            raise BadImage("JPEG segment runs past the end of the file")
         if marker in JPEG_SOF:
             height, width = struct.unpack(">HH", data[i + 3:i + 7])
-            return Image("jpeg", width, height)
+            frame = Image("jpeg", width, height)
+        elif marker == 0xDA:
+            # Start of scan: the frame must come first, and entropy-coded data
+            # must follow before the final EOI.
+            if frame is None:
+                raise BadImage("JPEG scan comes before its frame header")
+            if i + length >= end - 2:
+                raise BadImage("JPEG has no image data after its scan header")
+            return frame
         i += length
-    raise BadImage("JPEG has no frame header")
+    raise BadImage("JPEG has no frame header and scan")
 
 
 def read_image(path: Path) -> Image | None:
