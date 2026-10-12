@@ -49,9 +49,25 @@ Fix the layout or tighten the copy; never shrink words below the prose floor to 
 Every push to `main` builds a signed APK and Play bundle in
 `.github/workflows/release.yml`. The job attests their build provenance and
 replaces the single GitHub release. The `versionCode` is the run number.
-For Google Play, upload the `.aab` to **Closed testing - Alpha**, attach
-`mapping.txt`, and paste `fastlane/metadata/android/en-US/changelogs/default.txt`
-as the release notes.
+The same run's `Google Play` job uploads the bundle and `mapping.txt` to
+**Closed testing - Alpha**, with
+`fastlane/metadata/android/en-US/changelogs/default.txt` as the release
+notes, and syncs the store listing from `fastlane/metadata/android`: text,
+icon, feature graphic and screenshots (images Play already has are skipped
+by checksum). The `store listing` check on every pull request keeps the text
+and screenshot counts inside Play's limits. The job runs fastlane `supply`
+(pinned in `Gemfile.lock`) on the runner's own Ruby, signed in as the Google
+Cloud service account
+`github-play-publisher@play-publishing-511400.iam.gserviceaccount.com`,
+whose JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the
+`google-play` environment, which only `main` can deploy to.
+
+To ship a tested build to production, run **Actions › Promote to
+production** (`play-promote.yml`) with action `promote`. It promotes the
+release on Closed testing - Alpha as is, release notes included; a rollout
+below 1 starts a staged rollout. To widen or finish a staged rollout, run it
+again with action `update rollout` and a larger fraction (1 finishes it).
+Play refuses until the app has production access.
 
 ## Security settings that live outside the repository
 
@@ -60,9 +76,11 @@ recreate them:
 
 | Setting | Value |
 |---|---|
-| Ruleset `Main` (default branch) | No deletion or force push, linear history, changes through a squash-merged PR, required checks: `build`, `Analyze (java-kotlin)`, `Analyze (actions)` |
+| Ruleset `Main` (default branch) | No deletion or force push, linear history, changes through a squash-merged PR, required checks: `build`, `Analyze (java-kotlin)`, `Analyze (actions)`, `store listing` |
 | Merge buttons | Squash only, PR title as the commit title, branches deleted after merge |
 | Actions permissions | GitHub-owned actions plus `android-actions/setup-android`, `gradle/actions/*` and `reactivecircus/android-emulator-runner`; full-SHA pinning required |
+| Google Play API access | Service account `github-play-publisher@play-publishing-511400.iam.gserviceaccount.com` (Google Cloud project `play-publishing-511400`), invited in Play Console › Users and permissions with account-wide: view app information, release to production, release to testing tracks, manage store presence. Its JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the `google-play` environment |
+| Environment `google-play` | Deployable from `main` only; holds `PLAY_SERVICE_ACCOUNT_JSON`; the `Google Play` job and `play-promote.yml` run in it |
 | Default `GITHUB_TOKEN` | Read-only; jobs ask for more themselves |
 | Fork PR workflows | Approval required for every outside contributor |
 | Dependabot | Alerts and security updates on; version updates from `.github/dependabot.yml` |

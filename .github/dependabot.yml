@@ -34,3 +34,18 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # fastlane and its gems (Gemfile.lock), used to publish to Google Play.
+  # The store listing check installs the bundle on the runner's Ruby, so a
+  # bump that needs a newer Ruby fails on its pull request.
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    groups:
+      fastlane:
+        patterns:
+          - "*"
