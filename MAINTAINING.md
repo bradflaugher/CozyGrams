@@ -44,6 +44,21 @@ text leaves its container (see "The text-fit guard" in the README). When it fail
 report names the screen state and the variant; `tools/preview/audit.sh --show` paints it.
 Fix the layout or tighten the copy; never shrink words below the prose floor to make them fit.
 
+## The website
+
+[bradflaugher.github.io/CozyGrams](https://bradflaugher.github.io/CozyGrams/) is plain
+HTML and CSS in `site/`, with no build step: the landing page, the privacy policy
+(`site/privacy/index.html`, the address Play Console and the Cozy Corner point to) and a
+404. Edit it in a pull request like anything else; `.github/workflows/pages.yml` checks it
+on the PR (`python3 .github/scripts/check_site.py` runs the same check locally) and
+deploys it to GitHub Pages when it reaches `main`. Its pictures are copies of
+the store screenshots and the game's own art, so re-copy them (as WebP, about 1280 wide)
+when those change. It loads nothing from anywhere else, and should stay that way.
+
+If the policy changes, change `site/privacy/` and its "Last updated" date in the same PR as
+the code that made it true. The privacy row in the Cozy Corner shows the policy's address
+as text (`PRIVACY_URL` in `SettingsScene.java`), because a television may have no browser.
+
 ## Releasing
 
 Everything ships from GitHub: merging to `main` is the release.
@@ -130,6 +145,7 @@ recreate them:
 | Merge buttons | Squash only, PR title as the commit title, branches deleted after merge |
 | Actions permissions | GitHub-owned actions plus `android-actions/setup-android`, `gradle/actions/*` and `reactivecircus/android-emulator-runner`; full-SHA pinning required |
 | Google Play API access | Service account `github-play-publisher@play-publishing-511400.iam.gserviceaccount.com` (Google Cloud project `play-publishing-511400`), invited in Play Console › Users and permissions with account-wide: view app information, release to production, release to testing tracks, manage store presence. Its JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the `google-play` environment |
+| GitHub Pages | Source: GitHub Actions (`.github/workflows/pages.yml`), HTTPS enforced; the `github-pages` environment deploys from `main` only |
 | Environment `google-play` | Deployable from `main` only; holds `PLAY_SERVICE_ACCOUNT_JSON`; the `Google Play` job and `play-promote.yml` run in it |
 | Default `GITHUB_TOKEN` | Read-only; jobs ask for more themselves |
 | Fork PR workflows | Approval required for every outside contributor |

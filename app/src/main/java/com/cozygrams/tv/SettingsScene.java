@@ -60,7 +60,7 @@ public final class SettingsScene {
     public static final int ITEM_COUNT = 18;
 
     /** Where the privacy policy lives; shown on the row, because a TV may have no browser. */
-    static final String PRIVACY_URL = "bradflaugher.com/privacy/cozygrams";
+    static final String PRIVACY_URL = "bradflaugher.github.io/CozyGrams/privacy";
 
     /**
      * Where ideas and bugs go, written the way somebody would type it into a phone. Shown
