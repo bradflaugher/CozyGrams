@@ -1,0 +1,115 @@
+name: Promote to production
+
+# Run by hand (Actions > Promote to production > Run workflow) once a build
+# has been through closed testing: it promotes the release on Closed
+# testing - Alpha to production, as is, with its release notes. A rollout
+# below 1 starts a staged rollout; run it again with a larger fraction (the
+# same version code) to widen it, or 1 to finish.
+#
+# Production needs Play's production access first (for a personal developer
+# account: 12 testers opted in for 14 days, then apply in Play Console).
+# Until then Play refuses the promotion and this workflow fails.
+on:
+  workflow_dispatch:
+    inputs:
+      rollout:
+        description: Fraction of production users to roll out to (1 = everyone)
+        required: true
+        default: '1'
+      version_code:
+        description: Version code to promote (blank = the release on Closed testing - Alpha)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    name: promote
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    # One Play edit at a time: a promotion and an upload never overlap.
+    concurrency:
+      group: google-play
+      cancel-in-progress: false
+    env:
+      BUNDLE_PATH: vendor/bundle
+      BUNDLE_FROZEN: 'true'
+      FASTLANE_SKIP_UPDATE_CHECK: '1'
+      FASTLANE_OPT_OUT_USAGE: '1'
+      FASTLANE_HIDE_CHANGELOG: '1'
+
+    steps:
+      - name: Check inputs
+        env:
+          ROLLOUT: ${{ inputs.rollout }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          if ! printf '%s' "$ROLLOUT" | grep -Eq '^(1|1\.0+|0?\.[0-9]*[1-9][0-9]*)$'; then
+            printf 'rollout must be a fraction above 0 and at most 1, not %s\n' "$ROLLOUT" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION_CODE" | grep -Eq '^[0-9]*$'; then
+            printf 'version_code must be a number or blank, not %s\n' "$VERSION_CODE" >&2
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Native gem extensions are built for the runner's Ruby, so its
+      # version is part of the cache key.
+      - name: Find Ruby version
+        id: ruby
+        run: printf 'version=%s\n' "$(ruby -e 'print RUBY_VERSION')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache fastlane gems
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-ruby${{ steps.ruby.outputs.version }}-gems-${{ hashFiles('Gemfile.lock') }}
+
+      - name: Install fastlane
+        run: |
+          sudo gem install bundler --version "$(tail -n 1 Gemfile.lock | tr -d ' ')" --no-document
+          bundle install
+
+      - name: Promote Closed testing - Alpha to production
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          ROLLOUT: ${{ inputs.rollout }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          if [ -z "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+            printf 'No PLAY_SERVICE_ACCOUNT_JSON secret\n' >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/play-service-account.json"
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$key"
+          args=(
+            --package_name com.cozygrams.tv
+            --json_key "$key"
+            --track alpha
+            --track_promote_to production
+            --skip_upload_apk true
+            --skip_upload_aab true
+            --skip_upload_metadata true
+            --skip_upload_changelogs true
+            --skip_upload_images true
+            --skip_upload_screenshots true
+          )
+          if [ -n "$VERSION_CODE" ]; then
+            args+=(--version_code "$VERSION_CODE")
+          fi
+          # A fraction below 1 makes a staged (in progress) rollout.
+          if printf '%s' "$ROLLOUT" | grep -Eq '^(1|1\.0+)$'; then
+            args+=(--track_promote_release_status completed)
+          else
+            args+=(--rollout "$ROLLOUT")
+          fi
+          bundle exec fastlane supply "${args[@]}"
