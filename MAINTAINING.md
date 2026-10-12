@@ -55,8 +55,10 @@ The same run's `Google Play` job uploads the bundle and `mapping.txt` to
 notes, and syncs the store listing from `fastlane/metadata/android`: text,
 icon, feature graphic and screenshots (images Play already has are skipped
 by checksum). The `store listing` check on every pull request
-(`.github/scripts/check_store_listing.py`) keeps the text, image sizes and
-formats, and screenshot counts inside Play's limits. The job runs fastlane `supply`
+(`.github/scripts/check_store_listing.py`, which decodes every image with
+Pillow) keeps the text, image sizes and formats, and screenshot counts
+inside Play's limits. Run it locally with `python3` once `python3-pil` (or
+`pip install pillow`) is installed. The job runs fastlane `supply`
 (pinned in `Gemfile.lock`) on the runner's own Ruby, signed in as the Google
 Cloud service account
 `github-play-publisher@play-publishing-511400.iam.gserviceaccount.com`,

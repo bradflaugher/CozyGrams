@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Checks fastlane/metadata/android against Google Play's listing rules.
 
-    python3 .github/scripts/check_store_listing.py
+    python3 .github/scripts/check_store_listing.py   (needs Pillow: apt install python3-pil)
 
 Play rejects a whole edit when one part of the listing breaks its rules, and
-CI only uploads from main, so pull requests run this first. Standard library
-only. The rules are Play's preview-asset and listing requirements
+CI only uploads from main, so pull requests run this first. The rules are Play's preview-asset and listing requirements
 (support.google.com/googleplay/android-developer/answer/9866151 and 9859152):
 
 - title (30), short description (80) and full description (4000) must be
@@ -15,23 +14,29 @@ only. The rules are Play's preview-asset and listing requirements
 - feature graphic 1024 x 500 and TV banner 1280 x 720: JPEG or 8-bit PNG
   without transparency, at most 15 MB
 - screenshots: JPEG or 8-bit PNG without transparency, at most 8 MB and 8 per
-  device type; phone sides 320 to 3840 px with the long side at most twice
+  device type, at least 2 in all; phone sides 320 to 3840 px with the long side at most twice
   the short one; tablet sides 1080 to 3840 px (Play's tablet minimum, within
   its upload maximum); TV 16:9; Wear OS square
 Play documents "24-bit PNG" for the opaque assets; it also takes 8-bit
 palette PNGs without transparency (PokerSI's pixel-art listing is one), so
 those pass too.
 
-Every image is decoded far enough to trust it: PNG chunks are walked with
-their CRCs and the image data is inflated to the size its header promises;
-JPEG markers are walked through the frame header to a scan with data, and
-the file must end in EOI.
+Every image is fully decoded with Pillow (dimensions are checked against the
+asset's limits first, so a decompression bomb is refused before it inflates).
+For PNGs the header is also read here, because Pillow doesn't report bit
+depth or the exact colour type: only methods 0, an 8-bit RGB, palette (with
+its PLTE) or RGBA image, no unknown critical chunks.
 """
 
 import struct
 import sys
 import zlib
 from pathlib import Path
+
+try:
+    from PIL import Image as Pillow
+except ImportError:
+    sys.exit("Pillow is missing: sudo apt-get install python3-pil (or pip install pillow)")
 
 ROOT = Path(__file__).resolve().parents[2]
 METADATA = ROOT / "fastlane/metadata/android"
@@ -51,12 +56,10 @@ SCREENSHOTS = {
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 # PNG colour type: samples per pixel.
 PNG_CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
-# JPEG start-of-frame markers (every kind but DHT, JPG and DAC).
-JPEG_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
-# Markers with no length field.
-JPEG_STANDALONE = {0x01, *range(0xD0, 0xD8)}
-# Adam7 interlace passes: x start, y start, x step, y step.
-ADAM7 = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
+PNG_CRITICAL = {b"IHDR", b"PLTE", b"IDAT", b"IEND"}
+# No listing image may be larger than this; anything claiming more is refused
+# before Pillow decodes it.
+MAX_SIDE = 7680
 
 errors: list[str] = []
 
@@ -85,19 +88,9 @@ class BadImage(Exception):
     pass
 
 
-def png_data_size(width: int, height: int, bits_per_pixel: int, interlace: int) -> int:
-    """Bytes of filtered scanlines the header promises (each row has a filter byte)."""
-    passes = [(0, 0, 1, 1)] if interlace == 0 else ADAM7
-    size = 0
-    for x0, y0, dx, dy in passes:
-        cols, rows = (width - x0 + dx - 1) // dx, (height - y0 + dy - 1) // dy
-        if cols > 0 and rows > 0:
-            size += rows * (1 + (cols * bits_per_pixel + 7) // 8)
-    return size
-
-
-def read_png(data: bytes) -> Image:
-    i, header, idat, transparency = 8, None, [], False
+def read_png_header(data: bytes) -> Image:
+    """Walks the PNG chunks (with CRCs) for what Pillow doesn't report."""
+    i, header, palette, transparency, seen_idat = 8, None, False, False, False
     while True:
         if i + 12 > len(data):
             raise BadImage("PNG ends without an IEND chunk")
@@ -105,77 +98,56 @@ def read_png(data: bytes) -> Image:
         body = data[i + 8:i + 8 + length]
         if len(body) != length or i + 12 + length > len(data):
             raise BadImage(f"PNG chunk {kind!r} runs past the end of the file")
-        crc = struct.unpack(">I", data[i + 8 + length:i + 12 + length])[0]
-        if zlib.crc32(kind + body) != crc:
+        if zlib.crc32(kind + body) != struct.unpack(">I", data[i + 8 + length:i + 12 + length])[0]:
             raise BadImage(f"PNG chunk {kind!r} fails its CRC")
+        if kind[0] & 0x20 == 0 and kind not in PNG_CRITICAL:
+            raise BadImage(f"PNG has an unknown critical chunk {kind!r}")
         if kind == b"IHDR":
             header = struct.unpack(">IIBBBBB", body)
+        elif kind == b"PLTE" and not seen_idat:
+            palette = True
         elif kind == b"tRNS":
             transparency = True
         elif kind == b"IDAT":
-            idat.append(body)
+            seen_idat = True
         elif kind == b"IEND":
             break
         i += 12 + length
-    if header is None or not idat:
+    if header is None or not seen_idat:
         raise BadImage("PNG has no IHDR or no image data")
-    width, height, depth, colour, _compression, _filter, interlace = header
+    width, height, depth, colour, compression, filtering, interlace = header
+    if compression != 0 or filtering != 0 or interlace not in (0, 1):
+        raise BadImage("PNG uses a compression, filter or interlace method that doesn't exist")
     if colour not in PNG_CHANNELS:
         raise BadImage(f"PNG colour type {colour} is not valid")
-    try:
-        pixels = zlib.decompress(b"".join(idat))
-    except zlib.error as exc:
-        raise BadImage(f"PNG image data does not inflate: {exc}") from None
-    if interlace not in (0, 1):
-        raise BadImage(f"PNG interlace method {interlace} is not valid")
-    if len(pixels) != png_data_size(width, height, PNG_CHANNELS[colour] * depth, interlace):
-        raise BadImage("PNG image data is not the size its header promises")
+    if colour == 3 and not palette:
+        raise BadImage("PNG is indexed but has no palette before its image data")
     return Image("png", width, height, depth, colour, transparency or colour in (4, 6))
-
-
-def read_jpeg(data: bytes) -> Image:
-    end = len(data.rstrip(b"\x00"))
-    if data[end - 2:end] != b"\xff\xd9":
-        raise BadImage("JPEG does not end with an EOI marker")
-    i, frame = 2, None
-    while i < end:
-        if data[i] != 0xFF:
-            raise BadImage("JPEG marker segments are out of step")
-        while i < end and data[i] == 0xFF:  # fill bytes before a marker
-            i += 1
-        marker = data[i]
-        i += 1
-        if marker in JPEG_STANDALONE:
-            continue
-        if marker == 0xD9:
-            break
-        length = struct.unpack(">H", data[i:i + 2])[0]
-        if length < 2 or i + length > end:
-            raise BadImage("JPEG segment runs past the end of the file")
-        if marker in JPEG_SOF:
-            height, width = struct.unpack(">HH", data[i + 3:i + 7])
-            frame = Image("jpeg", width, height)
-        elif marker == 0xDA:
-            # Start of scan: the frame must come first, and entropy-coded data
-            # must follow before the final EOI.
-            if frame is None:
-                raise BadImage("JPEG scan comes before its frame header")
-            if i + length >= end - 2:
-                raise BadImage("JPEG has no image data after its scan header")
-            return frame
-        i += length
-    raise BadImage("JPEG has no frame header and scan")
 
 
 def read_image(path: Path) -> Image | None:
     data = path.read_bytes()
     try:
         if data.startswith(PNG_SIGNATURE):
-            return read_png(data)
-        if data.startswith(b"\xff\xd8"):
-            return read_jpeg(data)
-        raise BadImage("not a PNG or JPEG")
-    except (BadImage, struct.error) as exc:
+            image = read_png_header(data)
+        elif data.startswith(b"\xff\xd8"):
+            image = None
+        else:
+            raise BadImage("not a PNG or JPEG")
+        with Pillow.open(path) as probe:
+            kind = {"PNG": "png", "JPEG": "jpeg"}.get(probe.format)
+            if kind is None:
+                raise BadImage(f"Pillow reads it as {probe.format}, not PNG or JPEG")
+            width, height = probe.size
+            if max(width, height) > MAX_SIDE:
+                raise BadImage(f"{width}x{height} is larger than any Play listing image")
+            probe.load()  # decodes every pixel: truncated or corrupt data fails here
+        if image is None:
+            image = Image("jpeg", width, height)
+        elif (image.width, image.height) != (width, height):
+            raise BadImage("PNG header and image data disagree on the size")
+        return image
+    except (BadImage, struct.error, OSError, SyntaxError, ValueError, Pillow.DecompressionBombError) as exc:
         error(path, str(exc) or "unreadable image")
         return None
 
@@ -233,7 +205,7 @@ def check_graphic(images: Path, stem: str, size: tuple[int, int]) -> None:
         check_size(path, 15 * MB)
 
 
-def check_screenshots(folder: Path, shortest: int, longest: int, shape: str) -> None:
+def check_screenshots(folder: Path, shortest: int, longest: int, shape: str) -> int:
     shots = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
     if len(shots) > 8:
         error(folder, f"{len(shots)} screenshots; Google Play allows 8 per device type")
@@ -254,6 +226,7 @@ def check_screenshots(folder: Path, shortest: int, longest: int, shape: str) -> 
         if not image.opaque_ok:
             error(path, "Google Play wants a JPEG or an 8-bit PNG without transparency")
         check_size(path, 8 * MB)
+    return len(shots)
 
 
 def main() -> int:
@@ -265,9 +238,12 @@ def main() -> int:
         check_icon(images / "icon.png")
         check_graphic(images, "featureGraphic", (1024, 500))
         check_graphic(images, "tvBanner", (1280, 720))
+        total = 0
         for name, (shortest, longest, shape) in SCREENSHOTS.items():
             if (images / name).is_dir():
-                check_screenshots(images / name, shortest, longest, shape)
+                total += check_screenshots(images / name, shortest, longest, shape)
+        if total < 2:
+            error(images, f"{total} screenshots; Google Play needs at least 2 to publish the listing")
     for line in errors:
         print(line)
     if not errors:

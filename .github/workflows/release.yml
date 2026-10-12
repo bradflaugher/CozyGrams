@@ -149,8 +149,15 @@ jobs:
         with:
           persist-credentials: false
 
+      # Pillow decodes every listing image; Ubuntu's own package, so no
+      # unpinned download from PyPI.
+      - name: Install Pillow
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends python3-pil
+
       - name: Check listing text and images against Play's limits
-        run: python3 .github/scripts/check_store_listing.py
+        run: /usr/bin/python3 .github/scripts/check_store_listing.py
 
       # Native gem extensions are built for the runner's Ruby, so its
       # version is part of the cache key.
