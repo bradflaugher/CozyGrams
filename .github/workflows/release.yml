@@ -129,7 +129,8 @@ jobs:
           if-no-files-found: error
 
   # Play rejects an edit whose listing breaks its limits, so pull requests
-  # check fastlane/metadata before it can reach main, and that the locked
+  # check fastlane/metadata (text, image sizes and formats) before it can
+  # reach main, and that the locked
   # fastlane still installs on the runner's Ruby.
   store-listing:
     name: store listing
@@ -148,31 +149,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check listing text and images against Play's limits
+      # Pillow decodes every listing image; Ubuntu's own package, so no
+      # unpinned download from PyPI.
+      - name: Install Pillow
         run: |
-          status=0
-          for dir in fastlane/metadata/android/*/; do
-            for limit in title.txt:30 short_description.txt:80 full_description.txt:4000 changelogs/default.txt:500; do
-              file="$dir${limit%%:*}"
-              max="${limit##*:}"
-              [ -f "$file" ] || continue
-              # Play counts characters without the trailing newline.
-              length="$(printf '%s' "$(cat "$file")" | wc -m)"
-              if [ "$length" -gt "$max" ]; then
-                printf '::error file=%s::%s characters; Google Play allows %s\n' "$file" "$length" "$max"
-                status=1
-              fi
-            done
-            for shots in "$dir"images/*Screenshots; do
-              [ -d "$shots" ] || continue
-              count="$(find "$shots" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l)"
-              if [ "$count" -gt 8 ]; then
-                printf '::error file=%s::%s screenshots; Google Play allows 8 per device type\n' "$shots" "$count"
-                status=1
-              fi
-            done
-          done
-          exit "$status"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends python3-pil
+
+      - name: Check listing text and images against Play's limits
+        run: /usr/bin/python3 .github/scripts/check_store_listing.py
 
       # Native gem extensions are built for the runner's Ruby, so its
       # version is part of the cache key.

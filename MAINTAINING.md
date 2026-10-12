@@ -54,8 +54,11 @@ The same run's `Google Play` job uploads the bundle and `mapping.txt` to
 `fastlane/metadata/android/en-US/changelogs/default.txt` as the release
 notes, and syncs the store listing from `fastlane/metadata/android`: text,
 icon, feature graphic and screenshots (images Play already has are skipped
-by checksum). The `store listing` check on every pull request keeps the text
-and screenshot counts inside Play's limits. The job runs fastlane `supply`
+by checksum). The `store listing` check on every pull request
+(`.github/scripts/check_store_listing.py`, which decodes every image with
+Pillow) keeps the text, image sizes and formats, and screenshot counts
+inside Play's limits. Run it locally with `python3` once `python3-pil` (or
+`pip install pillow`) is installed. The job runs fastlane `supply`
 (pinned in `Gemfile.lock`) on the runner's own Ruby, signed in as the Google
 Cloud service account
 `github-play-publisher@play-publishing-511400.iam.gserviceaccount.com`,
@@ -64,9 +67,12 @@ whose JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the
 
 To ship a tested build to production, run **Actions › Promote to
 production** (`play-promote.yml`) with action `promote`. It promotes the
-release on Closed testing - Alpha as is, release notes included; a rollout
+completed release on Closed testing - Alpha as is, release notes included
+(never a draft); a rollout
 below 1 starts a staged rollout. To widen or finish a staged rollout, run it
-again with action `update rollout` and a larger fraction (1 finishes it).
+again with action `update rollout` and a larger fraction (1 finishes it);
+it refuses unless production really has a staged rollout in progress, so
+it can never publish a draft.
 Play refuses until the app has production access.
 
 ## Security settings that live outside the repository
