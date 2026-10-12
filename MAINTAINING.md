@@ -65,7 +65,8 @@ whose JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the
 
 To ship a tested build to production, run **Actions › Promote to
 production** (`play-promote.yml`) with action `promote`. It promotes the
-release on Closed testing - Alpha as is, release notes included; a rollout
+completed release on Closed testing - Alpha as is, release notes included
+(never a draft); a rollout
 below 1 starts a staged rollout. To widen or finish a staged rollout, run it
 again with action `update rollout` and a larger fraction (1 finishes it);
 it refuses unless production really has a staged rollout in progress, so

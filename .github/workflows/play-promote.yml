@@ -3,8 +3,9 @@ name: Promote to production
 # Run by hand (Actions > Promote to production > Run workflow) once a build
 # has been through closed testing.
 #
-# - action "promote" moves the release on Closed testing - Alpha (or the
-#   version code given) to production, as is, with its release notes. A
+# - action "promote" moves the completed release on Closed testing - Alpha
+#   (or the version code given, which must be that) to production, as is,
+#   with its release notes. A
 #   rollout of 1 releases it to everyone; a fraction below 1 starts a staged
 #   rollout.
 # - action "update rollout" changes the staged rollout already on
@@ -67,8 +68,8 @@ jobs:
             printf 'rollout must be a fraction above 0 and at most 1, not %s\n' "$ROLLOUT" >&2
             exit 1
           fi
-          if ! printf '%s' "$VERSION_CODE" | grep -Eq '^[0-9]*$'; then
-            printf 'version_code must be a number or blank, not %s\n' "$VERSION_CODE" >&2
+          if ! printf '%s' "$VERSION_CODE" | grep -Eq '^([1-9][0-9]*)?$'; then
+            printf 'version_code must be a whole number without leading zeros, or blank, not %s\n' "$VERSION_CODE" >&2
             exit 1
           fi
 
@@ -123,10 +124,10 @@ jobs:
           fi
           case "$ACTION" in
             promote)
-              args+=(--track alpha --track_promote_to production)
-              if [ -n "$VERSION_CODE" ]; then
-                args+=(--version_code "$VERSION_CODE")
-              fi
+              # Only a completed alpha release (one testers really have) may
+              # go to production; supply would promote a draft or halted one.
+              code="$(bundle exec ruby .github/scripts/play_release.rb com.cozygrams.tv "$key" alpha completed "$VERSION_CODE")"
+              args+=(--track alpha --track_promote_to production --version_code "$code")
               if [ "$full" = true ]; then
                 args+=(--track_promote_release_status completed)
               else
@@ -136,8 +137,7 @@ jobs:
             'update rollout')
               # Only a release that is really rolling out may change: supply
               # would also pick a draft, and completing one publishes it.
-              # The script fails unless production has that staged rollout.
-              code="$(bundle exec ruby .github/scripts/production_rollout.rb com.cozygrams.tv "$key" "$VERSION_CODE")"
+              code="$(bundle exec ruby .github/scripts/play_release.rb com.cozygrams.tv "$key" production inProgress "$VERSION_CODE")"
               args+=(--track production --version_code "$code" --rollout "$ROLLOUT")
               if [ "$full" = true ]; then
                 args+=(--release_status completed)
