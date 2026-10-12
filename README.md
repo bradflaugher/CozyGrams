@@ -1,5 +1,7 @@
 # CozyGrams
 
+**[bradflaugher.github.io/CozyGrams](https://bradflaugher.github.io/CozyGrams/)** · [privacy policy](https://bradflaugher.github.io/CozyGrams/privacy/)
+
 A cozy, endless nonogram game made for the couch. Play solo, or hand someone a second
 controller and solve every picture together with independent Rose and Sky cursors. One
 app for Android TV and for phones and tablets: a television gets the ten-foot interface
@@ -135,7 +137,7 @@ installs on any of them — see [Release](#release) below.
 
 It is free, with no ads, no in-app purchases and no network access at all: the app does not
 ask for the internet permission. Share and Send feedback hand off to the share sheet and the
-browser, which are other apps; CozyGrams itself still sends nothing. The [privacy policy](https://bradflaugher.com/privacy/cozygrams/)
+browser, which are other apps; CozyGrams itself still sends nothing. The [privacy policy](https://bradflaugher.github.io/CozyGrams/privacy/)
 says the same at more length, and its address is in the Cozy Corner.
 
 ## Build and test
