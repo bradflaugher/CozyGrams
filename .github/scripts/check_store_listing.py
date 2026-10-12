@@ -10,8 +10,9 @@ CI only uploads from main, so pull requests run this first. The rules are Play's
 - title (30), short description (80) and full description (4000) must be
   non-empty and within their limits; every changelog, default.txt or one per
   version code, at most 500 characters
-- an icon, a feature graphic and at least 2 screenshots must exist, with
-  lower-case extensions (supply globs those) and no animated PNGs
+- the default (en-US) listing must exist with an icon, a feature graphic
+  and at least 2 screenshots (translations may borrow them); every image needs
+  its exact supply name with a lower-case extension, and no animated PNGs
 - icon: 512 x 512, 32-bit PNG (8-bit RGBA), at most 1 MB
 - feature graphic 1024 x 500 and TV banner 1280 x 720: JPEG or 8-bit PNG
   without transparency, at most 15 MB
@@ -187,8 +188,9 @@ def check_size(path: Path, max_bytes: int) -> None:
 def listed(images: Path, stem: str) -> list[Path]:
     """Every file supply would take for a named image, and any it would miss."""
     found = []
-    for path in sorted(images.glob(f"{stem}.*")):
-        if path.suffix.lower() not in IMAGE_SUFFIXES:
+    # supply takes exactly <stem>.png, .jpg or .jpeg; icon.backup.png is not one.
+    for path in sorted(images.iterdir()):
+        if path.stem != stem or path.suffix.lower() not in IMAGE_SUFFIXES:
             continue
         if path.suffix != path.suffix.lower():
             # supply globs lower-case extensions; on Linux it would skip this.
@@ -200,9 +202,9 @@ def listed(images: Path, stem: str) -> list[Path]:
     return found
 
 
-def check_icon(images: Path) -> None:
+def check_icon(images: Path, required: bool) -> None:
     paths = listed(images, "icon")
-    if not paths:
+    if required and not paths:
         error(images, "no icon.png; Google Play requires the 512x512 icon")
     for path in paths:
         image = read_image(path)
@@ -261,23 +263,27 @@ def check_screenshots(folder: Path, shortest: int, longest: int, shape: str) -> 
 
 
 def main() -> int:
-    for lang in sorted(p for p in METADATA.iterdir() if p.is_dir()):
+    default = METADATA / DEFAULT_LANGUAGE
+    if not default.is_dir():
+        error(METADATA if METADATA.is_dir() else ROOT, f"no {DEFAULT_LANGUAGE} listing; it is the default and must exist")
+    for lang in sorted(p for p in METADATA.iterdir() if p.is_dir()) if METADATA.is_dir() else []:
         check_text(lang)
+        # The default listing carries the full set; a translation may localize
+        # only some images and borrow the rest from it, as Play allows.
+        full = lang.name == DEFAULT_LANGUAGE
         images = lang / "images"
         if not images.is_dir():
-            # A translation may borrow the default listing's graphics; the
-            # default (en-US here) must have its own.
-            if lang.name == DEFAULT_LANGUAGE:
+            if full:
                 error(lang, "no images folder; Google Play needs an icon, a feature graphic and screenshots")
             continue
-        check_icon(images)
-        check_graphic(images, "featureGraphic", (1024, 500), required=True)
+        check_icon(images, required=full)
+        check_graphic(images, "featureGraphic", (1024, 500), required=full)
         check_graphic(images, "tvBanner", (1280, 720), required=False)
         total = 0
         for name, (shortest, longest, shape) in SCREENSHOTS.items():
             if (images / name).is_dir():
                 total += check_screenshots(images / name, shortest, longest, shape)
-        if total < 2:
+        if full and total < 2:
             error(images, f"{total} screenshots; Google Play needs at least 2 to publish the listing")
     for line in errors:
         print(line)

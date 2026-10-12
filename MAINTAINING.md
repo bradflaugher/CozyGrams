@@ -46,34 +46,78 @@ Fix the layout or tighten the copy; never shrink words below the prose floor to 
 
 ## Releasing
 
-Every push to `main` builds a signed APK and Play bundle in
-`.github/workflows/release.yml`. The job attests their build provenance and
-replaces the single GitHub release. The `versionCode` is the run number.
-The same run's `Google Play` job uploads the bundle and `mapping.txt` to
-**Closed testing - Alpha**, with
-`fastlane/metadata/android/en-US/changelogs/default.txt` as the release
-notes, and syncs the store listing from `fastlane/metadata/android`: text,
-icon, feature graphic and screenshots (images Play already has are skipped
-by checksum). The `store listing` check on every pull request
-(`.github/scripts/check_store_listing.py`, which decodes every image with
-Pillow) keeps the text, image sizes and formats, and screenshot counts
-inside Play's limits. Run it locally with `python3` once `python3-pil` (or
-`pip install pillow`) is installed. The job runs fastlane `supply`
-(pinned in `Gemfile.lock`) on the runner's own Ruby, signed in as the Google
-Cloud service account
-`github-play-publisher@play-publishing-511400.iam.gserviceaccount.com`,
-whose JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the
-`google-play` environment, which only `main` can deploy to.
+Everything ships from GitHub: merging to `main` is the release.
 
-To ship a tested build to production, run **Actions › Promote to
-production** (`play-promote.yml`) with action `promote`. It promotes the
-completed release on Closed testing - Alpha as is, release notes included
-(never a draft); a rollout
-below 1 starts a staged rollout. To widen or finish a staged rollout, run it
-again with action `update rollout` and a larger fraction (1 finishes it);
-it refuses unless production really has a staged rollout in progress, so
-it can never publish a draft.
-Play refuses until the app has production access.
+### Shipping an update
+
+1. Make the change on a branch and open a pull request to `main`.
+2. In the same pull request, update the release notes in
+   `fastlane/metadata/android/en-US/changelogs/default.txt` (at most 500
+   characters). Testers, and later Play users, see this text. A
+   `changelogs/<versionCode>.txt` overrides it for one build.
+3. CI runs the build, tests, lint, CodeQL and the `store listing` check, and
+   Codex reviews the pull request. Squash-merge once it is green.
+4. The push to `main` builds and signs the APK and Play bundle, replaces the
+   GitHub release (the sideload APK), uploads the bundle to Google Play's
+   **Closed testing - Alpha** track with the release notes, and syncs the
+   store listing. The version code is the workflow run number, so it is never
+   bumped by hand.
+5. Play reviews the update by itself (managed publishing is off); follow it in
+   Play Console › the app › **Publishing overview**.
+
+### Changing the store listing
+
+The listing lives in `fastlane/metadata/android/en-US/`: `title.txt` (at
+most 30 characters), `short_description.txt` (80), `full_description.txt`
+(4000) and `images/` (icon, feature graphic, screenshots). For the images,
+re-render them with `tools/preview/render.sh` (store frames land in `tools/preview/out/store/`; captions live in `STORE_CAPTIONS` in `Preview.java`; see the README) and copy them into `images/`, then commit them. Store screenshots are promo shots: a headline and
+subline outside the framed capture, never bare captures. Only images that
+changed are uploaded (Play's copies are compared by checksum), and each change
+goes through Play's review.
+
+### Going to production
+
+Production needs Play's production access first: for a personal developer
+account, 12 testers opted in to the closed test for 14 days, then apply in
+Play Console. After that, run **Actions › Promote to production**
+(`play-promote.yml`):
+
+- action `promote`, rollout `1`: the completed release on Closed testing -
+  Alpha goes to everyone in production, as is, release notes included. A
+  rollout below 1 (say `0.2`) starts a staged rollout instead.
+- action `update rollout`: widens a staged rollout (a larger fraction) or
+  finishes it (`1`).
+
+Both check the release's status first: `promote` only takes a completed alpha
+release and `update rollout` only an in-progress production rollout, so a
+draft is never published. Before production access is granted, Play refuses
+and the run fails.
+
+### When something fails
+
+- **`Google Play` job fails:** nothing reached Play. Its log says why (often a
+  listing rule); fix it, or rerun the job from the Actions page.
+- **`store listing` fails on a pull request:** the error names the file and
+  the Play rule it breaks. Run the check locally with
+  `python3 .github/scripts/check_store_listing.py` (needs `python3-pil` or
+  `pip install pillow`).
+- **Never rename `.github/workflows/release.yml`:** the run number, and with
+  it the version code, would restart, and Play rejects any version code that
+  isn't higher than the last.
+
+### How it works
+
+The `Google Play` job in `.github/workflows/release.yml` runs fastlane `supply`
+(pinned in `Gemfile.lock`, on the runner's own Ruby) after `build`. It
+uploads the bundle and `mapping.txt`, then syncs the listing text, icon,
+feature graphic and screenshots from `fastlane/metadata/android`. It signs in
+as the Google Cloud service account
+`github-play-publisher@play-publishing-511400.iam.gserviceaccount.com`, whose
+JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret of the `google-play`
+environment (which only `main` can deploy to). `play-promote.yml` uses the
+same environment, and `.github/scripts/play_release.rb` does its status
+checks. The `release` job attests the APK's and bundle's build provenance and
+replaces the single GitHub release.
 
 ## Security settings that live outside the repository
 

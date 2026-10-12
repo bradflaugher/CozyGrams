@@ -285,5 +285,6 @@ them the build still runs, unsigned, and nothing is published. The key was repla
 September 2026 (the old one was public), so a CozyGrams sideloaded before then has to be
 uninstalled once before the new APK will install.
 
+Every merge to `main` also goes to Google Play's closed testing, with the store listing; how to ship an update, change the listing or go to production is in [MAINTAINING.md › Releasing](MAINTAINING.md#releasing).
 Keeping the toolchain and CI current, and the repository's security
-settings, are covered in [MAINTAINING.md](MAINTAINING.md).
+settings, are covered there too.
