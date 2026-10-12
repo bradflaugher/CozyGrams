@@ -10,6 +10,8 @@ CI only uploads from main, so pull requests run this first. The rules are Play's
 - title (30), short description (80) and full description (4000) must be
   non-empty and within their limits; every changelog, default.txt or one per
   version code, at most 500 characters
+- an icon, a feature graphic and at least 2 screenshots must exist, with
+  lower-case extensions (supply globs those) and no animated PNGs
 - icon: 512 x 512, 32-bit PNG (8-bit RGBA), at most 1 MB
 - feature graphic 1024 x 500 and TV banner 1280 x 720: JPEG or 8-bit PNG
   without transparency, at most 15 MB
@@ -45,6 +47,8 @@ REQUIRED_TEXT = {"title.txt": 30, "short_description.txt": 80, "full_description
 CHANGELOG_LIMIT = 500
 MB = 1024 * 1024
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
+# The listing's default language; it must carry the full set of graphics.
+DEFAULT_LANGUAGE = "en-US"
 # Screenshot folder: (shortest side, longest side, shape rule).
 SCREENSHOTS = {
     "phoneScreenshots": (320, 3840, "2:1"),
@@ -102,6 +106,8 @@ def read_png_header(data: bytes) -> Image:
             raise BadImage(f"PNG chunk {kind!r} fails its CRC")
         if kind[0] & 0x20 == 0 and kind not in PNG_CRITICAL:
             raise BadImage(f"PNG has an unknown critical chunk {kind!r}")
+        if kind == b"acTL":
+            raise BadImage("PNG is animated (APNG); Google Play wants a still image")
         if kind == b"IHDR":
             header = struct.unpack(">IIBBBBB", body)
         elif kind == b"PLTE" and not seen_idat:
@@ -178,23 +184,42 @@ def check_size(path: Path, max_bytes: int) -> None:
         error(path, f"{path.stat().st_size / MB:.1f} MB; Google Play allows {max_bytes / MB:.0f} MB")
 
 
-def check_icon(path: Path) -> None:
-    if not path.is_file():
-        return
-    image = read_image(path)
-    if image is None:
-        return
-    if (image.width, image.height) != (512, 512):
-        error(path, f"{image.width}x{image.height}; Google Play wants 512x512")
-    if not image.rgba:
-        error(path, "Google Play wants the icon as a 32-bit PNG (8-bit RGBA)")
-    check_size(path, 1 * MB)
-
-
-def check_graphic(images: Path, stem: str, size: tuple[int, int]) -> None:
+def listed(images: Path, stem: str) -> list[Path]:
+    """Every file supply would take for a named image, and any it would miss."""
+    found = []
     for path in sorted(images.glob(f"{stem}.*")):
         if path.suffix.lower() not in IMAGE_SUFFIXES:
             continue
+        if path.suffix != path.suffix.lower():
+            # supply globs lower-case extensions; on Linux it would skip this.
+            error(path, "use a lower-case extension, or supply won't upload it")
+            continue
+        found.append(path)
+    if len(found) > 1:
+        error(images, f"more than one {stem} ({', '.join(p.name for p in found)}); keep one")
+    return found
+
+
+def check_icon(images: Path) -> None:
+    paths = listed(images, "icon")
+    if not paths:
+        error(images, "no icon.png; Google Play requires the 512x512 icon")
+    for path in paths:
+        image = read_image(path)
+        if image is None:
+            continue
+        if (image.width, image.height) != (512, 512):
+            error(path, f"{image.width}x{image.height}; Google Play wants 512x512")
+        if not image.rgba:
+            error(path, "Google Play wants the icon as a 32-bit PNG (8-bit RGBA)")
+        check_size(path, 1 * MB)
+
+
+def check_graphic(images: Path, stem: str, size: tuple[int, int], required: bool) -> None:
+    paths = listed(images, stem)
+    if required and not paths:
+        error(images, f"no {stem}; Google Play requires one ({size[0]}x{size[1]})")
+    for path in paths:
         image = read_image(path)
         if image is None:
             continue
@@ -206,7 +231,13 @@ def check_graphic(images: Path, stem: str, size: tuple[int, int]) -> None:
 
 
 def check_screenshots(folder: Path, shortest: int, longest: int, shape: str) -> int:
-    shots = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+    shots = []
+    for path in sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES):
+        if path.suffix != path.suffix.lower():
+            # supply globs lower-case extensions; on Linux it would skip this.
+            error(path, "use a lower-case extension, or supply won't upload it")
+        else:
+            shots.append(path)
     if len(shots) > 8:
         error(folder, f"{len(shots)} screenshots; Google Play allows 8 per device type")
     for path in shots:
@@ -234,10 +265,14 @@ def main() -> int:
         check_text(lang)
         images = lang / "images"
         if not images.is_dir():
+            # A translation may borrow the default listing's graphics; the
+            # default (en-US here) must have its own.
+            if lang.name == DEFAULT_LANGUAGE:
+                error(lang, "no images folder; Google Play needs an icon, a feature graphic and screenshots")
             continue
-        check_icon(images / "icon.png")
-        check_graphic(images, "featureGraphic", (1024, 500))
-        check_graphic(images, "tvBanner", (1280, 720))
+        check_icon(images)
+        check_graphic(images, "featureGraphic", (1024, 500), required=True)
+        check_graphic(images, "tvBanner", (1280, 720), required=False)
         total = 0
         for name, (shortest, longest, shape) in SCREENSHOTS.items():
             if (images / name).is_dir():
