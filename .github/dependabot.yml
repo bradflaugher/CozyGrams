@@ -36,8 +36,8 @@ updates:
           - "*"
 
   # fastlane and its gems (Gemfile.lock), used to publish to Google Play.
-  # The store listing check installs the bundle on the runner's Ruby, so a
-  # bump that needs a newer Ruby fails on its pull request.
+  # The store listing check installs the bundle on the latest stable Ruby,
+  # so a bump that does not work there fails on its pull request.
   - package-ecosystem: bundler
     directory: /
     schedule:

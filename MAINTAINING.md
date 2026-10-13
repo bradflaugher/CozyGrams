@@ -123,7 +123,7 @@ and the run fails.
 ### How it works
 
 The `Google Play` job in `.github/workflows/release.yml` runs fastlane `supply`
-(pinned in `Gemfile.lock`, on the runner's own Ruby) after `build`. It
+(pinned in `Gemfile.lock`, on the latest stable Ruby) after `build`. It
 uploads the bundle and `mapping.txt`, then syncs the listing text, icon,
 feature graphic and screenshots from `fastlane/metadata/android`. It signs in
 as the Google Cloud service account
