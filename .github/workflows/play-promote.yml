@@ -52,8 +52,6 @@ jobs:
       group: google-play
       cancel-in-progress: false
     env:
-      BUNDLE_PATH: vendor/bundle
-      BUNDLE_FROZEN: 'true'
       FASTLANE_SKIP_UPDATE_CHECK: '1'
       FASTLANE_OPT_OUT_USAGE: '1'
       FASTLANE_HIDE_CHANGELOG: '1'
@@ -78,22 +76,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Native gem extensions are built for the runner's Ruby, so its
-      # version is part of the cache key.
-      - name: Find Ruby version
-        id: ruby
-        run: printf 'version=%s\n' "$(ruby -e 'print RUBY_VERSION')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache fastlane gems
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # The latest stable Ruby, with the bundle from Gemfile.lock installed
+      # frozen and cached per Ruby version.
+      - name: Set up Ruby and fastlane
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with:
-          path: vendor/bundle
-          key: ${{ runner.os }}-ruby${{ steps.ruby.outputs.version }}-gems-${{ hashFiles('Gemfile.lock') }}
-
-      - name: Install fastlane
-        run: |
-          sudo gem install bundler --version "$(tail -n 1 Gemfile.lock | tr -d ' ')" --no-document
-          bundle install
+          ruby-version: ruby
+          bundler-cache: true
 
       - name: Update the production track
         env:
