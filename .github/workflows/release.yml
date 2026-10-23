@@ -46,7 +46,13 @@ jobs:
             printf '%s event: no push diff, so everything counts as changed.\n' "$EVENT"
             exit 0
           fi
-          files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --jq '.files[].filename')"
+          # Both sides of a rename count: moving a file out of app/ changes the app.
+          if ! files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" \
+              --jq '.files[] | .filename, (.previous_filename // empty)')"; then
+            printf 'app=true\nlisting=true\n' >> "$GITHUB_OUTPUT"
+            printf 'Could not compare %s...%s, so everything counts as changed.\n' "$BEFORE" "$AFTER"
+            exit 0
+          fi
           printf '%s\n' "$files"
           app=false
           listing=false
