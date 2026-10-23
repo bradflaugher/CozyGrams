@@ -41,34 +41,53 @@ jobs:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
-          if [ "$EVENT" != push ] || [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+          if [ "$EVENT" != push ]; then
             printf 'app=true\nlisting=true\n' >> "$GITHUB_OUTPUT"
-            printf '%s event: no push diff, so everything counts as changed.\n' "$EVENT"
+            printf '%s run: publishing everything.\n' "$EVENT"
             exit 0
           fi
-          # Both sides of a rename count: moving a file out of app/ changes the app.
-          if ! files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" \
-              --jq '.files[] | .filename, (.previous_filename // empty)')"; then
-            printf 'app=true\nlisting=true\n' >> "$GITHUB_OUTPUT"
-            printf 'Could not compare %s...%s, so everything counts as changed.\n' "$BEFORE" "$AFTER"
-            exit 0
+          # Files changed between $1 and this push, both sides of a rename (a
+          # file moved out of app/ changes the app). Fails if $1 can't be
+          # compared, or the diff is too big to list (the API stops at 300).
+          changed_since() {
+            local files
+            files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$1...$AFTER" \
+              --jq '.files[] | .filename, (.previous_filename // empty)')" || return 1
+            [ "$(printf '%s\n' "$files" | wc -l)" -lt 300 ] || return 1
+            printf '%s\n' "$files"
+          }
+
+          # The app: compared with the last published build (the commit of the
+          # GitHub release), not just the previous push, so a CI-only fix after
+          # a failed publish still ships the pending app change. No release, or
+          # no usable diff, counts as changed.
+          app=true
+          released="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .target_commitish 2>/dev/null || true)"
+          if [[ "$released" =~ ^[0-9a-f]{40}$ ]] && files="$(changed_since "$released")"; then
+            app=false
+            while IFS= read -r f; do
+              case "$f" in
+                app/* | gradle/* | *.gradle | *.gradle.kts | gradle.properties | gradlew | gradlew.bat) app=true ;;
+              esac
+            done <<< "$files"
           fi
-          printf '%s\n' "$files"
-          app=false
-          listing=false
-          # The compare API lists at most 300 files; past that, assume both.
-          if [ "$(printf '%s\n' "$files" | wc -l)" -ge 300 ]; then
-            app=true
-            listing=true
+
+          # The listing: compared with the previous push (a listing-only sync
+          # makes no release to compare with). No usable diff counts as changed.
+          listing=true
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] &&
+              files="$(changed_since "$BEFORE")"; then
+            listing=false
+            while IFS= read -r f; do
+              case "$f" in
+                fastlane/metadata/*) listing=true ;;
+              esac
+            done <<< "$files"
           fi
-          while IFS= read -r f; do
-            case "$f" in
-              fastlane/metadata/*) listing=true ;;
-              app/* | gradle/* | *.gradle | *.gradle.kts | gradle.properties | gradlew | gradlew.bat) app=true ;;
-            esac
-          done <<< "$files"
+
           printf 'app=%s\nlisting=%s\n' "$app" "$listing" >> "$GITHUB_OUTPUT"
-          printf 'App changed: %s. Listing changed: %s.\n' "$app" "$listing"
+          printf 'App changed since the last release (%s): %s. Listing changed in this push: %s.\n' \
+            "${released:-none}" "$app" "$listing"
 
   build:
     name: build
