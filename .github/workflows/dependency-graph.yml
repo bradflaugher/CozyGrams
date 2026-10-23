@@ -1,0 +1,61 @@
+name: Dependency graph
+
+# Submits the resolved Gradle dependency graph (plugins, libraries and their
+# transitive dependencies) to GitHub. GitHub can't read Gradle builds on its
+# own, so without this it only sees the gems and Actions, and Dependabot can
+# raise no alerts or security updates for the Android dependencies.
+#
+# Runs on every push to main so the graph matches what ships, and on pull
+# requests that touch the build so a change is checked before it lands.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '**/*.gradle'
+      - '**/*.gradle.kts'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - '.github/workflows/dependency-graph.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    name: Submit Gradle dependencies
+    # A fork's pull request gets a read-only token and can't submit.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write  # required by the dependency submission API
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # API 37 platforms install as platforms;android-37.0 (not android-37).
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+
+      - name: Submit dependency graph
+        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          validate-wrappers: true

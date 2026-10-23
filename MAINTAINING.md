@@ -152,6 +152,7 @@ recreate them:
 | Default `GITHUB_TOKEN` | Read-only; jobs ask for more themselves |
 | Fork PR workflows | Approval required for every outside contributor |
 | Dependabot | Alerts and security updates on; version updates from `.github/dependabot.yml` |
+| Dependency graph | Gradle dependencies submitted by `.github/workflows/dependency-graph.yml` on every push to `main` (GitHub can't read Gradle builds itself; without it there are no alerts for the Android dependencies) |
 | Code scanning | CodeQL from `.github/workflows/codeql.yml` (not default setup: Kotlin needs a traced build) |
 | Secret scanning | On, with push protection |
 | Private vulnerability reporting | On (see `SECURITY.md`) |
