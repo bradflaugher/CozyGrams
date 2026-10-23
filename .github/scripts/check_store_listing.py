@@ -60,8 +60,9 @@ CHANGELOG_LIMIT = 500
 PROMO_FIELDS = ("title.txt", "short_description.txt")
 PROMO_PATTERN = re.compile(
     r"\b(free|no[- ]ads?|ads?[- ]free|without ads|best|top|new|popular|sales?|"
-    r"discounts?|cheap|deals?|bonus(?:es)?|offers?|cash ?back|award[- ]winning|"
-    r"editor'?s'? choice|number one|million|downloads|"
+    r"discounts?|cheap|deals?|bonus(?:es)?|(?:special|limited[- ]time) offers?|"
+    r"cash ?back|award[- ]winning|app of the year|"
+    r"editor[’']?s[’']? choice|number one|million|downloads|"
     r"(?:download|install|play|try|get it) now)\b"
     r"|#\s?1\b"
     r"|\d+\s?% off\b"
