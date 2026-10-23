@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Phones mask launcher icons into their own shape, so the painted heart becomes an
-  adaptive icon: the plum ground as the background layer and the painting, inset so the
-  heart sits inside the 66dp safe zone, as the foreground. The monochrome layer is the
-  same heart as one flat shape, for Android 13+ themed icons. Every device from
-  minSdk 26 up reads this file, so there are no bitmap fallbacks; televisions use the banner.
+  Google TV and phones mask launcher icons into a circle or squircle, so the adaptive
+  icon carries the full-bleed painted living room on the 108dp background layer and the
+  stitched nonogram heart pillow with the COZYGRAMS wordmark inside the circular safe zone
+  on the foreground layer. The monochrome layer is the heart as one flat shape, for
+  Android 13+ themed icons. Every device from minSdk 26 up reads this file.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
-    <foreground>
-        <inset
-            android:drawable="@drawable/app_icon"
-            android:inset="16dp" />
-    </foreground>
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
     <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>

@@ -49,8 +49,10 @@
         tools:targetApi="37">
         <activity
             android:name=".MainActivity"
+            android:banner="@drawable/tv_banner"
             android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|locale|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
+            android:icon="@mipmap/ic_launcher"
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             tools:ignore="DiscouragedApi">
