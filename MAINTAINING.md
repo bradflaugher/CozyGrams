@@ -79,6 +79,9 @@ Everything ships from GitHub: merging to `main` is the release.
    **Closed testing - Alpha** track with the release notes, and syncs the
    store listing. The version code is the workflow run number, so it is never
    bumped by hand.
+   A push that only touches CI, docs or tooling builds and tests but
+   publishes nothing. One that only changes `fastlane/metadata` syncs the
+   listing without a new build. Run the workflow by hand to publish anyway.
 5. Play reviews the update by itself (managed publishing is off); follow it in
    Play Console › the app › **Publishing overview**.
 
