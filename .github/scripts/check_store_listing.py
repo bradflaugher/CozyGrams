@@ -52,14 +52,21 @@ METADATA = ROOT / "fastlane/metadata/android"
 REQUIRED_TEXT = {"title.txt": 30, "short_description.txt": 80, "full_description.txt": 4000}
 CHANGELOG_LIMIT = 500
 # Play's metadata guidelines: the title and short description must not
-# suggest price, promotion, ranking or a call to action. Play flagged PokerSI's
-# "No ads, no account." in its short description as exactly this (2026-10).
-# The full description may state such facts plainly.
+# suggest price, promotion, ranking, download counts or a call to action. Play
+# flagged PokerSI's "No ads, no account." in its short description as exactly
+# this (2026-10). The full description may state such facts plainly. The
+# vocabulary is English: every listing here is en-US only, so a translation
+# would need its own words added.
 PROMO_FIELDS = ("title.txt", "short_description.txt")
 PROMO_PATTERN = re.compile(
-    r"\b(free|no[- ]ads?|ads?[- ]free|without ads|best|top|new|sale|discount|"
-    r"cheap|deals?|bonus|offer|award[- ]winning|number one|"
-    r"(?:download|install|play|try|get it) now)\b|#\s?1\b|\d+\s?% off",
+    r"\b(free|no[- ]ads?|ads?[- ]free|without ads|best|top|new|popular|sale|"
+    r"discount|cheap|deals?|bonus|offer|cash ?back|award[- ]winning|"
+    r"editor'?s'? choice|number one|million|downloads|"
+    r"(?:download|install|play|try|get it) now)\b"
+    r"|#\s?1\b"
+    r"|\d+\s?% off\b"
+    r"|[$€£¥₹]\s?\d|\d\s?(?:¢|[$€£¥₹])"
+    r"|\b\d+(?:[.,]\d+)?\s?(?:usd|eur|gbp|dollars?|cents?)\b",
     re.IGNORECASE,
 )
 MB = 1024 * 1024
