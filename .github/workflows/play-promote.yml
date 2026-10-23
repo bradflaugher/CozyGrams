@@ -62,11 +62,11 @@ jobs:
           ROLLOUT: ${{ inputs.rollout }}
           VERSION_CODE: ${{ inputs.version_code }}
         run: |
-          if ! printf '%s' "$ROLLOUT" | grep -Eq '^(1|1\.0+|0?\.[0-9]*[1-9][0-9]*)$'; then
+          if ! printf '%s\n' "$ROLLOUT" | grep -Eq '^(1|1\.0+|0?\.[0-9]*[1-9][0-9]*)$'; then
             printf 'rollout must be a fraction above 0 and at most 1, not %s\n' "$ROLLOUT" >&2
             exit 1
           fi
-          if ! printf '%s' "$VERSION_CODE" | grep -Eq '^([1-9][0-9]*)?$'; then
+          if ! printf '%s\n' "$VERSION_CODE" | grep -Eq '^([1-9][0-9]*)?$'; then
             printf 'version_code must be a whole number without leading zeros, or blank, not %s\n' "$VERSION_CODE" >&2
             exit 1
           fi
@@ -108,7 +108,7 @@ jobs:
             --skip_upload_screenshots true
           )
           full=false
-          if printf '%s' "$ROLLOUT" | grep -Eq '^(1|1\.0+)$'; then
+          if printf '%s\n' "$ROLLOUT" | grep -Eq '^(1|1\.0+)$'; then
             full=true
           fi
           case "$ACTION" in
