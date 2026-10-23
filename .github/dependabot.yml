@@ -1,51 +1,54 @@
 version: 2
-updates:
-  # Every version update waits 3 days after a release before Dependabot
-  # proposes it, so a hijacked release has time to be pulled first. Security
-  # updates ignore the cooldown.
 
+# Policy: patch vulnerabilities fast, refresh everything else rarely.
+#
+# - Security fixes come from Dependabot security updates (a repo setting, not
+#   this file). They open a PR as soon as an advisory affects us. The schedule
+#   and cooldown below only govern version updates, so they never delay a
+#   security fix.
+# - Version updates: one combined PR per quarter for Gradle, Actions and
+#   fastlane, majors included (read their release notes before merging).
+# - A release must be 30 days old before a version update picks it up, so a
+#   broken or hijacked release has usually been pulled by then.
+
+multi-ecosystem-groups:
+  quarterly-refresh:
+    schedule:
+      interval: quarterly
+
+updates:
   # The Android Gradle plugin in build.gradle (the app has no libraries).
   - package-ecosystem: gradle
     directory: /
-    schedule:
-      interval: weekly
+    patterns: ['*']
+    multi-ecosystem-group: quarterly-refresh
     cooldown:
-      default-days: 3
-    open-pull-requests-limit: 5
+      default-days: 30
+    # If several advisories land at once, fix them in one PR.
     groups:
-      # Minor and patch bumps land together in one PR. Major versions still
-      # arrive one per PR, so their release notes get a look.
-      minor-and-patch:
-        update-types:
-          - minor
-          - patch
+      gradle-security:
+        applies-to: security-updates
+        patterns: ['*']
 
   # Actions are pinned to commit SHAs; Dependabot keeps the pins current.
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: weekly
+    patterns: ['*']
+    multi-ecosystem-group: quarterly-refresh
     cooldown:
-      default-days: 3
-    open-pull-requests-limit: 5
-    groups:
-      # All action pin bumps in one PR: they are SHA-pinned and CI runs on
-      # every one of them.
-      actions:
-        patterns:
-          - "*"
+      default-days: 30
 
   # fastlane and its gems (Gemfile.lock), used to publish to Google Play.
   # The store listing check installs the bundle on the latest stable Ruby,
   # so a bump that does not work there fails on its pull request.
   - package-ecosystem: bundler
     directory: /
-    schedule:
-      interval: weekly
+    patterns: ['*']
+    multi-ecosystem-group: quarterly-refresh
     cooldown:
-      default-days: 3
-    open-pull-requests-limit: 5
+      default-days: 30
+    # If several advisories land at once, fix them in one PR.
     groups:
-      fastlane:
-        patterns:
-          - "*"
+      bundler-security:
+        applies-to: security-updates
+        patterns: ['*']

@@ -3,20 +3,22 @@
 How to keep this repository current and its supply chain locked down.
 Nothing here needs special tools beyond `gh` and the Android SDK.
 
-## The weekly routine
+## The quarterly routine
 
-Dependabot opens update PRs every week, and only once a release is at least
-3 days old (a hijacked release has time to be pulled first):
+Dependabot follows one policy: patch vulnerabilities fast, refresh everything
+else rarely.
 
-- **One PR for every GitHub Action bump.** Actions are pinned to commit
-  SHAs, and Dependabot moves the SHA and the `# vX.Y.Z` comment together.
-- **One PR for minor and patch library bumps** (AndroidX in its own group
-  where there is one).
-- **One PR per major version**, so its release notes get a read first.
+- **Security updates** open a PR as soon as an advisory affects the app, any
+  day of the year. Treat those first.
+- **Version updates** arrive as one combined PR per quarter: Gradle plugins
+  and libraries, the Gradle wrapper, fastlane and the Actions pins
+  together. Only releases at least 30 days old are proposed, so a broken or
+  hijacked release has usually been pulled first. Majors come in the same PR;
+  read their release notes before merging. Actions are pinned to commit SHAs,
+  and Dependabot moves the SHA and the `# vX.Y.Z` comment together.
 
 Merge a PR (squash) once its checks are green. The `Main` ruleset requires
-`build`, `Analyze (java-kotlin)`, `Analyze (actions)` to pass, so a red PR can't be merged by accident. Dependabot
-security updates skip the cooldown and can arrive any day; treat those first.
+`build`, `Analyze (java-kotlin)`, `Analyze (actions)` to pass, so a red PR can't be merged by accident.
 
 ## Toolchain bumps by hand
 
