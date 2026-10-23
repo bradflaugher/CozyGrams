@@ -19,6 +19,51 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # What this push publishes. Only a change to what ships reaches Google
+  # Play or the GitHub release: the app or its Gradle build means a new
+  # build, a store-listing change alone means a listing sync. CI, docs and
+  # tooling changes still build and test here but publish nothing. Running
+  # the workflow by hand publishes everything.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+      listing: ${{ steps.diff.outputs.listing }}
+
+    steps:
+      - name: Work out what changed
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" != push ] || [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+            printf 'app=true\nlisting=true\n' >> "$GITHUB_OUTPUT"
+            printf '%s event: no push diff, so everything counts as changed.\n' "$EVENT"
+            exit 0
+          fi
+          files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --jq '.files[].filename')"
+          printf '%s\n' "$files"
+          app=false
+          listing=false
+          # The compare API lists at most 300 files; past that, assume both.
+          if [ "$(printf '%s\n' "$files" | wc -l)" -ge 300 ]; then
+            app=true
+            listing=true
+          fi
+          while IFS= read -r f; do
+            case "$f" in
+              fastlane/metadata/*) listing=true ;;
+              app/* | gradle/* | *.gradle | *.gradle.kts | gradle.properties | gradlew | gradlew.bat) app=true ;;
+            esac
+          done <<< "$files"
+          printf 'app=%s\nlisting=%s\n' "$app" "$listing" >> "$GITHUB_OUTPUT"
+          printf 'App changed: %s. Listing changed: %s.\n' "$app" "$listing"
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -167,15 +212,16 @@ jobs:
       - name: Check that fastlane runs
         run: bundle exec fastlane supply --help > /dev/null
 
-  # Every signed main build goes to Google Play's Closed testing - Alpha
-  # track, with changelogs/default.txt as its release notes, and the store
-  # listing is synced from fastlane/metadata/android: text, icon, feature
-  # graphic and screenshots (images Play already has are skipped by
-  # checksum). Promotion to production is play-promote.yml, run by hand.
+  # A signed main build that changes the app goes to Google Play's Closed
+  # testing - Alpha track, with changelogs/default.txt as its release notes.
+  # The store listing is synced from fastlane/metadata/android (text, icon,
+  # feature graphic and screenshots; images Play already has are skipped by
+  # checksum) whenever the app or the listing changed. Promotion to
+  # production is play-promote.yml, run by hand.
   play:
     name: Google Play
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true'
-    needs: [build, store-listing]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true' && (needs.changes.outputs.app == 'true' || needs.changes.outputs.listing == 'true')
+    needs: [changes, build, store-listing]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # PLAY_SERVICE_ACCOUNT_JSON is an environment secret, and only main can
@@ -213,6 +259,7 @@ jobs:
       - name: Upload to Closed testing - Alpha
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          APP_CHANGED: ${{ needs.changes.outputs.app }}
         run: |
           if [ -z "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
             printf 'No PLAY_SERVICE_ACCOUNT_JSON secret in the google-play environment\n' >&2
@@ -220,7 +267,12 @@ jobs:
           fi
           key="$RUNNER_TEMP/play-service-account.json"
           printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$key"
-          bundle exec fastlane supply \
+          # Listing-only change: sync the store listing, ship no new build.
+          skip=()
+          if [ "$APP_CHANGED" != true ]; then
+            skip=(--skip_upload_aab true --skip_upload_changelogs true)
+          fi
+          bundle exec fastlane supply "${skip[@]}" \
             --package_name com.cozygrams.tv \
             --json_key "$key" \
             --aab release/CozyGrams.aab \
@@ -232,8 +284,8 @@ jobs:
 
   release:
     name: release
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true'
-    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true' && needs.changes.outputs.app == 'true'
+    needs: [changes, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
