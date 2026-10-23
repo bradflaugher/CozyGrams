@@ -8,7 +8,11 @@ CI only uploads from main, so pull requests run this first. The rules are Play's
 (support.google.com/googleplay/android-developer/answer/9866151 and 9859152):
 
 - title (30), short description (80) and full description (4000) must be
-  non-empty and within their limits; every changelog, default.txt or one per
+  non-empty and within their limits; the title and short description carry
+  no price or promotion keywords ("free", "no ads", "best", "#1", "sale",
+  "download now", ...), or Play stops promoting the app (Play Console's
+  store listing warning: "Should not use keywords that indicate price or
+  promotion"); every changelog, default.txt or one per
   version code, at most 500 characters
 - the default (en-US) listing must exist with an icon, a feature graphic
   and at least 2 screenshots (translations may borrow them); every image needs
@@ -31,6 +35,7 @@ depth or the exact colour type: only methods 0, an 8-bit RGB, palette (with
 its PLTE) or RGBA image, no unknown critical chunks.
 """
 
+import re
 import struct
 import sys
 import zlib
@@ -46,6 +51,17 @@ METADATA = ROOT / "fastlane/metadata/android"
 
 REQUIRED_TEXT = {"title.txt": 30, "short_description.txt": 80, "full_description.txt": 4000}
 CHANGELOG_LIMIT = 500
+# Play's metadata guidelines: the title and short description must not
+# suggest price, promotion, ranking or a call to action. Play flagged PokerSI's
+# "No ads, no account." in its short description as exactly this (2026-10).
+# The full description may state such facts plainly.
+PROMO_FIELDS = ("title.txt", "short_description.txt")
+PROMO_PATTERN = re.compile(
+    r"\b(free|no[- ]ads?|ads?[- ]free|without ads|best|top|new|sale|discount|"
+    r"cheap|deals?|bonus|offer|award[- ]winning|number one|"
+    r"(?:download|install|play|try|get it) now)\b|#\s?1\b|\d+\s?% off",
+    re.IGNORECASE,
+)
 MB = 1024 * 1024
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 # The listing's default language; it must carry the full set of graphics.
@@ -172,6 +188,9 @@ def check_text(lang: Path) -> None:
             error(path if path.is_file() else lang, f"{name} is missing or empty; Google Play requires it")
         elif len(text) > limit:
             error(path, f"{len(text)} characters; Google Play allows {limit}")
+        if name in PROMO_FIELDS and (hit := PROMO_PATTERN.search(text)):
+            error(path, f'"{hit.group(0)}" reads as a price or promotion keyword; '
+                        "Google Play won't promote an app whose title or short description uses one")
     changelogs = lang / "changelogs"
     if changelogs.is_dir():
         for path in sorted(changelogs.glob("*.txt")):
