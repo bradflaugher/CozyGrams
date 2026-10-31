@@ -1,6 +1,15 @@
 # CozyGrams
 
-**[bradflaugher.github.io/CozyGrams](https://bradflaugher.github.io/CozyGrams/)** · [privacy policy](https://bradflaugher.github.io/CozyGrams/privacy/)
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.cozygrams.tv"><img src="docs/google-play-badge.png" alt="Get it on Google Play" height="64"></a>
+</p>
+
+<p align="center">
+  <b>Free on <a href="https://play.google.com/store/apps/details?id=com.cozygrams.tv">Google Play</a></b> · Android TV, phones and tablets · no ads · Android 8.0+<br>
+  <a href="https://bradflaugher.github.io/CozyGrams/">Website</a> ·
+  <a href="https://bradflaugher.github.io/CozyGrams/privacy/">Privacy policy</a> ·
+  <a href="https://github.com/bradflaugher/CozyGrams/releases/latest">Latest APK</a>
+</p>
 
 A cozy, endless nonogram game made for the couch. Play solo, or hand someone a second
 controller and solve every picture together with independent Rose and Sky cursors. One
@@ -130,8 +139,12 @@ falling asleep and waking up with a new device id.
 
 ## Getting it
 
-CozyGrams is being readied for Google Play, for Android TV, phones and tablets alike.
-Until the listing is live, the signed APK on the
+<a href="https://play.google.com/store/apps/details?id=com.cozygrams.tv"><img src="docs/google-play-badge.png" alt="Get it on Google Play" height="56"></a>
+
+CozyGrams is on [Google Play](https://play.google.com/store/apps/details?id=com.cozygrams.tv) for Android TV, phones and
+tablets alike, and Play keeps it up to date.
+
+Prefer to sideload? The signed APK on the
 [latest GitHub release](https://github.com/bradflaugher/CozyGrams/releases/latest)
 installs on any of them — see [Release](#release) below.
 
