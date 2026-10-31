@@ -110,6 +110,15 @@ a:hover { color: var(--cream); }
 .btn--plum:hover { background: rgba(88, 54, 78, 0.85); color: var(--cream); }
 .btn svg { width: 20px; height: 20px; flex: none; }
 
+/* The official Google Play badge, untouched. Google's guidelines forbid
+   recoloring it and keep a clear space of a quarter of its height (15px)
+   around it, so it gets no shadow and its margins plus the 10–12px action
+   gaps hold neighbors at 15px. */
+.play { display: inline-flex; margin: 0 5px 5px 0; border-radius: 10px; transition: transform 0.15s ease; }
+.play img { display: block; width: auto; height: 60px; }
+.play:hover { transform: translateY(-1px); }
+@media (prefers-reduced-motion: reduce) { .play, .play:hover { transition: none; transform: none; } }
+
 /* ---- Hero ---- */
 .hero {
   position: relative;
